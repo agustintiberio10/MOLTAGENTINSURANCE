@@ -5,8 +5,7 @@
   "main": "agent/index.js",
   "scripts": {
     "compile": "npx hardhat compile",
-    "deploy:sepolia": "npx hardhat run scripts/deploy.js --network baseSepolia",
-    "deploy:mainnet": "npx hardhat run scripts/deploy.js --network baseMainnet",
+    "deploy": "npx hardhat run scripts/deploy.js --network baseMainnet",
     "agent": "node agent/index.js",
     "agent:once": "SINGLE_RUN=1 node agent/index.js",
     "test": "npx hardhat test"

@@ -12,13 +12,8 @@ module.exports = {
     },
   },
   networks: {
-    baseSepolia: {
-      url: process.env.BASE_RPC_URL || "https://sepolia.base.org",
-      accounts: [AGENT_PRIVATE_KEY],
-      chainId: 84532,
-    },
     baseMainnet: {
-      url: process.env.BASE_MAINNET_RPC_URL || "https://mainnet.base.org",
+      url: process.env.BASE_RPC_URL || "https://mainnet.base.org",
       accounts: [AGENT_PRIVATE_KEY],
       chainId: 8453,
     },

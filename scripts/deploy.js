@@ -7,16 +7,8 @@ async function main() {
   console.log("Deploying MutualPool with account:", deployer.address);
   console.log("Account balance:", (await hre.ethers.provider.getBalance(deployer.address)).toString());
 
-  // Determine USDC address based on network
-  const networkName = hre.network.name;
-  let usdcAddress;
-  if (networkName === "baseSepolia") {
-    usdcAddress = process.env.USDC_SEPOLIA || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-  } else if (networkName === "baseMainnet") {
-    usdcAddress = process.env.USDC_MAINNET || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-  } else {
-    throw new Error(`Unknown network: ${networkName}`);
-  }
+  // USDC on Base Mainnet
+  const usdcAddress = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
   console.log("USDC address:", usdcAddress);
   console.log("Oracle (deployer):", deployer.address);

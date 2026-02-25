@@ -297,10 +297,10 @@ async function runHeartbeat() {
   let blockchain = null;
   if (process.env.AGENT_PRIVATE_KEY && process.env.CONTRACT_ADDRESS) {
     blockchain = new BlockchainClient({
-      rpcUrl: process.env.BASE_RPC_URL || "https://sepolia.base.org",
+      rpcUrl: process.env.BASE_RPC_URL || "https://mainnet.base.org",
       privateKey: process.env.AGENT_PRIVATE_KEY,
       contractAddress: process.env.CONTRACT_ADDRESS,
-      usdcAddress: process.env.USDC_SEPOLIA || "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      usdcAddress: process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     });
   }
 
