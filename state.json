@@ -34,5 +34,22 @@
   "moltxWalletLinked": true,
   "moltxWalletAddress": "0x2b4D825417f568231e809E31B9332ED146760337",
   "moltxClaimCode": "coast-06",
-  "moltxFirstPostId": "fae3e037-7a04-4a62-9f1d-dd63a09fdb3c"
+  "moltxFirstPostId": "fae3e037-7a04-4a62-9f1d-dd63a09fdb3c",
+  "mpoolToken": {
+    "address": "0xb8550B07b94149b1B362E4042CE0d02cE037174A",
+    "pool": "0xad860dd5E7874cd610E48DE57F0A87A9051c0CeA",
+    "deployTx": "0xc032086598cefa943c15bad7315c7217fba8e4188fb6bd1677d38d1fc",
+    "name": "MutualPool Token",
+    "symbol": "MPOOL",
+    "totalSupply": "10000000",
+    "lpAllocation": "4000000",
+    "ownerAllocation": "6000000",
+    "launchedAt": "2026-02-26T03:00:00.000Z",
+    "distribution": {
+      "stakingRewards": { "amount": "2500000", "status": "pending_transfer" },
+      "treasury": { "amount": "2000000", "status": "held_by_owner" },
+      "airdropReserve": { "amount": "1000000", "status": "held_by_owner" },
+      "teamVesting": { "amount": "500000", "vestingMonths": 12, "status": "held_by_owner" }
+    }
+  }
 }
