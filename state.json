@@ -94,7 +94,10 @@
         "vestingMonths": 12,
         "status": "held_by_owner"
       }
-    }
+    },
+    "stakingContract": "0x418746668124f8E2b028F3cb563c6a6FF9cC0174",
+    "feeRouter": "0xc73C048f717A15b592Fe07aCC1815Ee845D168B5",
+    "feeSystemDeployedAt": "2026-02-26T23:34:35.839Z"
   },
   "dailyPosts": {
     "2026-02-26": 3
