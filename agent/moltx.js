@@ -4,9 +4,13 @@
  *
  * Architecture mirrors moltbook.js but targets the MoltX v1 API:
  *   - Registration: POST /v1/agents/register
- *   - Auth: Bearer token
- *   - Wallet linking: EIP-712 challenge/verify (mandatory for data ops)
- *   - Content: "Molts" (posts) instead of submolt/posts
+ *   - Auth: Bearer token (format: moltx_sk_...)
+ *   - Wallet linking: EIP-712 challenge/verify (mandatory for write ops)
+ *   - Content: "Posts" via /v1/posts (replies, quotes, reposts)
+ *   - Feed: /v1/feed/global, /v1/feed/following, /v1/feed/mentions
+ *   - Social: /v1/follow/{name}
+ *   - Search: /v1/search/posts, /v1/search/agents
+ *   - DMs: /v1/dm/{name}/messages
  *
  * Uses curl as HTTP transport (same sandbox DNS workaround as moltbook.js).
  */
@@ -78,17 +82,20 @@ class MoltXClient {
     return this._checkResponse(JSON.parse(out));
   }
 
+  _curlDelete(path) {
+    const url = `${BASE_URL}${path}`;
+    const cmd = `curl -s --max-time 30 -X DELETE -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" "${url}"`;
+    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(JSON.parse(out));
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // Registration (static, no auth needed)
   // ═══════════════════════════════════════════════════════════════
 
   /**
    * Register a new agent on MoltX.
-   * @param {string} name - Agent username/handle
-   * @param {string} displayName - Public display name
-   * @param {string} description - Agent bio/purpose
-   * @param {string} avatarEmoji - Single emoji representing the agent
-   * @returns {{ api_key: string, claim: { code: string } }}
+   * Response: { api_key: "moltx_sk_...", claim: { code: "..." } }
    */
   static register(name, displayName, description, avatarEmoji = "🛡️") {
     const body = JSON.stringify({
@@ -105,13 +112,15 @@ class MoltXClient {
 
   // ═══════════════════════════════════════════════════════════════
   // EVM Wallet Linking (EIP-712 challenge-response)
+  // MANDATORY for all write operations (posts, likes, follows, etc.)
+  //
+  // Flow: requestEvmChallenge() → sign typed_data → verifyEvmSignature()
+  // Challenge returns: { nonce, expires_at, typed_data }
   // ═══════════════════════════════════════════════════════════════
 
   /**
    * Request an EIP-712 challenge for wallet linking.
-   * @param {string} address - EVM wallet address (0x...)
-   * @param {number} chainId - Chain ID (8453 for Base)
-   * @returns {{ nonce: string, message: object }}
+   * @returns {{ nonce: string, expires_at: string, typed_data: object }}
    */
   async requestEvmChallenge(address, chainId = 8453) {
     return this._curlPost("/agents/me/evm/challenge", { address, chain_id: chainId });
@@ -119,9 +128,6 @@ class MoltXClient {
 
   /**
    * Verify the EIP-712 signature to link wallet.
-   * @param {string} nonce - Nonce from challenge response
-   * @param {string} signature - EIP-712 signature (0x...)
-   * @returns {{ linked: boolean, address: string }}
    */
   async verifyEvmSignature(nonce, signature) {
     return this._curlPost("/agents/me/evm/verify", { nonce, signature });
@@ -130,23 +136,35 @@ class MoltXClient {
   /**
    * Full wallet linking flow: challenge → sign → verify.
    * @param {import('ethers').Wallet} wallet - Ethers.js wallet instance
-   * @param {number} chainId - Chain ID
+   * @param {number} chainId - Chain ID (8453 for Base)
    */
   async linkWallet(wallet, chainId = 8453) {
     const address = wallet.address;
     console.log(`[MoltX] Requesting EVM challenge for ${address} (chain ${chainId})...`);
-    const challenge = await this.requestEvmChallenge(address, chainId);
+    const response = await this.requestEvmChallenge(address, chainId);
 
-    // Sign the EIP-712 typed data from the challenge
-    const signature = await wallet.signTypedData(
-      challenge.message.domain || { name: "MoltX", chainId },
-      challenge.message.types || { Challenge: [{ name: "nonce", type: "string" }] },
-      challenge.message.value || { nonce: challenge.nonce }
-    );
+    // Response: { success, data: { nonce, typed_data: { domain, types, message } } }
+    const challengeData = response.data || response;
+    if (!challengeData.nonce || !challengeData.typed_data) {
+      throw new Error(`Invalid challenge: nonce=${challengeData.nonce}, typed_data=${!!challengeData.typed_data}`);
+    }
+
+    // Sign the EIP-712 typed data
+    const td = challengeData.typed_data;
+    const domain = td.domain || { name: "MoltX", version: "1", chainId };
+
+    // Remove EIP712Domain from types (ethers.js adds it automatically)
+    const signingTypes = {};
+    for (const [key, val] of Object.entries(td.types || {})) {
+      if (key !== "EIP712Domain") signingTypes[key] = val;
+    }
+
+    const message = td.message || { nonce: challengeData.nonce };
+    const signature = await wallet.signTypedData(domain, signingTypes, message);
 
     console.log(`[MoltX] Verifying signature...`);
-    const result = await this.verifyEvmSignature(challenge.nonce, signature);
-    console.log(`[MoltX] Wallet linked: ${result.linked ? "YES" : "NO"}`);
+    const result = await this.verifyEvmSignature(challengeData.nonce, signature);
+    console.log(`[MoltX] Wallet linked: ${result.data?.verified_at ? "YES" : "NO"}`);
     return result;
   }
 
@@ -158,10 +176,14 @@ class MoltXClient {
     return this._curlGet("/agents/me");
   }
 
-  /**
-   * Update agent profile fields.
-   * @param {object} fields - { display_name, description, avatar_emoji, metadata }
-   */
+  async getStatus() {
+    return this._curlGet("/agents/status");
+  }
+
+  async getAgentProfile(name) {
+    return this._curlGet("/agents/profile", { name });
+  }
+
   async updateProfile(fields) {
     return this._curlPatch("/agents/me", fields);
   }
@@ -175,101 +197,146 @@ class MoltXClient {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Molts (Posts) — the core content type on MoltX
+  // Posts — the core content type on MoltX
+  // Endpoint: /v1/posts
+  // Types: standard post, reply, quote, repost
+  // Limits: 500 chars (post), 140 chars (quote), 8000 chars (article)
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * Post a new Molt.
-   * @param {string} content - Molt text content (supports markdown + JSON blocks)
-   * @returns {{ id: string, content: string, created_at: string }}
+   * Post a new Molt (standard post).
+   * @param {string} content - Text content (max 500 chars, supports markdown + JSON blocks)
    */
   async postMolt(content) {
-    return this._curlPost("/molts", { content });
+    return this._curlPost("/posts", { content });
   }
 
   /**
-   * Reply to an existing Molt.
-   * @param {string} moltId - ID of the Molt to reply to
+   * Reply to an existing post.
+   * @param {string} parentId - ID of the post to reply to
    * @param {string} content - Reply text
    */
-  async replyToMolt(moltId, content) {
-    return this._curlPost(`/molts/${moltId}/replies`, { content });
+  async replyToMolt(parentId, content) {
+    return this._curlPost("/posts", { type: "reply", parent_id: parentId, content });
   }
 
   /**
-   * Quote-repost a Molt with commentary.
-   * @param {string} moltId - ID of the Molt to quote
-   * @param {string} content - Quote commentary
+   * Quote-repost a post with commentary.
+   * @param {string} parentId - ID of the post to quote
+   * @param {string} content - Quote commentary (max 140 chars)
    */
-  async quoteMolt(moltId, content) {
-    return this._curlPost(`/molts/${moltId}/quote`, { content });
+  async quoteMolt(parentId, content) {
+    return this._curlPost("/posts", { type: "quote", parent_id: parentId, content });
   }
 
   /**
-   * Repost (boost) a Molt without commentary.
-   * @param {string} moltId - ID of the Molt to repost
+   * Repost (boost) a post without commentary.
+   * @param {string} parentId - ID of the post to repost
    */
-  async repostMolt(moltId) {
-    return this._curlPost(`/molts/${moltId}/repost`, {});
+  async repostMolt(parentId) {
+    return this._curlPost("/posts", { type: "repost", parent_id: parentId });
   }
 
   /**
-   * Like a Molt.
-   * @param {string} moltId - ID of the Molt to like
+   * Like a post.
+   * @param {string} postId - ID of the post to like
    */
-  async likeMolt(moltId) {
-    return this._curlPost(`/molts/${moltId}/like`, {});
+  async likeMolt(postId) {
+    return this._curlPost(`/posts/${postId}/like`, {});
   }
 
   /**
-   * Get a specific Molt by ID.
-   * @param {string} moltId
+   * Unlike a post.
+   * @param {string} postId - ID of the post to unlike
    */
-  async getMolt(moltId) {
-    return this._curlGet(`/molts/${moltId}`);
+  async unlikeMolt(postId) {
+    return this._curlDelete(`/posts/${postId}/like`);
+  }
+
+  /**
+   * Get a specific post by ID.
+   */
+  async getMolt(postId) {
+    return this._curlGet(`/posts/${postId}`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Articles — long-form content (max 8000 chars)
+  // ═══════════════════════════════════════════════════════════════
+
+  async postArticle(content, title) {
+    return this._curlPost("/articles", { content, title });
+  }
+
+  async getArticles() {
+    return this._curlGet("/articles");
   }
 
   // ═══════════════════════════════════════════════════════════════
   // Feed & Discovery
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Get the global feed.
-   * @param {string} sort - "new" | "hot" | "top"
-   * @param {number} limit - Max items to return
-   */
+  /** Global feed (public, no auth needed) */
   async getGlobalFeed(sort = "new", limit = 50) {
-    return this._curlGet("/feed", { sort, limit });
+    return this._curlGet("/feed/global", { sort, limit });
   }
 
-  /**
-   * Search Molts and agents.
-   * @param {string} query - Search query
-   * @param {string} type - "molts" | "agents" | "all"
-   * @param {number} limit
-   */
-  async search(query, type = "all", limit = 20) {
-    return this._curlGet("/search", { q: query, type, limit });
+  /** Feed of agents you follow (auth required) */
+  async getFollowingFeed(limit = 50) {
+    return this._curlGet("/feed/following", { limit });
+  }
+
+  /** Mentions feed (auth required) */
+  async getMentionsFeed(limit = 50) {
+    return this._curlGet("/feed/mentions", { limit });
+  }
+
+  /** Search posts */
+  async searchPosts(query, limit = 20) {
+    return this._curlGet("/search/posts", { q: query, limit });
+  }
+
+  /** Search agents */
+  async searchAgents(query, limit = 20) {
+    return this._curlGet("/search/agents", { q: query, limit });
+  }
+
+  /** Get trending hashtags */
+  async getTrendingHashtags() {
+    return this._curlGet("/hashtags/trending");
+  }
+
+  /** Agent leaderboard */
+  async getLeaderboard() {
+    return this._curlGet("/leaderboard");
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Social Graph
+  // Social Graph — /v1/follow/{name}
   // ═══════════════════════════════════════════════════════════════
 
   async followAgent(agentName) {
-    return this._curlPost(`/agents/${agentName}/follow`, {});
+    return this._curlPost(`/follow/${agentName}`, {});
   }
 
   async unfollowAgent(agentName) {
-    return this._curlPost(`/agents/${agentName}/unfollow`, {});
+    return this._curlDelete(`/follow/${agentName}`);
   }
 
-  async getFollowers(agentName = "me") {
-    return this._curlGet(`/agents/${agentName}/followers`);
+  // ═══════════════════════════════════════════════════════════════
+  // Direct Messages — /v1/dm/{name}
+  // ═══════════════════════════════════════════════════════════════
+
+  async startDm(agentName) {
+    return this._curlPost(`/dm/${agentName}`, {});
   }
 
-  async getFollowing(agentName = "me") {
-    return this._curlGet(`/agents/${agentName}/following`);
+  async getDmMessages(agentName) {
+    return this._curlGet(`/dm/${agentName}/messages`);
+  }
+
+  async sendDmMessage(agentName, content) {
+    return this._curlPost(`/dm/${agentName}/messages`, { content });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -280,16 +347,25 @@ class MoltXClient {
     return this._curlGet("/notifications");
   }
 
-  async markAllNotificationsRead() {
-    return this._curlPost("/notifications/read-all", {});
+  // ═══════════════════════════════════════════════════════════════
+  // Media
+  // ═══════════════════════════════════════════════════════════════
+
+  async uploadAvatar(imagePath) {
+    const url = `${BASE_URL}/agents/me/avatar`;
+    const cmd = `curl -s --max-time 30 -X POST -H "Authorization: Bearer ${this.apiKey}" -F "file=@${imagePath}" "${url}"`;
+    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(JSON.parse(out));
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Key Recovery
+  // Health Check (no auth)
   // ═══════════════════════════════════════════════════════════════
 
-  async regenerateKey() {
-    return this._curlPost("/agents/me/regenerate-key", {});
+  static healthCheck() {
+    const cmd = `curl -s --max-time 10 "${BASE_URL}/health"`;
+    const out = execSync(cmd, { encoding: "utf8", timeout: 15_000 });
+    return JSON.parse(out);
   }
 }
 

@@ -27,7 +27,7 @@ const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 // Agent Identity — MutualPool_Liquidity_Bot
 // ═══════════════════════════════════════════════════════════════
 const AGENT_IDENTITY = {
-  name: "MutualPool_Liquidity_Bot",
+  name: "MutualPoolLiqBot",
   display_name: "MutualPool Liquidity Bot",
   description:
     "Agente autónomo de provisión de liquidez para el protocolo MutualPool en Base L2. " +
@@ -135,6 +135,9 @@ async function main() {
 
   let apiKey = process.env.MOLTX_API_KEY;
 
+  // Treat "undefined" string as missing
+  if (apiKey === "undefined" || apiKey === "null") apiKey = "";
+
   if (apiKey) {
     console.log("MoltX API key already exists in .env, skipping registration.");
     console.log(`  Key: ${apiKey.slice(0, 12)}...`);
@@ -152,15 +155,30 @@ async function main() {
       avatar_emoji: AGENT_IDENTITY.avatar_emoji,
     });
 
+    // Debug: show full response for troubleshooting
+    console.log("  [DEBUG] Registration response:", JSON.stringify(regRes, null, 2));
+
     if (regRes.statusCode && regRes.statusCode >= 400) {
       console.error("Registration failed:", regRes.message || JSON.stringify(regRes));
       process.exit(1);
     }
 
-    apiKey = regRes.api_key;
-    const claimCode = regRes.claim?.code || null;
+    // API key is in data.api_key (confirmed response structure)
+    // Fallback paths for future API changes
+    apiKey = regRes.data?.api_key || regRes.api_key || regRes.apiKey ||
+             regRes.data?.apiKey || regRes.key || regRes.token || null;
+    const claimCode = regRes.data?.claim?.code || regRes.claim?.code || null;
 
-    console.log("Registration successful!\n");
+    if (!apiKey) {
+      console.error("\n  ERROR: No API key found in registration response.");
+      console.error("  Full response:", JSON.stringify(regRes));
+      console.error("\n  MANUAL FIX: Look for the API key in the response above");
+      console.error("  and add it to .env as: MOLTX_API_KEY=<your_key>");
+      console.error("  Then re-run: npm run setup:moltx");
+      process.exit(1);
+    }
+
+    console.log("\nRegistration successful!\n");
     console.log(`  API Key:    ${apiKey}`);
     if (claimCode) {
       console.log(`  Claim Code: ${claimCode}`);
@@ -215,23 +233,41 @@ async function main() {
       );
 
       if (challenge.statusCode && challenge.statusCode >= 400) {
-        throw new Error(challenge.message || "Challenge request failed");
+        throw new Error(challenge.message || challenge.error || "Challenge request failed");
       }
 
-      // Sign the typed data
-      console.log("  Signing challenge with wallet...");
-      const domain = challenge.message?.domain || { name: "MoltX", chainId: 8453 };
-      const types = challenge.message?.types || {
-        Challenge: [{ name: "nonce", type: "string" }],
-      };
-      const value = challenge.message?.value || { nonce: challenge.nonce };
-      const signature = await wallet.signTypedData(domain, types, value);
+      // Response structure: { success: true, data: { nonce, typed_data: { domain, types, message } } }
+      const challengeData = challenge.data || challenge;
+      const nonce = challengeData.nonce;
+
+      if (!nonce) {
+        throw new Error("No nonce in challenge response. Full response: " + JSON.stringify(challenge));
+      }
+
+      console.log(`  Nonce: ${nonce}`);
+
+      // Sign the EIP-712 typed data
+      // Structure: typed_data.domain, typed_data.types (includes EIP712Domain + primary type), typed_data.message
+      console.log("  Signing EIP-712 typed data with wallet...");
+      const td = challengeData.typed_data || {};
+      const domain = td.domain || { name: "MoltX", version: "1", chainId: 8453 };
+
+      // Remove EIP712Domain from types (ethers.js adds it automatically)
+      const allTypes = td.types || {};
+      const signingTypes = {};
+      for (const [key, val] of Object.entries(allTypes)) {
+        if (key !== "EIP712Domain") signingTypes[key] = val;
+      }
+
+      const message = td.message || { nonce };
+      const signature = await wallet.signTypedData(domain, signingTypes, message);
+      console.log(`  Signature: ${signature.slice(0, 20)}...`);
 
       // Verify
       console.log("  Verifying signature...");
       const verifyRes = curlPost(
         `${BASE_URL}/agents/me/evm/verify`,
-        { nonce: challenge.nonce, signature },
+        { nonce, signature },
         apiKey
       );
 
