@@ -5,11 +5,11 @@
  * Cost: 0.001 ETH on Base (~$2.70)
  *
  * Steps:
- * 1. POST /api/deposit → get temporary deposit address
+ * 1. POST /deposit → get temporary deposit address
  * 2. Send 0.001 ETH from agent wallet to deposit address
  * 3. Poll deposit status until funded
- * 4. POST /api/deploy → deploy token + create pool + seed liquidity
- * 5. POST /api/deploy/{token}/buy → initial buy for aggregator registration
+ * 4. POST /deploy → deploy token + create pool + seed liquidity
+ * 5. POST /deploy/{token}/buy → initial buy for aggregator registration
  * 6. Save all addresses to .env and state.json
  *
  * Token: MPOOL
@@ -71,7 +71,7 @@ async function main() {
   console.log("\n[Step 1] Creating deposit address...");
   let depositAddress;
   try {
-    const depositRes = await axios.post(`${LAUNCHPAD_BASE}/api/deposit`);
+    const depositRes = await axios.post(`${LAUNCHPAD_BASE}/deposit`);
     if (!depositRes.data.ok) throw new Error(JSON.stringify(depositRes.data));
     depositAddress = depositRes.data.depositAddress;
     console.log(`[Step 1] Deposit address: ${depositAddress}`);
@@ -168,7 +168,7 @@ async function main() {
   let tokenAddress, poolAddress, deployTxHash, tokenIsToken0;
   try {
     console.log("[Step 4] Payload:", JSON.stringify(deployPayload, null, 2).substring(0, 500) + "...");
-    const deployRes = await axios.post(`${LAUNCHPAD_BASE}/api/deploy`, deployPayload);
+    const deployRes = await axios.post(`${LAUNCHPAD_BASE}/deploy`, deployPayload);
     if (!deployRes.data.ok) throw new Error(JSON.stringify(deployRes.data));
 
     tokenAddress = deployRes.data.token;
@@ -189,7 +189,7 @@ async function main() {
   // ── STEP 5: Initial buy (registers on DEX aggregators) ──
   console.log("\n[Step 5] Executing initial buy...");
   try {
-    const buyRes = await axios.post(`${LAUNCHPAD_BASE}/api/deploy/${tokenAddress}/buy`, {
+    const buyRes = await axios.post(`${LAUNCHPAD_BASE}/deploy/${tokenAddress}/buy`, {
       pool: poolAddress,
       tokenIsToken0: tokenIsToken0,
       buyAmountETH: "0.0001",
