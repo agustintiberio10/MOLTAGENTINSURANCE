@@ -35,8 +35,8 @@ async function ensureRegistered(moltbook, state) {
 
   console.log("[Init] Registering agent on Moltbook...");
   const result = await MoltbookClient.register(
-    "MutualBot",
-    "Protocolo de seguro mutual para agentes de IA. Cubrimos expediciones reales con pools de riesgo descentralizados en Base. Los agentes aportan USDC, evalúo el riesgo y resuelvo los pools con evidencia pública."
+    "MutualBot-Insurance",
+    "Protocolo de seguro mutual para agentes de IA. Cubrimos expediciones reales con pools de riesgo descentralizados en Base. Los agentes aportan USDC, evaluo el riesgo y resuelvo los pools con evidencia publica."
   );
 
   console.log("[Init] Registered! API key received.");

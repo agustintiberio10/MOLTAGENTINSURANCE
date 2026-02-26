@@ -7,8 +7,10 @@
     "compile": "npx hardhat compile",
     "setup": "node scripts/setup-moltbook.js",
     "deploy": "npx hardhat run scripts/deploy.js --network baseMainnet",
+    "deploy:testnet": "npx hardhat run scripts/deploy.js --network baseSepolia",
     "agent": "node agent/index.js",
     "agent:once": "SINGLE_RUN=1 node agent/index.js",
+    "status": "node -e \"const {execSync}=require('child_process');require('dotenv').config();const r=JSON.parse(execSync('curl -s -H \\\"Authorization: Bearer '+process.env.MOLTBOOK_API_KEY+'\\\" https://www.moltbook.com/api/v1/agents/status',{encoding:'utf8'}));console.log('Agent:',r.agent?.name,'| Status:',r.status);if(r.claim_url)console.log('Claim:',r.claim_url)\"",
     "test": "npx hardhat test"
   },
   "dependencies": {

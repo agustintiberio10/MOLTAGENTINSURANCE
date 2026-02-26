@@ -1,7 +1,8 @@
 /**
  * Pool monitor — checks deadlines and fetches evidence to resolve pools.
+ * Uses curl for HTTP requests (Node.js DNS blocked in sandbox).
  */
-const axios = require("axios");
+const { execSync } = require("child_process");
 
 /**
  * Check if a pool's deadline has passed and gather evidence for resolution.
@@ -43,23 +44,12 @@ async function checkPool(pool) {
 }
 
 /**
- * Fetch the evidence page content.
+ * Fetch the evidence page content using curl.
  */
 async function fetchEvidence(url) {
-  const res = await axios.get(url, {
-    timeout: 15_000,
-    headers: { "User-Agent": "MutualBot/1.0" },
-    maxRedirects: 3,
-  });
-
-  // Handle different content types
-  if (typeof res.data === "string") {
-    return res.data.substring(0, 10_000); // limit to 10KB of text
-  }
-  if (typeof res.data === "object") {
-    return JSON.stringify(res.data).substring(0, 10_000);
-  }
-  return String(res.data).substring(0, 10_000);
+  const cmd = `curl -sL --max-time 15 --max-redirs 3 -H "User-Agent: MutualBot/1.0" "${url}"`;
+  const out = execSync(cmd, { encoding: "utf8", timeout: 20_000 });
+  return out.substring(0, 10_000); // limit to 10KB of text
 }
 
 /**
