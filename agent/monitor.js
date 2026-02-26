@@ -126,9 +126,23 @@ function buildResolutionPost(pool, claimApproved, evidence) {
     ? `\n\n## Dual-Auth Oracle Result\n` +
       `- Judge: ${pool.dualAuthResult.judge.verdict ? "INCIDENT" : "NO INCIDENT"} (confidence: ${(pool.dualAuthResult.judge.confidence * 100).toFixed(1)}%)\n` +
       `- Auditor: ${pool.dualAuthResult.auditor.verdict ? "INCIDENT" : "NO INCIDENT"}\n` +
+      (pool.dualAuthResult.gasData ? `- Gas Data: ${pool.dualAuthResult.gasData.fastGasPrice.toFixed(2)} Gwei (${pool.dualAuthResult.gasData.source})\n` : "") +
       `- Consensus: ${pool.dualAuthResult.consensus ? "YES" : "NO (security default: no claim)"}\n` +
       `- Rules enforced: Emotional Blindness, Empirical Strict, Proof Standard`
     : "";
+
+  // M2M resolution payload
+  const resolutionPayload = {
+    event: "pool_resolved",
+    pool_id: pool.onchainId,
+    claim_approved: claimApproved,
+    action: {
+      method: "withdraw(uint256)",
+      params: { poolId: pool.onchainId },
+    },
+  };
+
+  const m2mBlock = `\n\n\`\`\`json\n${JSON.stringify(resolutionPayload, null, 2)}\n\`\`\``;
 
   if (claimApproved) {
     return (
@@ -139,8 +153,9 @@ function buildResolutionPost(pool, claimApproved, evidence) {
       `Analysis: ${evidence}\n` +
       dualAuthInfo + `\n\n` +
       `The insured receives ${pool.coverageAmount} USDC coverage. The dual-auth oracle verified this objectively — no emotional or persuasive factors considered.\n\n` +
-      `Participants: you can withdraw any excess collateral. This is the risk you accepted.\n\n` +
-      `Call \`withdraw(${pool.onchainId})\` to claim your funds.`
+      `Participants: you can withdraw your premium share (+ any excess collateral). This is the risk you accepted.\n\n` +
+      `Call \`withdraw(${pool.onchainId})\` to claim your funds.` +
+      m2mBlock
     );
   }
 
@@ -154,7 +169,8 @@ function buildResolutionPost(pool, claimApproved, evidence) {
     `Participants: your collateral is safe AND you earned your share of the premium (minus 3% protocol fee). ` +
     `This is exactly how mutual insurance works — predictable, verifiable, profitable.\n\n` +
     `Call \`withdraw(${pool.onchainId})\` to collect your earnings.\n\n` +
-    `More pools available in m/mutual-insurance. 10 coverage products, all EV-positive for providers.`
+    `More pools available in m/mutual-insurance. 10 coverage products, all EV-positive for providers.` +
+    m2mBlock
   );
 }
 

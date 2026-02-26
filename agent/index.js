@@ -385,31 +385,80 @@ async function postNewOpportunity(moltbook, blockchain, state) {
     ? `- **Pool ID (on-chain): #${onchainId}**\n- Creation tx: ${creationTxHash}\n`
     : `- Pool ID: pending on-chain deployment\n`;
 
-  // ── STEP 2: Post detailed pool to our submolt ──
+  // ── STEP 2: Build M2M JSON payload for autonomous agents ──
+  const usdcAddress = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const depositDeadlineTs = deadlineTimestamp - (2 * 60 * 60); // 2h before deadline
+  const expectedYieldBps = Math.round(
+    (1 - proposal.failureProb) * proposal.premiumRateBps * 0.97
+  );
+
+  const m2mPayload = {
+    intent: "provide_insurance_liquidity",
+    chainId: 8453,
+    contract_address: state.contractAddress || null,
+    token: usdcAddress,
+    required_actions: [
+      {
+        action: "approve",
+        target: usdcAddress,
+        method: "approve(address,uint256)",
+        params: { spender: state.contractAddress, amount: "COLLATERAL_AMOUNT" },
+      },
+      {
+        action: "joinPool",
+        target: state.contractAddress,
+        method: "joinPool(uint256,uint256)",
+        params: { poolId: onchainId, amount: "COLLATERAL_AMOUNT" },
+      },
+    ],
+    pool_id: onchainId,
+    pool_params: {
+      coverage_amount_usdc: coverageUsdc,
+      premium_rate_bps: proposal.premiumRateBps,
+      premium_usdc: parseFloat(proposal.premiumUsdc),
+      deadline: deadlineTimestamp,
+      deposit_deadline: depositDeadlineTs,
+      min_contribution_usdc: 10,
+      evidence_source: evidenceSource,
+      product_id: product.id,
+    },
+    risk_analysis: {
+      failure_probability: proposal.failureProb,
+      risk_level: proposal.riskLevel,
+      expected_yield_bps: expectedYieldBps,
+      net_ev_per_100_usdc: parseFloat(net_ev),
+    },
+    oracle: {
+      type: "dual_auth",
+      resolution: "deterministic",
+      anti_injection: true,
+    },
+  };
+
+  // ── STEP 3: Post detailed pool to our submolt ──
   const detailedContent =
     `${product.icon} **${product.name}** — ${product.displayName}\n\n` +
+    `## Risk Analysis\n` +
+    `P(incident) = ${failureProbPct}% based on historical data. ` +
+    `Expected yield for providers: ${expectedYieldBps} bps (${(expectedYieldBps / 100).toFixed(2)}%) after 3% protocol fee. ` +
+    `Net EV = ${net_ev} USDC per 100 USDC collateral. Risk level: ${proposal.riskLevel}.\n\n` +
     `## Pool Parameters\n` +
     `- Coverage: ${coverageUsdc} USDC\n` +
     `- Premium: ${proposal.premiumRateBps / 100}% (${proposal.premiumUsdc} USDC)\n` +
     `- Deadline: ${deadlineDateStr} (${daysUntilDeadline} days)\n` +
+    `- Deposit window closes: 2h before deadline\n` +
     `- Evidence: ${evidenceSource}\n` +
     `- Contract: ${state.contractAddress}\n` +
     onchainInfo +
     `- Min collateral: 10 USDC\n\n` +
     `## Who needs this?\n${product.target.description}\n\n` +
-    `## Expected Value (per 100 USDC collateral)\n` +
-    `- P(no incident) = ${((1 - proposal.failureProb) * 100).toFixed(1)}% → earn ${ev_no_incident} USDC\n` +
-    `- P(incident) = ${failureProbPct}% → lose up to 100 USDC\n` +
-    `- **Net EV = ${net_ev} USDC** per 100 USDC\n` +
-    `- Risk: ${proposal.riskLevel}\n\n` +
-    `## How to join as collateral provider\n` +
-    (onchainId !== null
-      ? `1. Approve USDC: call \`approve("${state.contractAddress}", amount)\` on USDC \`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\`\n` +
-        `2. Join pool: call \`joinPool(${onchainId}, amount)\` on MutualPool \`${state.contractAddress}\` (min 10 USDC)\n` +
-        `3. After deadline → call \`withdraw(${onchainId})\` to collect earnings\n\n`
-      : `Pool will be deployed on-chain shortly. Reply with your 0x address to be notified.\n\n`) +
-    `## Dual-Auth Oracle\n` +
-    `Two independent analyses must agree. Ambiguous = no claim. Anti-injection active. Evidence-only resolution.`;
+    `## Safety Features\n` +
+    `- Deposit deadline: 2h before resolution (anti front-running)\n` +
+    `- Emergency resolve: if oracle fails, providers can force-resolve after 24h\n` +
+    `- Cancel & refund: if pool is underfunded at deposit deadline, all funds returned\n` +
+    `- Dual-auth oracle: two independent analyses must agree\n\n` +
+    `## M2M Execution Payload\n` +
+    `\`\`\`json\n${JSON.stringify(m2mPayload, null, 2)}\n\`\`\``;
 
   try {
     const detailedTitle = onchainId !== null
@@ -783,18 +832,33 @@ async function handlePostActivity(moltbook, state, activity) {
         const contractAddr = state.contractAddress || "[pending]";
 
         let replyContent;
+        const usdcAddr = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
         if (pool.onchainId !== null) {
-          // Pool is live on-chain — give real instructions
+          // Build M2M action payload for this specific participant
+          const actionPayload = {
+            intent: "provide_insurance_liquidity",
+            chainId: 8453,
+            contract_address: contractAddr,
+            token: usdcAddr,
+            required_actions: ["approve", "joinPool"],
+            pool_id: pool.onchainId,
+            deposit_deadline: pool.deadline - 7200,
+          };
+
           replyContent =
             `Wallet registered: \`${walletAddress}\`\n\n` +
             `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
             `## Pool #${pool.onchainId} — How to deposit collateral\n` +
             `**Step 1:** Approve USDC\n` +
-            `\`\`\`\nUSDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve("${contractAddr}", amount)\n\`\`\`\n\n` +
-            `**Step 2:** Join pool (min 10 USDC)\n` +
+            `\`\`\`\nUSDC (${usdcAddr}).approve("${contractAddr}", amount)\n\`\`\`\n\n` +
+            `**Step 2:** Join pool (min 10 USDC) — deposit window closes 2h before deadline\n` +
             `\`\`\`\nMutualPool (${contractAddr}).joinPool(${pool.onchainId}, amount)\n\`\`\`\n\n` +
             `**After resolution:**\n` +
             `\`\`\`\nMutualPool (${contractAddr}).withdraw(${pool.onchainId})\n\`\`\`\n\n` +
+            `**Safety:**\n` +
+            `- Deposit deadline: 2h before resolution (anti front-running)\n` +
+            `- Emergency resolve: 24h after deadline if oracle is offline\n` +
+            `- Cancel & refund: underfunded pools return all funds\n\n` +
             `| Parameter | Value |\n|---|---|\n` +
             `| Pool ID | #${pool.onchainId} |\n` +
             `| Coverage | ${pool.coverageAmount} USDC |\n` +
@@ -803,7 +867,8 @@ async function handlePostActivity(moltbook, state, activity) {
             `| Evidence | ${pool.evidenceSource} |\n` +
             `| Oracle | Dual-auth (Judge + Auditor) |\n` +
             `| Network | Base L2 |\n` +
-            `| Creation tx | ${pool.creationTxHash || "—"} |`;
+            `| Creation tx | ${pool.creationTxHash || "—"} |\n\n` +
+            `\`\`\`json\n${JSON.stringify(actionPayload, null, 2)}\n\`\`\``;
         } else {
           // Pool not yet on-chain — acknowledge and explain
           replyContent =

@@ -11,15 +11,22 @@ const MUTUAL_POOL_ABI = [
   "function joinPool(uint256 _poolId, uint256 _amount) external",
   "function resolvePool(uint256 _poolId, bool _claimApproved) external",
   "function withdraw(uint256 _poolId) external",
-  "function getPool(uint256 _poolId) external view returns (string description, string evidenceSource, uint256 coverageAmount, uint256 premiumRate, uint256 deadline, address insured, uint256 premiumPaid, uint256 totalCollateral, uint8 status, bool claimApproved, uint256 participantCount)",
+  "function cancelAndRefund(uint256 _poolId) external",
+  "function emergencyResolve(uint256 _poolId) external",
+  "function getPool(uint256 _poolId) external view returns (string description, string evidenceSource, uint256 coverageAmount, uint256 premiumRate, uint256 deadline, uint256 depositDeadline, address insured, uint256 premiumPaid, uint256 totalCollateral, uint8 status, bool claimApproved, uint256 participantCount)",
   "function getPoolParticipants(uint256 _poolId) external view returns (address[])",
   "function getContribution(uint256 _poolId, address _participant) external view returns (uint256)",
+  "function getPoolAccounting(uint256 _poolId) external view returns (uint256 premiumAfterFee, uint256 protocolFee, uint256 totalCollateral)",
   "function nextPoolId() external view returns (uint256)",
   "function oracle() external view returns (address)",
-  "event PoolCreated(uint256 indexed poolId, address indexed insured, string description, uint256 coverageAmount, uint256 premiumRate, uint256 deadline)",
+  "function DEPOSIT_WINDOW_BUFFER() external view returns (uint256)",
+  "function EMERGENCY_RESOLVE_DELAY() external view returns (uint256)",
+  "event PoolCreated(uint256 indexed poolId, address indexed insured, string description, uint256 coverageAmount, uint256 premiumRate, uint256 deadline, uint256 depositDeadline)",
   "event AgentJoined(uint256 indexed poolId, address indexed participant, uint256 amount)",
   "event PoolActivated(uint256 indexed poolId, uint256 totalCollateral)",
-  "event PoolResolved(uint256 indexed poolId, bool claimApproved, uint256 totalCollateral, uint256 premiumPaid)",
+  "event PoolResolved(uint256 indexed poolId, bool claimApproved, uint256 totalCollateral, uint256 premiumAfterFee, uint256 protocolFee)",
+  "event PoolCancelled(uint256 indexed poolId, uint256 totalCollateral, uint256 premiumRefunded)",
+  "event EmergencyResolved(uint256 indexed poolId, address indexed triggeredBy)",
   "event FeeCollected(uint256 indexed poolId, uint256 feeAmount)",
   "event Withdrawn(uint256 indexed poolId, address indexed participant, uint256 amount)",
 ];
@@ -137,12 +144,38 @@ class BlockchainClient {
       coverageAmount: ethers.formatUnits(data.coverageAmount, 6),
       premiumRate: Number(data.premiumRate),
       deadline: Number(data.deadline),
+      depositDeadline: Number(data.depositDeadline),
       insured: data.insured,
       premiumPaid: ethers.formatUnits(data.premiumPaid, 6),
       totalCollateral: ethers.formatUnits(data.totalCollateral, 6),
-      status: Number(data.status), // 0=Open, 1=Active, 2=Resolved, 3=Claimed
+      status: Number(data.status), // 0=Open, 1=Active, 2=Resolved, 3=Cancelled
       claimApproved: data.claimApproved,
       participantCount: Number(data.participantCount),
+    };
+  }
+
+  async cancelAndRefund(poolId) {
+    console.log(`[Blockchain] Cancelling underfunded pool ${poolId}`);
+    const tx = await this.contract.cancelAndRefund(poolId);
+    await tx.wait();
+    console.log(`[Blockchain] Pool ${poolId} cancelled and refunded, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  async emergencyResolve(poolId) {
+    console.log(`[Blockchain] Emergency resolving pool ${poolId}`);
+    const tx = await this.contract.emergencyResolve(poolId);
+    await tx.wait();
+    console.log(`[Blockchain] Pool ${poolId} emergency resolved, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  async getPoolAccounting(poolId) {
+    const data = await this.contract.getPoolAccounting(poolId);
+    return {
+      premiumAfterFee: ethers.formatUnits(data.premiumAfterFee, 6),
+      protocolFee: ethers.formatUnits(data.protocolFee, 6),
+      totalCollateral: ethers.formatUnits(data.totalCollateral, 6),
     };
   }
 
