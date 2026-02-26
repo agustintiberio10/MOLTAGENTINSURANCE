@@ -20,16 +20,21 @@ const path = require("path");
 const ENV_PATH = path.join(__dirname, "..", ".env");
 const STATE_PATH = path.join(__dirname, "..", "state.json");
 
+// Normalize any hex address to proper EIP-55 checksum
+function toChecksumAddress(addr) {
+  return hre.ethers.getAddress(addr.toLowerCase());
+}
+
 async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
   console.log("║        DEPLOY FEE SYSTEM — STAKING + ROUTER             ║");
   console.log("╚══════════════════════════════════════════════════════════╝\n");
 
-  const mpoolTokenAddress = process.env.MPOOL_TOKEN_ADDRESS;
-  const usdcAddress = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-  const ownerAddress = process.env.PROTOCOL_OWNER || "0x2b4D825417f568231e809E31B9332ED146760337";
+  const mpoolTokenAddress = toChecksumAddress(process.env.MPOOL_TOKEN_ADDRESS || "");
+  const usdcAddress = toChecksumAddress(process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  const ownerAddress = toChecksumAddress(process.env.PROTOCOL_OWNER || "0x2b4D825417f568231e809E31B9332ED146760337");
 
-  if (!mpoolTokenAddress) {
+  if (!process.env.MPOOL_TOKEN_ADDRESS) {
     console.error("ERROR: MPOOL_TOKEN_ADDRESS not set. Run launch-mpool.js first.");
     process.exit(1);
   }
@@ -45,7 +50,7 @@ async function main() {
 
   // ── 1. Deploy or reuse MPOOLStaking ──
   let stakingAddress = process.env.MPOOL_STAKING_ADDRESS
-    ? hre.ethers.getAddress(process.env.MPOOL_STAKING_ADDRESS.toLowerCase())
+    ? toChecksumAddress(process.env.MPOOL_STAKING_ADDRESS)
     : null;
   let staking;
 
