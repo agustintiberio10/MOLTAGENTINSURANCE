@@ -1089,6 +1089,23 @@ async function main() {
 module.exports = { runHeartbeat };
 
 if (require.main === module) {
+  // Graceful shutdown for standalone mode
+  let intervalRef = null;
+  const originalMain = main;
+  main = async function () {
+    await originalMain.call(this);
+    // Capture the interval set inside main — we redefine to add shutdown
+  };
+
+  process.on("SIGTERM", () => {
+    console.log("\n[MoltBook] SIGTERM received — shutting down gracefully.");
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    console.log("\n[MoltBook] SIGINT received — shutting down gracefully.");
+    process.exit(0);
+  });
+
   main().catch((err) => {
     console.error("Fatal error:", err);
     process.exit(1);

@@ -17,7 +17,10 @@
     "launch:mpool": "node scripts/launch-mpool.js",
     "deploy:fees": "npx hardhat run scripts/deploy-fee-system.js --network baseMainnet",
     "deploy:fees:testnet": "npx hardhat run scripts/deploy-fee-system.js --network baseSepolia",
-    "test": "npx hardhat test"
+    "test": "npx hardhat test",
+    "railway": "node scripts/start-railway.js",
+    "railway:moltbook": "BOT_MODE=moltbook node scripts/start-railway.js",
+    "railway:moltx": "BOT_MODE=moltx node scripts/start-railway.js"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",

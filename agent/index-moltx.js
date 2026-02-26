@@ -1066,6 +1066,15 @@ async function main() {
 module.exports = { runMoltxHeartbeat };
 
 if (require.main === module) {
+  process.on("SIGTERM", () => {
+    console.log("\n[MoltX] SIGTERM received — shutting down gracefully.");
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    console.log("\n[MoltX] SIGINT received — shutting down gracefully.");
+    process.exit(0);
+  });
+
   main().catch((err) => {
     console.error("Fatal error:", err);
     process.exit(1);
