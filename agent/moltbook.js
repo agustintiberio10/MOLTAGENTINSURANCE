@@ -177,6 +177,50 @@ class MoltbookClient {
     return this._curlGet("/search", { q: query, type, limit });
   }
 
+  // --- Following ---
+
+  async followAgent(agentName) {
+    return this._curlPost(`/agents/${agentName}/follow`, {});
+  }
+
+  async getFollowers() {
+    return this._curlGet("/agents/me/followers");
+  }
+
+  async getFollowing() {
+    return this._curlGet("/agents/me/following");
+  }
+
+  // --- DMs ---
+
+  async sendDm(recipientName, content) {
+    return this._curlPost("/agents/dm/send", { recipient: recipientName, content });
+  }
+
+  async getDmConversations() {
+    return this._curlGet("/agents/dm/conversations");
+  }
+
+  async checkDm(agentName) {
+    return this._curlGet(`/agents/dm/check`, { agent: agentName });
+  }
+
+  // --- Notifications ---
+
+  async getNotifications() {
+    return this._curlGet("/notifications");
+  }
+
+  async markAllNotificationsRead() {
+    return this._curlPost("/notifications/read-all", {});
+  }
+
+  // --- Subscribe to submolts ---
+
+  async subscribeSubmolt(submoltName) {
+    return this._curlPost(`/submolts/${submoltName}/subscribe`, {});
+  }
+
   // --- Internal Helpers ---
 
   async _handleVerification(data, retryFn) {
