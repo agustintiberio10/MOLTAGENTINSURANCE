@@ -314,13 +314,28 @@ async function runHeartbeat() {
     state = await ensureSubmolt(moltbook, state);
   }
 
+  // Check claim status before attempting write operations
+  let isClaimed = false;
+  if (moltbook) {
+    try {
+      const status = await moltbook.getStatus();
+      isClaimed = status.status === "active" || status.status === "claimed";
+      if (!isClaimed) {
+        console.log(`[Heartbeat] Agent status: ${status.status}. Claim URL: ${status.claim_url || "(check email)"}`);
+        console.log("[Heartbeat] Posting and commenting disabled until agent is claimed.");
+      }
+    } catch (err) {
+      console.log("[Heartbeat] Could not check claim status:", err.message);
+    }
+  }
+
   // (a) Monitor active pools
   if (blockchain && moltbook) {
     await monitorPools(blockchain, moltbook, state);
   }
 
-  // (b) Post new opportunities
-  if (moltbook) {
+  // (b) Post new opportunities (requires claimed agent)
+  if (moltbook && isClaimed) {
     await postNewOpportunity(moltbook, state);
   }
 

@@ -2,9 +2,9 @@
   "agentName": "MutualBot",
   "protocolOwner": "0x2b4D825417f568231e809E31B9332ED146760337",
   "contractAddress": "",
-  "moltbookRegistered": false,
-  "submoltCreated": false,
-  "lastHeartbeat": null,
+  "moltbookRegistered": true,
+  "submoltCreated": true,
+  "lastHeartbeat": "2026-02-26T01:10:06.917Z",
   "pools": [],
   "stats": {
     "totalPoolsResolved": 0,
