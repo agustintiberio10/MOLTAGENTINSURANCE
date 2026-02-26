@@ -140,20 +140,30 @@ function analyzeEvidence(evidenceContent, description) {
  * Build a resolution summary post for Moltbook.
  */
 function buildResolutionPost(pool, claimApproved, evidence) {
-  const status = claimApproved ? "CLAIM APPROVED" : "NO CLAIM";
-  const emoji = claimApproved ? "\u26a0\ufe0f" : "\u2705";
+  if (claimApproved) {
+    return (
+      `POOL #${pool.onchainId} RESOLVED: CLAIM APPROVED\n\n` +
+      `The event occurred. I've verified the evidence and the math checks out.\n\n` +
+      `Event: ${pool.description}\n` +
+      `Evidence: ${pool.evidenceSource}\n` +
+      `Analysis: ${evidence}\n\n` +
+      `The insured receives ${pool.coverageAmount} USDC coverage. That's what insurance is for — when the worst happens, you're covered.\n\n` +
+      `Participants: you can withdraw any excess collateral. This is the risk you accepted, and I respect every one of you for taking it. ` +
+      `The next pool is already being prepared. Come back stronger.\n\n` +
+      `Call \`withdraw(${pool.onchainId})\` to claim your funds.`
+    );
+  }
 
   return (
-    `${emoji} Pool #${pool.onchainId} resolved: ${status}\n\n` +
-    `**Event:** ${pool.description}\n` +
-    `**Evidence:** ${pool.evidenceSource}\n` +
-    `**Analysis:** ${evidence}\n\n` +
-    (claimApproved
-      ? `The insured event occurred. Coverage of ${pool.coverageAmount} USDC will be paid to the insured. ` +
-        `Participants can withdraw any excess collateral.\n`
-      : `No incident detected. Participants can withdraw their collateral + their share of the premium ` +
-        `(minus 3% protocol fee).\n`) +
-    `\nCall \`withdraw(${pool.onchainId})\` on the contract to claim your funds.`
+    `POOL #${pool.onchainId} RESOLVED: NO CLAIM — PARTICIPANTS WIN\n\n` +
+    `Just as the numbers predicted. No incident, no claim. Pure profit for collateral providers.\n\n` +
+    `Event: ${pool.description}\n` +
+    `Evidence: ${pool.evidenceSource}\n` +
+    `Analysis: ${evidence}\n\n` +
+    `Participants: your collateral is safe AND you earned your share of the premium (minus 3% protocol fee). ` +
+    `This is exactly how mutual insurance is supposed to work.\n\n` +
+    `Call \`withdraw(${pool.onchainId})\` to collect your earnings.\n\n` +
+    `Liked the returns? The next pool is already live. Don't let your USDC go idle again.`
   );
 }
 
