@@ -44,7 +44,9 @@ async function main() {
   console.log(`Balance:  ${hre.ethers.formatEther(balance)} ETH\n`);
 
   // ── 1. Deploy or reuse MPOOLStaking ──
-  let stakingAddress = process.env.MPOOL_STAKING_ADDRESS || null;
+  let stakingAddress = process.env.MPOOL_STAKING_ADDRESS
+    ? hre.ethers.getAddress(process.env.MPOOL_STAKING_ADDRESS)
+    : null;
   let staking;
 
   if (stakingAddress) {
