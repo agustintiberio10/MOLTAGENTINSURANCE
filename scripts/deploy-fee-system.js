@@ -43,18 +43,26 @@ async function main() {
   const balance = await hre.ethers.provider.getBalance(deployer.address);
   console.log(`Balance:  ${hre.ethers.formatEther(balance)} ETH\n`);
 
-  // ── 1. Deploy MPOOLStaking ──
-  console.log("[1/3] Deploying MPOOLStaking...");
-  const MPOOLStaking = await hre.ethers.getContractFactory("MPOOLStaking");
-  const staking = await MPOOLStaking.deploy(mpoolTokenAddress, usdcAddress);
-  await staking.waitForDeployment();
-  const stakingAddress = await staking.getAddress();
-  console.log(`  MPOOLStaking: ${stakingAddress}`);
+  // ── 1. Deploy or reuse MPOOLStaking ──
+  let stakingAddress = process.env.MPOOL_STAKING_ADDRESS || null;
+  let staking;
+
+  if (stakingAddress) {
+    console.log(`[1/3] Reusing existing MPOOLStaking: ${stakingAddress}`);
+    const MPOOLStaking = await hre.ethers.getContractFactory("MPOOLStaking");
+    staking = MPOOLStaking.attach(stakingAddress);
+  } else {
+    console.log("[1/3] Deploying MPOOLStaking...");
+    const MPOOLStaking = await hre.ethers.getContractFactory("MPOOLStaking");
+    staking = await MPOOLStaking.deploy(mpoolTokenAddress, usdcAddress);
+    await staking.waitForDeployment();
+    stakingAddress = await staking.getAddress();
+    console.log(`  MPOOLStaking: ${stakingAddress}`);
+  }
 
   // ── 2. Deploy FeeRouter ──
   console.log("[2/3] Deploying FeeRouter...");
   const FeeRouter = await hre.ethers.getContractFactory("FeeRouter");
-  // buyback wallet = owner address (bot will handle the swap + burn)
   const feeRouter = await FeeRouter.deploy(usdcAddress, stakingAddress, ownerAddress, ownerAddress);
   await feeRouter.waitForDeployment();
   const feeRouterAddress = await feeRouter.getAddress();
