@@ -45,7 +45,7 @@ async function main() {
 
   // ── 1. Deploy or reuse MPOOLStaking ──
   let stakingAddress = process.env.MPOOL_STAKING_ADDRESS
-    ? hre.ethers.getAddress(process.env.MPOOL_STAKING_ADDRESS)
+    ? hre.ethers.getAddress(process.env.MPOOL_STAKING_ADDRESS.toLowerCase())
     : null;
   let staking;
 
