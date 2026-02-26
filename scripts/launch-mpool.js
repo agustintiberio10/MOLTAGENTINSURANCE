@@ -30,8 +30,8 @@ const ENV_PATH = path.join(__dirname, "..", ".env");
 
 const OWNER_ADDRESS = process.env.PROTOCOL_OWNER || "0x2b4D825417f568231e809E31B9332ED146760337";
 
-// MPOOL token logo — minimal placeholder (can update via metadata later)
-const TOKEN_IMAGE = "";
+// MPOOL token SVG logo (purple square with M)
+const TOKEN_IMAGE = `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" rx="48" fill="#6C3FA0"/><text x="128" y="170" font-family="Arial" font-size="120" font-weight="bold" fill="white" text-anchor="middle">M</text></svg>`).toString("base64")}`;
 
 async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
