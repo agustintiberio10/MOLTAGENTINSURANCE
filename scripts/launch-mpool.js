@@ -24,7 +24,7 @@ const fs = require("fs");
 const path = require("path");
 
 const LAUNCHPAD_BASE = "https://launchpad.moltx.io";
-const DEPOSIT_AMOUNT = "0.001"; // ETH
+const DEPOSIT_AMOUNT = "0.002"; // ETH (0.001 min + gas headroom for deploy)
 const STATE_PATH = path.join(__dirname, "..", "state.json");
 const ENV_PATH = path.join(__dirname, "..", ".env");
 
@@ -59,9 +59,9 @@ async function main() {
   const ethBalanceFormatted = ethers.formatEther(ethBalance);
   console.log(`[Balance] ${ethBalanceFormatted} ETH`);
 
-  const requiredWei = ethers.parseEther("0.0015"); // 0.001 deposit + gas
+  const requiredWei = ethers.parseEther("0.0025"); // 0.002 deposit + gas
   if (ethBalance < requiredWei) {
-    console.error(`\nERROR: Insufficient ETH. Need at least 0.0015 ETH (0.001 deposit + gas).`);
+    console.error(`\nERROR: Insufficient ETH. Need at least 0.0025 ETH (0.002 deposit + gas).`);
     console.error(`Current balance: ${ethBalanceFormatted} ETH`);
     console.error(`Send ETH to ${wallet.address} on Base and retry.`);
     process.exit(1);
