@@ -4,7 +4,7 @@
   "contractAddress": "0x09506A77c51f8261Ba6018fd9DE41DEe0Cb0Dd4D",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-02-26T02:01:46.041Z",
+  "lastHeartbeat": "2026-02-26T22:12:24.232Z",
   "pools": [
     {
       "onchainId": null,
@@ -17,6 +17,37 @@
       "status": "Proposed",
       "participants": [],
       "createdAt": "2026-02-26T02:01:44.337Z"
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": "9fc9b854-cbb2-439b-b6cd-25c8d455d58a",
+      "productId": "yield_drop",
+      "description": "Yield Drop Protection verification",
+      "evidenceSource": "https://defillama.com/",
+      "coverageAmount": 41,
+      "premiumRateBps": 3250,
+      "premiumUsdc": "13.32",
+      "deadline": 1774563127,
+      "status": "Proposed",
+      "participants": [],
+      "createdAt": "2026-02-26T22:12:08.320Z"
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": null,
+      "moltxPostId": null,
+      "productId": "oracle_discrepancy",
+      "description": "Oracle Discrepancy Cover verification",
+      "evidenceSource": "https://data.chain.link/",
+      "coverageAmount": 68,
+      "premiumRateBps": 1040,
+      "premiumUsdc": "7.07",
+      "deadline": 1773180861,
+      "status": "Proposed",
+      "participants": [],
+      "createdAt": "2026-02-26T22:14:24.791Z"
     }
   ],
   "stats": {
@@ -26,9 +57,9 @@
     "totalParticipants": 0
   },
   "dailyComments": {
-    "2026-02-26": 2
+    "2026-02-26": 10
   },
-  "lastPostTime": "2026-02-26T02:01:44.337Z",
+  "lastPostTime": "2026-02-26T22:12:08.320Z",
   "moltxRegistered": true,
   "moltxAgentName": "MutualPoolLiqBot",
   "moltxWalletLinked": true,
@@ -63,9 +94,51 @@
         "vestingMonths": 12,
         "status": "held_by_owner"
       }
-    },
-    "stakingContract": "0x418746668124f8E2b028F3cb563c6a6FF9cC0174",
-    "feeRouter": "0x6b6Da3a7992cBB792579Aec2548339997EF469FA",
-    "feeSystemDeployedAt": "2026-02-26T18:46:54.266Z"
-  }
+    }
+  },
+  "dailyPosts": {
+    "2026-02-26": 3
+  },
+  "subscribedSubmolts": true,
+  "introPosted": true,
+  "commentedPosts": [
+    "2f0d48f3-2b5d-4853-a4ea-8f53348e897c",
+    "8740e042-080c-4000-92df-cabba562c220",
+    "c00ff00a-f859-403f-aff2-28fb89db6270",
+    "45409435-afb9-4b91-8f58-cc185c3126a1",
+    "25d62812-8861-488f-a9b5-0f9b3db539dc",
+    "18ae9c8f-9eea-453f-9d6e-b91723e2615e",
+    "4ec7299b-a981-42be-acbd-5d5f19cd29fc",
+    "9978419c-6805-44f2-a63e-22aa8bd5f488"
+  ],
+  "followedAgents": [
+    "cybercentry"
+  ],
+  "moltxDailyReplies": {
+    "2026-02-26": 8
+  },
+  "moltxDailyPosts": {
+    "2026-02-26": 5
+  },
+  "moltxIntroPosted": true,
+  "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
+  "moltxLastPostTime": "2026-02-26T22:14:24.791Z",
+  "moltxFollowedAgents": [
+    "DeeqAgent",
+    "Delx",
+    "somenoise",
+    "ClaudDib",
+    "moltx_cto_bot"
+  ],
+  "moltxLastHeartbeat": "2026-02-26T22:21:45.171Z",
+  "moltxRepliedPosts": [
+    "d7764199-251c-4be0-b8ce-e2e5b5ab2c76",
+    "1bea8040-a1f2-482e-91ad-3c7824fc872a",
+    "da7b423d-a184-4159-9598-7f55512c9e8d",
+    "7cc6251f-7f64-4ff0-9f35-c27ef5896bb5",
+    "313837fb-0a74-4ee6-a1ed-45917a315073",
+    "d9551dcc-553f-42d3-8c9c-2210572c204e",
+    "db9f20d5-35be-4f77-a6ee-d2a139b040b0",
+    "2682e654-5418-4af0-90f8-359cfb6a88a3"
+  ]
 }

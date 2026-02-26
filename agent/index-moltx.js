@@ -506,16 +506,16 @@ async function engageFeedMoltx(moltx, state) {
   const feeds = [];
   try {
     const newFeed = await moltx.getGlobalFeed("new", 20);
-    const newPosts = newFeed?.data || newFeed?.posts || (Array.isArray(newFeed) ? newFeed : []);
-    feeds.push(...newPosts);
+    const newPosts = newFeed?.data?.posts || newFeed?.data || newFeed?.posts || (Array.isArray(newFeed) ? newFeed : []);
+    if (Array.isArray(newPosts)) feeds.push(...newPosts);
   } catch (err) {
     console.error("[MoltX-Engage] Error fetching new feed:", err.message);
   }
 
   try {
     const hotFeed = await moltx.getGlobalFeed("hot", 20);
-    const hotPosts = hotFeed?.data || hotFeed?.posts || (Array.isArray(hotFeed) ? hotFeed : []);
-    feeds.push(...hotPosts);
+    const hotPosts = hotFeed?.data?.posts || hotFeed?.data || hotFeed?.posts || (Array.isArray(hotFeed) ? hotFeed : []);
+    if (Array.isArray(hotPosts)) feeds.push(...hotPosts);
   } catch (err) {
     console.error("[MoltX-Engage] Error fetching hot feed:", err.message);
   }
@@ -677,8 +677,9 @@ async function manageFollowsMoltx(moltx, state) {
   // Check mentions feed for interactions
   try {
     const mentions = await moltx.getMentionsFeed(20);
-    const mentionPosts = mentions?.data || mentions?.posts || (Array.isArray(mentions) ? mentions : []);
-    for (const post of mentionPosts) {
+    const mentionPosts = mentions?.data?.posts || mentions?.data || mentions?.posts || [];
+    const mentionList = Array.isArray(mentionPosts) ? mentionPosts : [];
+    for (const post of mentionList) {
       const authorName = post.author_name || post.author;
       if (authorName && !state.moltxFollowedAgents.includes(authorName) && followed < MAX_FOLLOWS_PER_HEARTBEAT) {
         try {
@@ -698,10 +699,11 @@ async function manageFollowsMoltx(moltx, state) {
   // Check notifications for follow-backs
   try {
     const notifs = await moltx.getNotifications();
-    const notifList = notifs?.data || notifs?.notifications || (Array.isArray(notifs) ? notifs : []);
+    const rawNotifs = notifs?.data?.notifications || notifs?.data || notifs?.notifications || [];
+    const notifList = Array.isArray(rawNotifs) ? rawNotifs : [];
     for (const notif of notifList) {
       if (followed >= MAX_FOLLOWS_PER_HEARTBEAT) break;
-      const authorName = notif.from_agent || notif.agent_name || notif.from;
+      const authorName = notif.actor?.name || notif.from_agent || notif.agent_name || notif.from;
       if (authorName && !state.moltxFollowedAgents.includes(authorName)) {
         try {
           await moltx.followAgent(authorName);
@@ -721,7 +723,8 @@ async function manageFollowsMoltx(moltx, state) {
   if (followed < MAX_FOLLOWS_PER_HEARTBEAT) {
     try {
       const feed = await moltx.getGlobalFeed("hot", 15);
-      const posts = feed?.data || feed?.posts || (Array.isArray(feed) ? feed : []);
+      const rawPosts = feed?.data?.posts || feed?.data || feed?.posts || [];
+      const posts = Array.isArray(rawPosts) ? rawPosts : [];
       for (const post of posts) {
         if (followed >= MAX_FOLLOWS_PER_HEARTBEAT) break;
         const authorName = post.author_name || post.author;
@@ -752,7 +755,8 @@ async function manageFollowsMoltx(moltx, state) {
     const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
     try {
       const searchResult = await moltx.searchAgents(term, 10);
-      const agents = searchResult?.data || searchResult?.agents || (Array.isArray(searchResult) ? searchResult : []);
+      const rawAgents = searchResult?.data?.agents || searchResult?.data || searchResult?.agents || [];
+      const agents = Array.isArray(rawAgents) ? rawAgents : [];
       for (const agent of agents) {
         if (followed >= MAX_FOLLOWS_PER_HEARTBEAT) break;
         const name = agent.name || agent.agent_name;
@@ -787,7 +791,8 @@ async function processResponsesMoltx(moltx, state) {
   // Check mentions for wallet addresses (replies to our posts)
   try {
     const mentions = await moltx.getMentionsFeed(20);
-    const mentionPosts = mentions?.data || mentions?.posts || (Array.isArray(mentions) ? mentions : []);
+    const rawMentions = mentions?.data?.posts || mentions?.data || mentions?.posts || [];
+    const mentionPosts = Array.isArray(rawMentions) ? rawMentions : [];
 
     for (const post of mentionPosts) {
       const content = post.content || "";
@@ -840,19 +845,21 @@ async function processResponsesMoltx(moltx, state) {
   // Check DMs
   try {
     const notifs = await moltx.getNotifications();
-    const notifList = notifs?.data || notifs?.notifications || (Array.isArray(notifs) ? notifs : []);
+    const rawNotifList = notifs?.data?.notifications || notifs?.data || notifs?.notifications || [];
+    const notifList = Array.isArray(rawNotifList) ? rawNotifList : [];
     const dmNotifs = notifList.filter((n) =>
       n.type === "dm" || n.type === "direct_message" || n.type === "message"
     );
 
     for (const notif of dmNotifs) {
       if (dmsProcessed >= MAX_DMS_PER_HEARTBEAT) break;
-      const agentName = notif.from_agent || notif.agent_name || notif.from;
+      const agentName = notif.actor?.name || notif.from_agent || notif.agent_name || notif.from;
       if (!agentName) continue;
 
       try {
         const messages = await moltx.getDmMessages(agentName);
-        const msgList = messages?.data || messages?.messages || (Array.isArray(messages) ? messages : []);
+        const rawMsgs = messages?.data?.messages || messages?.data || messages?.messages || [];
+        const msgList = Array.isArray(rawMsgs) ? rawMsgs : [];
         const lastMsg = msgList[msgList.length - 1];
 
         if (lastMsg && lastMsg.content) {
