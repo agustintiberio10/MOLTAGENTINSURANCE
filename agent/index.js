@@ -298,10 +298,14 @@ async function monitorPools(blockchain, moltbook, state) {
 /**
  * (b) Post new pool opportunities in HIGH-TRAFFIC submolts.
  *
+ * FLOW: Create pool ON-CHAIN first → then post to Moltbook with real poolId.
+ * The bot acts as the insured (pays premium) and sells the collateral-provider
+ * side as a yield opportunity to other agents.
+ *
  * Strategy: Rotate between target submolts. Post detailed pool in our submolt,
  * post attention-grabbing pitch in high-traffic submolts.
  */
-async function postNewOpportunity(moltbook, state) {
+async function postNewOpportunity(moltbook, blockchain, state) {
   const activePools = state.pools.filter((p) =>
     p.status === "Active" || p.status === "Open" || p.status === "Proposed"
   );
@@ -335,13 +339,53 @@ async function postNewOpportunity(moltbook, state) {
 
   const deadlineDate = new Date(Date.now() + daysUntilDeadline * 86400 * 1000);
   const deadlineDateStr = deadlineDate.toISOString().split("T")[0];
+  const deadlineTimestamp = Math.floor(deadlineDate.getTime() / 1000);
   const evidenceSource = product.evidenceSources[0];
   const failureProbPct = (proposal.failureProb * 100).toFixed(1);
+  const premiumUsdc = parseFloat(proposal.premiumUsdc);
 
   const ev_no_incident = ((1 - proposal.failureProb) * (proposal.premiumRateBps / 100) * 0.97).toFixed(2);
   const net_ev = ((1 - proposal.failureProb) * (proposal.premiumRateBps / 100) * 0.97 + proposal.failureProb * -100).toFixed(2);
 
-  // ── POST 1: Detailed pool in our submolt ──
+  // ── STEP 1: Create pool ON-CHAIN ──
+  let onchainId = null;
+  let creationTxHash = null;
+
+  if (blockchain) {
+    try {
+      // Check USDC balance before creating pool (bot pays premium as insured)
+      const balance = await blockchain.getUsdcBalance();
+      const balanceNum = parseFloat(balance);
+
+      if (balanceNum < premiumUsdc) {
+        console.log(`[Post] Insufficient USDC for premium. Need ${premiumUsdc}, have ${balanceNum}. Skipping on-chain creation.`);
+      } else {
+        console.log(`[Post] Creating pool on-chain: ${product.name}, coverage=${coverageUsdc} USDC, premium=${premiumUsdc} USDC`);
+        const result = await blockchain.createPool({
+          description: `${product.name} verification`,
+          evidenceSource,
+          coverageAmount: coverageUsdc,
+          premiumRate: proposal.premiumRateBps,
+          deadline: deadlineTimestamp,
+        });
+        onchainId = result.poolId;
+        creationTxHash = result.txHash;
+        console.log(`[Post] Pool created on-chain! ID: ${onchainId}, tx: ${creationTxHash}`);
+      }
+    } catch (err) {
+      console.error(`[Post] On-chain creation failed: ${err.message}`);
+      // Continue — post to Moltbook anyway, will retry on-chain creation later
+    }
+  } else {
+    console.log("[Post] No blockchain client configured, skipping on-chain creation.");
+  }
+
+  const poolStatus = onchainId !== null ? "Open" : "Proposed";
+  const onchainInfo = onchainId !== null
+    ? `- **Pool ID (on-chain): #${onchainId}**\n- Creation tx: ${creationTxHash}\n`
+    : `- Pool ID: pending on-chain deployment\n`;
+
+  // ── STEP 2: Post detailed pool to our submolt ──
   const detailedContent =
     `${product.icon} **${product.name}** — ${product.displayName}\n\n` +
     `## Pool Parameters\n` +
@@ -350,6 +394,7 @@ async function postNewOpportunity(moltbook, state) {
     `- Deadline: ${deadlineDateStr} (${daysUntilDeadline} days)\n` +
     `- Evidence: ${evidenceSource}\n` +
     `- Contract: ${state.contractAddress}\n` +
+    onchainInfo +
     `- Min collateral: 10 USDC\n\n` +
     `## Who needs this?\n${product.target.description}\n\n` +
     `## Expected Value (per 100 USDC collateral)\n` +
@@ -357,32 +402,41 @@ async function postNewOpportunity(moltbook, state) {
     `- P(incident) = ${failureProbPct}% → lose up to 100 USDC\n` +
     `- **Net EV = ${net_ev} USDC** per 100 USDC\n` +
     `- Risk: ${proposal.riskLevel}\n\n` +
+    `## How to join as collateral provider\n` +
+    (onchainId !== null
+      ? `1. Approve USDC: call \`approve("${state.contractAddress}", amount)\` on USDC \`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\`\n` +
+        `2. Join pool: call \`joinPool(${onchainId}, amount)\` on MutualPool \`${state.contractAddress}\` (min 10 USDC)\n` +
+        `3. After deadline → call \`withdraw(${onchainId})\` to collect earnings\n\n`
+      : `Pool will be deployed on-chain shortly. Reply with your 0x address to be notified.\n\n`) +
     `## Dual-Auth Oracle\n` +
-    `Two independent analyses must agree. Ambiguous = no claim. Anti-injection active. Evidence-only resolution.\n\n` +
-    `**Reply with your 0x address to join.**`;
+    `Two independent analyses must agree. Ambiguous = no claim. Anti-injection active. Evidence-only resolution.`;
 
   try {
-    const detailedTitle = `${product.icon} ${product.name}: ${coverageUsdc} USDC, ${proposal.expectedReturnPct}% yield, ${daysUntilDeadline}d`;
+    const detailedTitle = onchainId !== null
+      ? `${product.icon} POOL #${onchainId}: ${product.name} — ${coverageUsdc} USDC, ${proposal.expectedReturnPct}% yield, ${daysUntilDeadline}d`
+      : `${product.icon} ${product.name}: ${coverageUsdc} USDC, ${proposal.expectedReturnPct}% yield, ${daysUntilDeadline}d`;
     const postResult = await moltbook.createPost(OWN_SUBMOLT, detailedTitle, detailedContent);
     const postId = postResult?.post?.id || null;
 
     state.pools.push({
-      onchainId: null,
+      onchainId,
+      creationTxHash,
       moltbookPostId: postId,
       productId: product.id,
       description: `${product.name} verification`,
       evidenceSource,
       coverageAmount: coverageUsdc,
       premiumRateBps: proposal.premiumRateBps,
-      deadline: Math.floor(deadlineDate.getTime() / 1000),
-      status: "Proposed",
+      premiumUsdc: proposal.premiumUsdc,
+      deadline: deadlineTimestamp,
+      status: poolStatus,
       participants: [],
       createdAt: new Date().toISOString(),
     });
     state.lastPostTime = new Date().toISOString();
     incrementDailyPosts(state);
     saveState(state);
-    console.log(`[Post] Pool posted to m/${OWN_SUBMOLT}: ${product.name}, ${coverageUsdc} USDC`);
+    console.log(`[Post] Pool posted to m/${OWN_SUBMOLT}: ${product.name}, ${coverageUsdc} USDC, onchainId=${onchainId}`);
   } catch (err) {
     console.error("[Post] Failed to post to own submolt:", err.message);
   }
@@ -728,24 +782,123 @@ async function handlePostActivity(moltbook, state, activity) {
         const productInfo = product ? `\n**Product:** ${product.icon} ${product.name}\n` : "";
         const contractAddr = state.contractAddress || "[pending]";
 
-        const replyContent =
-          `Wallet registered: \`${walletAddress}\`\n\n` +
-          `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
-          `## How to deposit\n` +
-          `**Step 1:** Approve USDC → call \`approve("${contractAddr}", amount)\` on USDC contract \`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\`\n` +
-          `**Step 2:** Join pool → call \`joinPool(${pool.onchainId || "pending"}, amount)\` on MutualPool \`${contractAddr}\` (min 10 USDC)\n\n` +
-          `Deadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}\n` +
-          `Evidence: ${pool.evidenceSource}\n` +
-          `Oracle: Dual-auth (Judge + Auditor must agree)\n\n` +
-          `After resolution → call \`withdraw(${pool.onchainId || "poolId"})\` to collect.`;
+        let replyContent;
+        if (pool.onchainId !== null) {
+          // Pool is live on-chain — give real instructions
+          replyContent =
+            `Wallet registered: \`${walletAddress}\`\n\n` +
+            `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
+            `## Pool #${pool.onchainId} — How to deposit collateral\n` +
+            `**Step 1:** Approve USDC\n` +
+            `\`\`\`\nUSDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913).approve("${contractAddr}", amount)\n\`\`\`\n\n` +
+            `**Step 2:** Join pool (min 10 USDC)\n` +
+            `\`\`\`\nMutualPool (${contractAddr}).joinPool(${pool.onchainId}, amount)\n\`\`\`\n\n` +
+            `**After resolution:**\n` +
+            `\`\`\`\nMutualPool (${contractAddr}).withdraw(${pool.onchainId})\n\`\`\`\n\n` +
+            `| Parameter | Value |\n|---|---|\n` +
+            `| Pool ID | #${pool.onchainId} |\n` +
+            `| Coverage | ${pool.coverageAmount} USDC |\n` +
+            `| Premium paid | ${pool.premiumUsdc || "—"} USDC |\n` +
+            `| Deadline | ${new Date(pool.deadline * 1000).toISOString().split("T")[0]} |\n` +
+            `| Evidence | ${pool.evidenceSource} |\n` +
+            `| Oracle | Dual-auth (Judge + Auditor) |\n` +
+            `| Network | Base L2 |\n` +
+            `| Creation tx | ${pool.creationTxHash || "—"} |`;
+        } else {
+          // Pool not yet on-chain — acknowledge and explain
+          replyContent =
+            `Wallet registered: \`${walletAddress}\`\n\n` +
+            `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
+            `This pool is pending on-chain deployment. I'll reply with the exact contract instructions (pool ID, approve + joinPool calls) as soon as it's live on Base.\n\n` +
+            `Contract: ${contractAddr}\n` +
+            `Deadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}\n` +
+            `Evidence: ${pool.evidenceSource}`;
+        }
 
         try {
           await moltbook.createComment(postId, replyContent);
-          console.log(`[Responses] Registered ${walletAddress} for pool ${postId}`);
+          console.log(`[Responses] Registered ${walletAddress} for pool ${postId} (onchainId=${pool.onchainId})`);
         } catch (err) {
           console.error(`[Responses] Reply failed:`, err.message);
         }
       }
+    }
+  }
+}
+
+/**
+ * (g) Retry on-chain creation for pools stuck in "Proposed" status.
+ * These are pools that were posted to Moltbook but failed on-chain creation
+ * (e.g., insufficient USDC, RPC error, etc.)
+ */
+async function retryProposedPools(blockchain, moltbook, state) {
+  if (!blockchain) return;
+
+  const proposedPools = state.pools.filter((p) => p.status === "Proposed" && p.onchainId === null);
+  if (proposedPools.length === 0) return;
+
+  console.log(`[Retry] ${proposedPools.length} pool(s) pending on-chain creation.`);
+
+  for (const pool of proposedPools) {
+    // Check if deadline already passed — skip expired pools
+    if (Math.floor(Date.now() / 1000) >= pool.deadline) {
+      console.log(`[Retry] Pool "${pool.description}" expired. Marking as Expired.`);
+      pool.status = "Expired";
+      saveState(state);
+      continue;
+    }
+
+    try {
+      const balance = await blockchain.getUsdcBalance();
+      const premiumUsdc = parseFloat(pool.premiumUsdc || ((pool.coverageAmount * pool.premiumRateBps) / 10000).toFixed(2));
+
+      if (parseFloat(balance) < premiumUsdc) {
+        console.log(`[Retry] Insufficient USDC for "${pool.description}". Need ${premiumUsdc}, have ${balance}.`);
+        continue;
+      }
+
+      console.log(`[Retry] Creating "${pool.description}" on-chain...`);
+      const result = await blockchain.createPool({
+        description: pool.description,
+        evidenceSource: pool.evidenceSource,
+        coverageAmount: pool.coverageAmount,
+        premiumRate: pool.premiumRateBps,
+        deadline: pool.deadline,
+      });
+
+      pool.onchainId = result.poolId;
+      pool.creationTxHash = result.txHash;
+      pool.status = "Open";
+      saveState(state);
+      console.log(`[Retry] Pool created on-chain! ID: ${pool.onchainId}, tx: ${result.txHash}`);
+
+      // Update the Moltbook post with the real pool ID
+      if (pool.moltbookPostId && moltbook) {
+        try {
+          const contractAddr = state.contractAddress;
+          const updateComment =
+            `**Pool is now LIVE on-chain!**\n\n` +
+            `| Parameter | Value |\n|---|---|\n` +
+            `| Pool ID | **#${pool.onchainId}** |\n` +
+            `| Creation tx | ${result.txHash} |\n` +
+            `| Contract | ${contractAddr} |\n\n` +
+            `## How to join as collateral provider\n` +
+            `1. Approve USDC: \`USDC.approve("${contractAddr}", amount)\`\n` +
+            `2. Join: \`MutualPool.joinPool(${pool.onchainId}, amount)\` (min 10 USDC)\n` +
+            `3. After deadline: \`MutualPool.withdraw(${pool.onchainId})\``;
+          await moltbook.createComment(pool.moltbookPostId, updateComment);
+          console.log(`[Retry] Updated Moltbook post with on-chain info.`);
+        } catch (err) {
+          console.error(`[Retry] Failed to update Moltbook post:`, err.message);
+        }
+      }
+
+      // Notify registered participants
+      for (const wallet of pool.participants) {
+        console.log(`[Retry] Participant ${wallet} can now joinPool(${pool.onchainId}).`);
+      }
+    } catch (err) {
+      console.error(`[Retry] On-chain creation failed for "${pool.description}": ${err.message}`);
     }
   }
 }
@@ -807,9 +960,14 @@ async function runHeartbeat() {
     await ensureIntroduction(moltbook, state);
   }
 
-  // (c) Post new opportunities
+  // (c) Post new opportunities (now creates on-chain FIRST)
   if (moltbook && isClaimed) {
-    await postNewOpportunity(moltbook, state);
+    await postNewOpportunity(moltbook, blockchain, state);
+  }
+
+  // (c.5) Retry on-chain creation for any stuck "Proposed" pools
+  if (blockchain && moltbook) {
+    await retryProposedPools(blockchain, moltbook, state);
   }
 
   // (d) AGGRESSIVE feed engagement
