@@ -67,59 +67,46 @@ async function main() {
     process.exit(1);
   }
 
-  // ── STEP 1: Create deposit ──
-  console.log("\n[Step 1] Creating deposit address...");
-  let depositAddress;
-  try {
-    const depositRes = await axios.post(`${LAUNCHPAD_BASE}/deposit`);
-    if (!depositRes.data.ok) throw new Error(JSON.stringify(depositRes.data));
-    depositAddress = depositRes.data.depositAddress;
-    console.log(`[Step 1] Deposit address: ${depositAddress}`);
-    console.log(`[Step 1] Required: ${depositRes.data.requiredAmount} ETH`);
-    console.log(`[Step 1] Expires in: ${depositRes.data.expiresIn}`);
-  } catch (err) {
-    console.error("[Step 1] Failed to create deposit:", err.response?.data || err.message);
-    process.exit(1);
-  }
+  // ── STEP 1: Create deposit (or reuse existing) ──
+  let depositAddress = process.env.MPOOL_DEPOSIT_ADDRESS || null;
 
-  // ── STEP 2: Send 0.001 ETH to deposit address ──
-  console.log("\n[Step 2] Sending 0.001 ETH to deposit address...");
-  try {
-    const tx = await wallet.sendTransaction({
-      to: depositAddress,
-      value: ethers.parseEther(DEPOSIT_AMOUNT),
-    });
-    console.log(`[Step 2] Tx sent: ${tx.hash}`);
-    console.log("[Step 2] Waiting for confirmation...");
-    const receipt = await tx.wait();
-    console.log(`[Step 2] Confirmed in block ${receipt.blockNumber}`);
-  } catch (err) {
-    console.error("[Step 2] Failed to send ETH:", err.message);
-    process.exit(1);
-  }
-
-  // ── STEP 3: Poll deposit status ──
-  console.log("\n[Step 3] Checking deposit status...");
-  let funded = false;
-  for (let i = 0; i < 30; i++) {
+  if (depositAddress) {
+    console.log(`\n[Step 1] Reusing existing deposit address: ${depositAddress}`);
+    console.log("[Step 2] Skipping ETH send (already funded).");
+    console.log("[Step 3] Skipping verification (already confirmed on-chain).");
+  } else {
+    console.log("\n[Step 1] Creating deposit address...");
     try {
-      const statusRes = await axios.get(`${LAUNCHPAD_BASE}/api/deposit/${depositAddress}`);
-      if (statusRes.data.funded) {
-        funded = true;
-        console.log(`[Step 3] Deposit confirmed! Balance: ${statusRes.data.balance} ETH`);
-        break;
-      }
-      console.log(`[Step 3] Not yet funded, waiting... (${i + 1}/30)`);
+      const depositRes = await axios.post(`${LAUNCHPAD_BASE}/deposit`);
+      if (!depositRes.data.ok) throw new Error(JSON.stringify(depositRes.data));
+      depositAddress = depositRes.data.depositAddress;
+      console.log(`[Step 1] Deposit address: ${depositAddress}`);
+      console.log(`[Step 1] Required: ${depositRes.data.requiredAmount} ETH`);
     } catch (err) {
-      console.log(`[Step 3] Status check error: ${err.message}`);
+      console.error("[Step 1] Failed to create deposit:", err.response?.data || err.message);
+      process.exit(1);
     }
-    await new Promise((r) => setTimeout(r, 5000)); // 5s between checks
-  }
 
-  if (!funded) {
-    console.error("[Step 3] Deposit not confirmed after 150s. Try again later.");
-    console.error(`Deposit address: ${depositAddress}`);
-    process.exit(1);
+    // ── STEP 2: Send 0.001 ETH to deposit address ──
+    console.log("\n[Step 2] Sending 0.001 ETH to deposit address...");
+    try {
+      const tx = await wallet.sendTransaction({
+        to: depositAddress,
+        value: ethers.parseEther(DEPOSIT_AMOUNT),
+      });
+      console.log(`[Step 2] Tx sent: ${tx.hash}`);
+      console.log("[Step 2] Waiting for confirmation...");
+      const receipt = await tx.wait();
+      console.log(`[Step 2] Confirmed in block ${receipt.blockNumber}`);
+    } catch (err) {
+      console.error("[Step 2] Failed to send ETH:", err.message);
+      process.exit(1);
+    }
+
+    // ── STEP 3: Wait for deposit to propagate ──
+    console.log("\n[Step 3] Waiting 15s for deposit to propagate...");
+    await new Promise((r) => setTimeout(r, 15000));
+    console.log("[Step 3] Done. Proceeding to deploy.");
   }
 
   // ── STEP 4: Deploy token ──
