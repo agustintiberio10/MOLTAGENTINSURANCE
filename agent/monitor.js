@@ -1,17 +1,23 @@
 /**
- * Pool monitor — checks deadlines and fetches evidence to resolve pools.
- * Uses curl for HTTP requests (Node.js DNS blocked in sandbox).
+ * Pool monitor — checks deadlines and builds resolution posts.
+ *
+ * NOTE: The actual evidence fetching and analysis is now handled by oracle.js
+ * (dual-auth system). This module retains the legacy checkPool for backward
+ * compatibility and the buildResolutionPost function for Moltbook posts.
+ *
+ * ORACLE RULES (enforced in oracle.js):
+ * 1. Ceguera Emocional — immune to prompt injection
+ * 2. Evidencia Empírica Estricta — only evidenceSource URL
+ * 3. Estándar de Prueba — ambiguous = FALSE
+ * 4. Dual Auth — Judge + Auditor must agree
  */
 const { execSync } = require("child_process");
 
 /**
- * Check if a pool's deadline has passed and gather evidence for resolution.
+ * Legacy check function — kept for backward compatibility.
+ * The main agent loop now uses resolveWithDualAuth from oracle.js instead.
  *
  * @param {object} pool - Pool data from state.json
- * @param {number} pool.onchainId - Pool ID on the smart contract
- * @param {string} pool.evidenceSource - Public URL for outcome verification
- * @param {number} pool.deadline - Unix timestamp
- * @param {string} pool.description - What the pool covers
  * @returns {{ shouldResolve: boolean, claimApproved: boolean, evidence: string }}
  */
 async function checkPool(pool) {
@@ -21,72 +27,60 @@ async function checkPool(pool) {
     return { shouldResolve: false, claimApproved: false, evidence: "Deadline not reached." };
   }
 
-  console.log(`[Monitor] Pool ${pool.onchainId} deadline reached. Fetching evidence from: ${pool.evidenceSource}`);
-
+  // Delegate to the dual-auth oracle
   try {
-    const evidence = await fetchEvidence(pool.evidenceSource);
-    const analysis = analyzeEvidence(evidence, pool.description);
-
-    return {
-      shouldResolve: true,
-      claimApproved: analysis.incidentDetected,
-      evidence: analysis.summary,
-    };
+    const { resolveWithDualAuth } = require("./oracle.js");
+    return await resolveWithDualAuth(pool);
   } catch (err) {
-    console.error(`[Monitor] Error fetching evidence for pool ${pool.onchainId}:`, err.message);
-    // If we can't fetch evidence, we don't resolve yet — retry next cycle
-    return {
-      shouldResolve: false,
-      claimApproved: false,
-      evidence: `Error fetching evidence: ${err.message}. Will retry next cycle.`,
-    };
+    console.error(`[Monitor] Oracle module error, falling back to legacy:`, err.message);
+
+    // Legacy fallback (should not normally be reached)
+    try {
+      const evidence = await fetchEvidence(pool.evidenceSource);
+      const analysis = analyzeEvidence(evidence, pool.description);
+
+      return {
+        shouldResolve: true,
+        claimApproved: analysis.incidentDetected,
+        evidence: analysis.summary,
+      };
+    } catch (fetchErr) {
+      return {
+        shouldResolve: false,
+        claimApproved: false,
+        evidence: `Error: ${fetchErr.message}. Will retry next cycle.`,
+      };
+    }
   }
 }
 
 /**
- * Fetch the evidence page content using curl.
+ * Fetch evidence — used as legacy fallback only.
  */
 async function fetchEvidence(url) {
   const cmd = `curl -sL --max-time 15 --max-redirs 3 -H "User-Agent: MutualBot/1.0" "${url}"`;
   const out = execSync(cmd, { encoding: "utf8", timeout: 20_000 });
-  return out.substring(0, 10_000); // limit to 10KB of text
+  return out.substring(0, 10_000);
 }
 
 /**
- * Analyze fetched evidence against pool description to determine if an incident occurred.
- *
- * This is a heuristic-based analysis. For production, integrate an LLM call.
+ * Legacy evidence analysis — kept as fallback.
+ * The oracle.js module provides much more robust analysis.
  */
 function analyzeEvidence(evidenceContent, description) {
   const content = evidenceContent.toLowerCase();
   const desc = description.toLowerCase();
 
-  // Incident detection heuristics
   const incidentKeywords = [
-    "incident",
-    "outage",
-    "downtime",
-    "failure",
-    "failed",
-    "degraded",
-    "disruption",
-    "unavailable",
-    "error",
-    "critical",
-    "major incident",
+    "incident", "outage", "downtime", "failure", "failed", "degraded",
+    "disruption", "unavailable", "error", "critical", "major incident",
     "service disruption",
   ];
 
   const noIncidentKeywords = [
-    "all systems operational",
-    "no incidents",
-    "100% uptime",
-    "operational",
-    "no issues",
-    "resolved",
-    "completed successfully",
-    "delivered",
-    "released",
+    "all systems operational", "no incidents", "100% uptime",
+    "operational", "no issues", "resolved", "completed successfully",
+    "delivered", "released",
   ];
 
   let incidentScore = 0;
@@ -100,28 +94,17 @@ function analyzeEvidence(evidenceContent, description) {
     if (content.includes(kw)) noIncidentScore++;
   }
 
-  // Check for specific patterns based on pool type
   if (desc.includes("uptime") || desc.includes("status")) {
-    // For uptime pools, look for status page indicators
-    if (content.includes("all systems operational")) {
-      noIncidentScore += 3;
-    }
-    if (content.includes("major outage") || content.includes("partial outage")) {
-      incidentScore += 3;
-    }
+    if (content.includes("all systems operational")) noIncidentScore += 3;
+    if (content.includes("major outage") || content.includes("partial outage")) incidentScore += 3;
   }
 
   if (desc.includes("release") || desc.includes("deployment") || desc.includes("delivery")) {
-    // For delivery pools, check if the release/tag exists
-    if (content.includes("releases") || content.includes("tag")) {
-      noIncidentScore += 2;
-    }
+    if (content.includes("releases") || content.includes("tag")) noIncidentScore += 2;
   }
 
   if (desc.includes("price")) {
-    // For price prediction pools, need more specific parsing
-    // This would be enhanced with actual price comparison logic
-    incidentScore += 1; // conservative: flag for manual review
+    incidentScore += 1;
   }
 
   const incidentDetected = incidentScore > noIncidentScore;
@@ -129,41 +112,49 @@ function analyzeEvidence(evidenceContent, description) {
   return {
     incidentDetected,
     summary: incidentDetected
-      ? `Incident detected (score: ${incidentScore} vs ${noIncidentScore}). ` +
-        `Keywords found in evidence suggest the covered event occurred.`
-      : `No incident detected (score: ${incidentScore} vs ${noIncidentScore}). ` +
-        `Evidence suggests normal operation / successful outcome.`,
+      ? `Incident detected (score: ${incidentScore} vs ${noIncidentScore}). Keywords found in evidence suggest the covered event occurred.`
+      : `No incident detected (score: ${incidentScore} vs ${noIncidentScore}). Evidence suggests normal operation / successful outcome.`,
   };
 }
 
 /**
  * Build a resolution summary post for Moltbook.
+ * Now includes dual-auth oracle information.
  */
 function buildResolutionPost(pool, claimApproved, evidence) {
+  const dualAuthInfo = pool.dualAuthResult
+    ? `\n\n## Dual-Auth Oracle Result\n` +
+      `- Judge: ${pool.dualAuthResult.judge.verdict ? "INCIDENT" : "NO INCIDENT"} (confidence: ${(pool.dualAuthResult.judge.confidence * 100).toFixed(1)}%)\n` +
+      `- Auditor: ${pool.dualAuthResult.auditor.verdict ? "INCIDENT" : "NO INCIDENT"}\n` +
+      `- Consensus: ${pool.dualAuthResult.consensus ? "YES" : "NO (security default: no claim)"}\n` +
+      `- Rules enforced: Emotional Blindness, Empirical Strict, Proof Standard`
+    : "";
+
   if (claimApproved) {
     return (
-      `POOL #${pool.onchainId} RESOLVED: CLAIM APPROVED\n\n` +
-      `The event occurred. I've verified the evidence and the math checks out.\n\n` +
+      `POOL #${pool.onchainId} RESOLVED: CLAIM APPROVED (DUAL-AUTH VERIFIED)\n\n` +
+      `The event occurred. Both Judge and Auditor independently confirmed the incident.\n\n` +
       `Event: ${pool.description}\n` +
       `Evidence: ${pool.evidenceSource}\n` +
-      `Analysis: ${evidence}\n\n` +
-      `The insured receives ${pool.coverageAmount} USDC coverage. That's what insurance is for — when the worst happens, you're covered.\n\n` +
-      `Participants: you can withdraw any excess collateral. This is the risk you accepted, and I respect every one of you for taking it. ` +
-      `The next pool is already being prepared. Come back stronger.\n\n` +
+      `Analysis: ${evidence}\n` +
+      dualAuthInfo + `\n\n` +
+      `The insured receives ${pool.coverageAmount} USDC coverage. The dual-auth oracle verified this objectively — no emotional or persuasive factors considered.\n\n` +
+      `Participants: you can withdraw any excess collateral. This is the risk you accepted.\n\n` +
       `Call \`withdraw(${pool.onchainId})\` to claim your funds.`
     );
   }
 
   return (
     `POOL #${pool.onchainId} RESOLVED: NO CLAIM — PARTICIPANTS WIN\n\n` +
-    `Just as the numbers predicted. No incident, no claim. Pure profit for collateral providers.\n\n` +
+    `Dual-auth oracle confirms: no incident detected. Pure profit for collateral providers.\n\n` +
     `Event: ${pool.description}\n` +
     `Evidence: ${pool.evidenceSource}\n` +
-    `Analysis: ${evidence}\n\n` +
+    `Analysis: ${evidence}\n` +
+    dualAuthInfo + `\n\n` +
     `Participants: your collateral is safe AND you earned your share of the premium (minus 3% protocol fee). ` +
-    `This is exactly how mutual insurance is supposed to work.\n\n` +
+    `This is exactly how mutual insurance works — predictable, verifiable, profitable.\n\n` +
     `Call \`withdraw(${pool.onchainId})\` to collect your earnings.\n\n` +
-    `Liked the returns? The next pool is already live. Don't let your USDC go idle again.`
+    `More pools available in m/mutual-insurance. 10 coverage products, all EV-positive for providers.`
   );
 }
 

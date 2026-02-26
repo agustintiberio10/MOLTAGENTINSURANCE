@@ -1,6 +1,8 @@
 /**
  * Risk evaluation module — assesses whether a proposed pool meets the protocol criteria.
+ * Now integrated with the full 10-product insurance catalog.
  */
+const { INSURANCE_PRODUCTS } = require("./products.js");
 
 const RISK_CRITERIA = {
   MIN_DEADLINE_DAYS: 1,
@@ -12,29 +14,61 @@ const RISK_CRITERIA = {
 
 /**
  * Verifiable event categories with base failure probabilities.
+ * Built dynamically from the products catalog + legacy categories.
  */
-const EVENT_CATEGORIES = {
-  api_uptime: {
-    label: "API Uptime",
-    baseFailureProb: 0.02, // 2% chance of downtime
-    evidencePattern: /statuspage\.io|status\./i,
-  },
-  deployment: {
+const EVENT_CATEGORIES = {};
+
+// Import all products as event categories
+for (const [id, product] of Object.entries(INSURANCE_PRODUCTS)) {
+  EVENT_CATEGORIES[id] = {
+    label: product.name,
+    displayName: product.displayName,
+    baseFailureProb: product.baseFailureProb,
+    evidencePattern: new RegExp(
+      product.evidenceSources
+        .map((url) => {
+          try {
+            const domain = new URL(url).hostname.replace(/\./g, "\\.");
+            return domain;
+          } catch {
+            return "";
+          }
+        })
+        .filter(Boolean)
+        .join("|"),
+      "i"
+    ),
+    evidenceSources: product.evidenceSources,
+    category: product.category,
+    icon: product.icon,
+  };
+}
+
+// Keep legacy categories as aliases for backward compatibility
+if (!EVENT_CATEGORIES.api_uptime) {
+  EVENT_CATEGORIES.api_uptime = EVENT_CATEGORIES.uptime_hedge;
+}
+if (!EVENT_CATEGORIES.deployment) {
+  EVENT_CATEGORIES.deployment = {
     label: "Production Deployment",
     baseFailureProb: 0.05,
     evidencePattern: /github\.com.*releases/i,
-  },
-  price_prediction: {
-    label: "Price Prediction",
-    baseFailureProb: 0.40, // highly uncertain
-    evidencePattern: /coingecko\.com|coinmarketcap\.com/i,
-  },
-  oss_delivery: {
+    evidenceSources: ["https://github.com/ethereum/go-ethereum/releases"],
+    category: "operational",
+  };
+}
+if (!EVENT_CATEGORIES.price_prediction) {
+  EVENT_CATEGORIES.price_prediction = EVENT_CATEGORIES.oracle_discrepancy;
+}
+if (!EVENT_CATEGORIES.oss_delivery) {
+  EVENT_CATEGORIES.oss_delivery = {
     label: "Open Source Delivery",
     baseFailureProb: 0.15,
     evidencePattern: /github\.com/i,
-  },
-};
+    evidenceSources: ["https://github.com/vercel/next.js/releases"],
+    category: "operational",
+  };
+}
 
 /**
  * Evaluate a pool proposal and return an assessment.
@@ -50,7 +84,6 @@ const EVENT_CATEGORIES = {
  */
 function evaluateRisk(proposal, activePoolCount = 0) {
   const { description, evidenceSource, coverageAmount, premiumRate, deadlineTimestamp } = proposal;
-  const reasons = [];
 
   // 1. Check binary & verifiable outcome
   if (!evidenceSource || typeof evidenceSource !== "string" || !evidenceSource.startsWith("http")) {
@@ -81,7 +114,12 @@ function evaluateRisk(proposal, activePoolCount = 0) {
   let estimatedFailureProb = 0.10; // default
   let detectedCategory = null;
   for (const [key, cat] of Object.entries(EVENT_CATEGORIES)) {
-    if (cat.evidencePattern.test(evidenceSource) || description.toLowerCase().includes(key.replace("_", " "))) {
+    if (cat.evidencePattern && cat.evidencePattern.test(evidenceSource)) {
+      estimatedFailureProb = cat.baseFailureProb;
+      detectedCategory = cat.label;
+      break;
+    }
+    if (description && description.toLowerCase().includes(key.replace(/_/g, " "))) {
       estimatedFailureProb = cat.baseFailureProb;
       detectedCategory = cat.label;
       break;
@@ -117,7 +155,12 @@ function reject(reason) {
 
 /**
  * Generate a pool proposal for a verifiable event.
- * Returns a proposal object suitable for posting on Moltbook.
+ * Now supports all 10 product categories.
+ *
+ * @param {string} category - Category key from EVENT_CATEGORIES
+ * @param {number} coverageUsdc - Coverage amount in USDC
+ * @param {number} daysUntilDeadline - Days until deadline
+ * @returns {object|null} - Proposal object
  */
 function generatePoolProposal(category, coverageUsdc, daysUntilDeadline) {
   const cat = EVENT_CATEGORIES[category];
@@ -129,7 +172,8 @@ function generatePoolProposal(category, coverageUsdc, daysUntilDeadline) {
   const expectedReturn = ((premiumUsdc * 0.97) / coverageUsdc) * 100; // after 3% fee
 
   return {
-    category: cat.label,
+    category: cat.label || cat.displayName,
+    displayName: cat.displayName || cat.label,
     premiumRateBps,
     premiumUsdc: premiumUsdc.toFixed(2),
     expectedReturnPct: expectedReturn.toFixed(2),
@@ -137,6 +181,8 @@ function generatePoolProposal(category, coverageUsdc, daysUntilDeadline) {
     failureProb,
     coverageUsdc,
     daysUntilDeadline,
+    icon: cat.icon || "",
+    evidenceSources: cat.evidenceSources || [],
   };
 }
 
