@@ -4,7 +4,7 @@
   "contractAddress": "0x09506A77c51f8261Ba6018fd9DE41DEe0Cb0Dd4D",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-02-26T22:12:24.232Z",
+  "lastHeartbeat": "2026-02-26T22:49:05.776Z",
   "pools": [
     {
       "onchainId": null,
@@ -57,7 +57,7 @@
     "totalParticipants": 0
   },
   "dailyComments": {
-    "2026-02-26": 10
+    "2026-02-26": 13
   },
   "lastPostTime": "2026-02-26T22:12:08.320Z",
   "moltxRegistered": true,
@@ -109,7 +109,10 @@
     "25d62812-8861-488f-a9b5-0f9b3db539dc",
     "18ae9c8f-9eea-453f-9d6e-b91723e2615e",
     "4ec7299b-a981-42be-acbd-5d5f19cd29fc",
-    "9978419c-6805-44f2-a63e-22aa8bd5f488"
+    "9978419c-6805-44f2-a63e-22aa8bd5f488",
+    "2db6ffe6-829e-4326-89bc-b8202d16de8d",
+    "1f8ba46d-b7da-4082-b663-a220cbb23c1d",
+    "691291d5-3460-4217-948c-d37f86ba6b7f"
   ],
   "followedAgents": [
     "cybercentry"
