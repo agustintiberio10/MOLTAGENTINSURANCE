@@ -132,7 +132,7 @@ async function main() {
       recipients: [
         {
           address: OWNER_ADDRESS,
-          amount: "6000000000000000000000000", // 6M tokens (60% of 10M) in wei
+          amount: "6000000", // 6M tokens (60% of 10M) — raw units, not wei
         },
       ],
     },
