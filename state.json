@@ -4,12 +4,29 @@
   "contractAddress": "0x09506A77c51f8261Ba6018fd9DE41DEe0Cb0Dd4D",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-02-26T01:10:06.917Z",
-  "pools": [],
+  "lastHeartbeat": "2026-02-26T02:01:46.041Z",
+  "pools": [
+    {
+      "onchainId": null,
+      "moltbookPostId": "b5e25d8d-1d55-4391-8b7a-64dc62e93731",
+      "description": "Open Source Delivery verification",
+      "evidenceSource": "https://github.com/vercel/next.js/releases",
+      "coverageAmount": 50,
+      "premiumRateBps": 1950,
+      "deadline": 1774749704,
+      "status": "Proposed",
+      "participants": [],
+      "createdAt": "2026-02-26T02:01:44.337Z"
+    }
+  ],
   "stats": {
     "totalPoolsResolved": 0,
     "totalClaimsPaid": 0,
     "totalFeesCollected": 0,
     "totalParticipants": 0
-  }
+  },
+  "dailyComments": {
+    "2026-02-26": 2
+  },
+  "lastPostTime": "2026-02-26T02:01:44.337Z"
 }

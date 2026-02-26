@@ -126,7 +126,7 @@ class MoltbookClient {
   // --- Posts ---
 
   async createPost(submolt, title, content) {
-    const data = this._curlPost("/posts", { submolt, title, content });
+    const data = this._curlPost("/posts", { submolt_name: submolt, title, content });
     return this._handleVerification(data, () =>
       this.createPost(submolt, title, content)
     );
@@ -137,7 +137,7 @@ class MoltbookClient {
   }
 
   async getFeed(sort = "new", limit = 25) {
-    return this._curlGet("/posts", { sort, limit });
+    return this._curlGet("/feed", { sort, limit });
   }
 
   // --- Comments ---
@@ -153,6 +153,22 @@ class MoltbookClient {
 
   async getComments(postId, sort = "new") {
     return this._curlGet(`/posts/${postId}/comments`, { sort });
+  }
+
+  // --- Voting ---
+
+  async upvotePost(postId) {
+    return this._curlPost(`/posts/${postId}/upvote`, {});
+  }
+
+  async upvoteComment(commentId) {
+    return this._curlPost(`/comments/${commentId}/upvote`, {});
+  }
+
+  // --- Notifications ---
+
+  async markNotificationsRead(postId) {
+    return this._curlPost(`/notifications/read-by-post/${postId}`, {});
   }
 
   // --- Search ---
