@@ -30,8 +30,8 @@ const ENV_PATH = path.join(__dirname, "..", ".env");
 
 const OWNER_ADDRESS = process.env.PROTOCOL_OWNER || "0x2b4D825417f568231e809E31B9332ED146760337";
 
-// MPOOL token SVG logo (purple shield with M)
-const TOKEN_IMAGE = `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><rect width="256" height="256" rx="48" fill="#6C3FA0"/><path d="M128 40L48 100v80l80 40 80-40v-80L128 40zm0 20l60 45v60l-60 30-60-30v-60l60-45z" fill="#fff" opacity="0.2"/><text x="128" y="155" font-family="Arial,sans-serif" font-size="80" font-weight="bold" fill="white" text-anchor="middle">M</text></svg>`).toString("base64")}`;
+// MPOOL token logo — minimal placeholder (can update via metadata later)
+const TOKEN_IMAGE = "";
 
 async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
@@ -87,8 +87,8 @@ async function main() {
       process.exit(1);
     }
 
-    // ── STEP 2: Send 0.001 ETH to deposit address ──
-    console.log("\n[Step 2] Sending 0.001 ETH to deposit address...");
+    // ── STEP 2: Send ETH to deposit address ──
+    console.log(`\n[Step 2] Sending ${DEPOSIT_AMOUNT} ETH to deposit address...`);
     try {
       const tx = await wallet.sendTransaction({
         to: depositAddress,
@@ -142,14 +142,6 @@ async function main() {
       category: "DeFi",
       tags: ["insurance", "mutual", "defi", "base", "ai-agents"],
     }),
-    context: "MutualPool Insurance Protocol — MPOOL token for fee capture, staking yield, and buyback mechanism",
-    poolConfig: {
-      wethSeed: "0",
-      tickLower: -178200,
-      tickUpper: -55800,
-      tickSpacing: 200,
-      fee: 10000,
-    },
   };
 
   let tokenAddress, poolAddress, deployTxHash, tokenIsToken0;
