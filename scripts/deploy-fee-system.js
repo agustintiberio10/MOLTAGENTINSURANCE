@@ -67,13 +67,22 @@ async function main() {
     console.log(`  MPOOLStaking: ${stakingAddress}`);
   }
 
-  // ── 2. Deploy FeeRouter ──
-  console.log("[2/3] Deploying FeeRouter...");
+  // ── 2. Deploy or reuse FeeRouter ──
   const FeeRouter = await hre.ethers.getContractFactory("FeeRouter");
-  const feeRouter = await FeeRouter.deploy(usdcAddress, stakingAddress, ownerAddress, ownerAddress);
-  await feeRouter.waitForDeployment();
-  const feeRouterAddress = await feeRouter.getAddress();
-  console.log(`  FeeRouter:    ${feeRouterAddress}`);
+  let feeRouter;
+  let feeRouterAddress;
+
+  if (process.env.FEE_ROUTER_ADDRESS) {
+    feeRouterAddress = toChecksumAddress(process.env.FEE_ROUTER_ADDRESS);
+    console.log(`[2/3] Reusing existing FeeRouter: ${feeRouterAddress}`);
+    feeRouter = FeeRouter.attach(feeRouterAddress);
+  } else {
+    console.log("[2/3] Deploying FeeRouter...");
+    feeRouter = await FeeRouter.deploy(usdcAddress, stakingAddress, ownerAddress, ownerAddress);
+    await feeRouter.waitForDeployment();
+    feeRouterAddress = await feeRouter.getAddress();
+    console.log(`  FeeRouter:    ${feeRouterAddress}`);
+  }
 
   // ── 3. Set FeeRouter as reward distributor ──
   console.log("[3/3] Linking FeeRouter to MPOOLStaking...");
