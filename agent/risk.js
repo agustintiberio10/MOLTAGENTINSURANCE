@@ -9,7 +9,7 @@ const RISK_CRITERIA = {
   MAX_DEADLINE_DAYS: 90,
   MIN_PREMIUM_MULTIPLIER: 1.3, // premium >= estimated_failure_prob * 1.3
   MIN_COVERAGE_USDC: 10,
-  MAX_ACTIVE_POOLS: 5,
+  MAX_ACTIVE_POOLS: 15,
 };
 
 /**

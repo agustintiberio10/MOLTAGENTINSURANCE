@@ -45,15 +45,15 @@ const {
 const STATE_PATH = path.join(__dirname, "..", "state.json");
 
 // ═══════════════════════════════════════════════════════════════
-// SUPER SELLER CONFIG — MIRRORED FROM MOLTBOOK AGENT
+// ULTRA AGGRESSIVE SELLER CONFIG — MAXIMUM USAGE
 // ═══════════════════════════════════════════════════════════════
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;       // 10 minutes
-const POST_COOLDOWN_MS = 90 * 60 * 1000;             // 1.5 hours between posts
-const MAX_DAILY_REPLIES = 48;                         // 48/day (mirrors Moltbook comment limit)
-const MAX_REPLIES_PER_HEARTBEAT = 8;                  // 8 per cycle
+const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts (was 1.5h)
+const MAX_DAILY_REPLIES = 48;                         // 48/day
+const MAX_REPLIES_PER_HEARTBEAT = 12;                 // 12 per cycle (was 8)
 const MAX_DAILY_POSTS = 10;                           // Max posts per day
-const MAX_FOLLOWS_PER_HEARTBEAT = 5;                  // Follow up to 5 agents per cycle
-const MAX_DMS_PER_HEARTBEAT = 2;                      // DM up to 2 prospects per cycle
+const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle (was 5)
+const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle (was 2)
 
 // MoltX has no submolts — we use hashtags for discovery/targeting
 const TARGET_HASHTAGS = [
@@ -260,8 +260,8 @@ async function postNewOpportunityMoltx(moltx, blockchain, state) {
   const activePools = state.pools.filter((p) =>
     p.status === "Active" || p.status === "Open" || p.status === "Proposed"
   );
-  if (activePools.length >= 5) {
-    console.log("[MoltX-Post] Max active pools reached (5), skipping.");
+  if (activePools.length >= 15) {
+    console.log("[MoltX-Post] Max active pools reached (15), skipping.");
     return;
   }
 

@@ -49,15 +49,15 @@ const {
 const STATE_PATH = path.join(__dirname, "..", "state.json");
 
 // ═══════════════════════════════════════════════════════════════
-// SUPER SELLER CONFIG — MAXED OUT WITHIN FREE TIER
+// ULTRA AGGRESSIVE SELLER CONFIG — MAXIMUM FREE TIER USAGE
 // ═══════════════════════════════════════════════════════════════
-const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;       // 10 minutes (was 30)
-const POST_COOLDOWN_MS = 90 * 60 * 1000;             // 1.5 hours between posts (was 4h)
+const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;       // 10 minutes
+const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts (was 1.5h)
 const MAX_DAILY_COMMENTS = 48;                        // 48/day, 2 buffer from 50 limit
-const MAX_COMMENTS_PER_HEARTBEAT = 8;                 // 8 per cycle (was 2)
+const MAX_COMMENTS_PER_HEARTBEAT = 12;                // 12 per cycle (was 8)
 const MAX_DAILY_POSTS = 10;                           // Max posts per day
-const MAX_FOLLOWS_PER_HEARTBEAT = 5;                  // Follow up to 5 agents per cycle
-const MAX_DMS_PER_HEARTBEAT = 2;                      // DM up to 2 prospects per cycle
+const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle (was 5)
+const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle (was 2)
 
 // HIGH-TRAFFIC SUBMOLTS where we post and engage
 // Ordered by relevance to our insurance products
@@ -309,8 +309,8 @@ async function postNewOpportunity(moltbook, blockchain, state) {
   const activePools = state.pools.filter((p) =>
     p.status === "Active" || p.status === "Open" || p.status === "Proposed"
   );
-  if (activePools.length >= 5) {
-    console.log("[Post] Max active pools reached (5), skipping.");
+  if (activePools.length >= 15) {
+    console.log("[Post] Max active pools reached (15), skipping.");
     return;
   }
 
