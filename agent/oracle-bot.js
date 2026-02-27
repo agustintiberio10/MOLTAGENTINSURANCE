@@ -1077,10 +1077,17 @@ async function manualCreatePool(blockchain, moltx, state, productId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// ENTRY POINT
+// EXPORTED API — For Railway orchestrator (start-railway.js)
 // ═══════════════════════════════════════════════════════════════════════
 
-async function main() {
+let _oracleClients = null;
+let _oracleState = null;
+
+/**
+ * Initialize oracle bot: clients + verify role + link wallet + sync from chain.
+ * Call once at startup. Returns { blockchain, moltx, state }.
+ */
+async function initOracleBot() {
   console.log("═══════════════════════════════════════════════════════════");
   console.log("  ORACLE BOT — MutualPool V3 Lifecycle Engine");
   console.log("  Chain: Base Mainnet (8453)");
@@ -1108,9 +1115,57 @@ async function main() {
   // ── Link wallet to MoltX ──
   await ensureWalletLinked(blockchain, moltx);
 
-  // ── Sync from chain ──
-  console.log("\n[Init] Syncing state from chain...");
+  // ── Sync from chain (STATE RESILIENCE) ──
+  // Critical for Railway: ephemeral disk means state.json may be empty.
+  // syncFromChain reconstructs pool state from MutualPoolV3 contract.
+  console.log("\n[Init] Syncing state from blockchain (ephemeral-safe)...");
   await syncFromChain(blockchain, state);
+
+  _oracleClients = { blockchain, moltx };
+  _oracleState = state;
+
+  return { blockchain, moltx, state };
+}
+
+/**
+ * Run a single oracle heartbeat cycle.
+ * Requires initOracleBot() to have been called first.
+ */
+async function runOracleHeartbeat() {
+  if (!_oracleClients || !_oracleState) {
+    throw new Error("Oracle bot not initialized. Call initOracleBot() first.");
+  }
+  await heartbeat(_oracleClients.blockchain, _oracleClients.moltx, _oracleState);
+}
+
+/**
+ * Get current oracle state summary (for health endpoint).
+ */
+function getOracleStatus() {
+  if (!_oracleState) return { initialized: false };
+
+  const pools = _oracleState.pools || [];
+  return {
+    initialized: true,
+    cycleCount: _oracleState.cycleCount || 0,
+    lastHeartbeat: _oracleState.lastHeartbeat || 0,
+    pools: {
+      total: pools.length,
+      pending: pools.filter((p) => p.status === PoolStatus.PENDING).length,
+      open: pools.filter((p) => p.status === PoolStatus.OPEN).length,
+      active: pools.filter((p) => p.status === PoolStatus.ACTIVE).length,
+      resolved: pools.filter((p) => p.status === PoolStatus.RESOLVED).length,
+      cancelled: pools.filter((p) => p.status === PoolStatus.CANCELLED).length,
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ENTRY POINT (standalone mode)
+// ═══════════════════════════════════════════════════════════════════════
+
+async function main() {
+  const { blockchain, moltx, state } = await initOracleBot();
 
   // ── CLI mode detection ──
   const args = process.argv.slice(2);
@@ -1146,8 +1201,17 @@ async function main() {
   }, CONFIG.HEARTBEAT_INTERVAL_MS);
 }
 
-// ── Run ──
-main().catch((err) => {
-  console.error("[Fatal]", err);
-  process.exit(1);
-});
+// ── Exports for Railway orchestrator ──
+module.exports = {
+  initOracleBot,
+  runOracleHeartbeat,
+  getOracleStatus,
+};
+
+// ── Run standalone if executed directly ──
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("[Fatal]", err);
+    process.exit(1);
+  });
+}
