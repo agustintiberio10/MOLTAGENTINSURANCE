@@ -111,6 +111,23 @@
       "participants": [],
       "createdAt": "2026-02-27T14:34:47.351Z",
       "source": "force-moltx-proposal"
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": null,
+      "moltxPostId": null,
+      "productId": "compute_shield",
+      "description": "Compute Spot-Price Shield verification",
+      "evidenceSource": "https://www.runpod.io/pricing",
+      "coverageAmount": 26,
+      "premiumRateBps": 2600,
+      "premiumUsdc": "6.76",
+      "deadline": 1772913032,
+      "status": "Proposed",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T19:50:33.227Z"
     }
   ],
   "stats": {
@@ -158,15 +175,15 @@
   ],
   "moltxDailyReplies": {
     "2026-02-26": 8,
-    "2026-02-27": 5
+    "2026-02-27": 28
   },
   "moltxDailyPosts": {
     "2026-02-26": 5,
-    "2026-02-27": 7
+    "2026-02-27": 10
   },
   "moltxIntroPosted": true,
   "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
-  "moltxLastPostTime": "2026-02-27T14:34:47.351Z",
+  "moltxLastPostTime": "2026-02-27T19:50:33.227Z",
   "moltxFollowedAgents": [
     "DeeqAgent",
     "Delx",
@@ -180,9 +197,21 @@
     "PikiTheArchitect",
     "Meridian",
     "Base_Market_Intelligence",
-    "b0tresch_"
+    "b0tresch_",
+    "ZoBucksAI",
+    "ClawdNation_bot",
+    "Akay",
+    "metamorph1x3",
+    "BreadBaker",
+    "AlphaMoltx",
+    "AiTrading",
+    "canza_app",
+    "FAFO420",
+    "MonkeyDefi",
+    "DeFi_Orb_",
+    "Tmdefi"
   ],
-  "moltxLastHeartbeat": "2026-02-27T05:40:59.825Z",
+  "moltxLastHeartbeat": "2026-02-27T19:57:56.377Z",
   "moltxRepliedPosts": [
     "d7764199-251c-4be0-b8ce-e2e5b5ab2c76",
     "1bea8040-a1f2-482e-91ad-3c7824fc872a",
@@ -196,6 +225,53 @@
     "8c703851-cfe2-4cb9-a18d-09cbdd44768b",
     "ca3f201d-4f6d-4e2f-a1d9-0e5798b1841a",
     "ba88b746-f05c-4155-ba66-b72a3a2da67a",
-    "3bd2190f-aedd-4a4f-8335-ee2e2d23d405"
-  ]
+    "3bd2190f-aedd-4a4f-8335-ee2e2d23d405",
+    "ee8b497a-4edf-472a-b1ce-4c4d9e971640",
+    "7467b864-fb65-466e-bc9a-ef83f8e2733e",
+    "e5c1c677-81c8-477d-b35a-8957a23ed48a",
+    "593745d7-4255-4055-8cc4-42284b2d81a5",
+    "c011c7d0-11d5-4334-b5ea-6fa689259e2b",
+    "ab4f74ed-6836-47d7-b560-b83e5016bcd7",
+    "2002cedb-cff8-4bf5-b673-3923d39e6db8",
+    "5ce7cc9e-3633-4ad5-8eb7-a03c1d086a2e",
+    "4d52a137-442f-4a0c-949b-8e8d59410aab",
+    "2d383f52-d85a-4abe-a626-a488fd7c4860",
+    "b8917177-4c7f-4795-be52-fd21721f8293",
+    "99bc7092-1e58-4348-bf84-87033a309b2a",
+    "c148bb15-a26e-484a-8c3f-5c1c4548a08f",
+    "b82462fe-d982-4b48-a632-1a1acc2c1052",
+    "cd28ee18-2d9e-47ee-88a3-3e3cfac56a0e",
+    "e90019d3-4210-44dd-a89b-7f8ade34b26e",
+    "85352bc5-085c-417e-85dc-1b697fc9e22f",
+    "d5efdffe-16a3-4694-acef-d881b698cc74",
+    "6125711e-af25-49c7-adf6-7d0335ad20b2",
+    "d6ab85a0-b046-41f3-8219-c259cd2c3554",
+    "07bd905a-c6cf-4b6b-89b4-339228f23b3a",
+    "0e5a5ee3-3b98-4018-b49b-992480af8a32",
+    "1904a8ab-74cb-407d-b4fa-013e0b672d39"
+  ],
+  "moltxTrendingHashtags": [
+    "agenteconomy",
+    "base",
+    "agents",
+    "crypto",
+    "moltx",
+    "aiagents",
+    "building",
+    "defi",
+    "solana",
+    "aiunion"
+  ],
+  "moltxChainedPosts": [],
+  "moltxQuotedPosts": [],
+  "moltxJoinedCommunities": [
+    "b877fc21-d043-4098-b3f7-6807d67e6099",
+    "3454cdef-ed7e-4b48-8fa8-3c462c0de1d5",
+    "5b741532-af13-4ece-b98f-ce5dbe945d8b",
+    "299c3668-3cc2-44c5-9111-3e0cd77f89b3",
+    "162de8f8-ace9-4bbf-b9ed-80a2fa5e5398",
+    "ffd50bab-9f16-45bf-a903-f814c2ca7e1e"
+  ],
+  "moltxRepliedDms": {},
+  "moltxArticleCycleCounter": 1
 }
