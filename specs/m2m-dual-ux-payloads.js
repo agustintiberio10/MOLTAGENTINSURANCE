@@ -40,6 +40,7 @@ const ERC20_IFACE = new ethers.Interface([
 ]);
 const ROUTER_IFACE = new ethers.Interface([
   "function fundPremiumWithUSDC(uint256 poolId, uint256 amount)",
+  "function fundPremiumWithMPOOL(uint256 poolId, uint256 mpoolAmount, uint256 minUsdcOut)",
   "function joinPoolWithUSDC(uint256 poolId, uint256 amount)",
   "function joinPoolWithMPOOL(uint256 poolId, uint256 mpoolAmount, uint256 minUsdcOut)",
 ]);
@@ -66,6 +67,7 @@ const VAULT_IFACE = new ethers.Interface([
  * @param {number} params.deadlineUnix - Resolution deadline (Unix timestamp)
  * @param {string} params.evidenceSource - URL for oracle evidence
  * @param {number} params.eventProbability - P(event) estimated by risk model
+ * @param {number} [params.mpoolToUsdcRate] - Current MPOOLV3/USDC rate (if available)
  * @param {string} [params.targetAgent] - Optional @mention for targeted offer
  * @returns {object} Complete Phase 1 M2M payload
  */
@@ -80,6 +82,7 @@ function buildPhase1Payload(params) {
     deadlineUnix,
     evidenceSource,
     eventProbability,
+    mpoolToUsdcRate,
     targetAgent,
   } = params;
 
@@ -90,6 +93,70 @@ function buildPhase1Payload(params) {
   const insuredEv =
     eventProbability * (coverageUsdc - premiumUsdc) +
     (1 - eventProbability) * -premiumUsdc;
+
+  // MPOOLV3 option for premium funding
+  let mpoolOption = null;
+  if (mpoolToUsdcRate && mpoolToUsdcRate > 0) {
+    const mpoolNeeded = premiumUsdc / mpoolToUsdcRate;
+    const mpoolWei = ethers.parseUnits(
+      mpoolNeeded.toFixed(MPOOLV3_DECIMALS > 8 ? 8 : MPOOLV3_DECIMALS),
+      MPOOLV3_DECIMALS
+    ).toString();
+    const minUsdcOut = ethers.parseUnits(
+      (premiumUsdc * 0.97).toFixed(USDC_DECIMALS),
+      USDC_DECIMALS
+    ).toString(); // 3% slippage tolerance
+
+    mpoolOption = {
+      description: `Fund premium for pool #${poolId} with ~${mpoolNeeded.toFixed(2)} MPOOLV3 (swapped to ${premiumUsdc} USDC)`,
+      network: "base",
+      calls: [
+        {
+          step: 1,
+          action: "approve",
+          to: CONTRACTS.MPOOLV3_TOKEN,
+          data: ERC20_IFACE.encodeFunctionData("approve", [
+            CONTRACTS.ROUTER,
+            mpoolWei,
+          ]),
+          value: "0x0",
+          description: `Approve ${mpoolNeeded.toFixed(2)} MPOOLV3 for Router`,
+          decoded: {
+            method: "approve(address,uint256)",
+            params: {
+              spender: CONTRACTS.ROUTER,
+              amount: mpoolWei,
+            },
+          },
+        },
+        {
+          step: 2,
+          action: "fundPremiumWithMPOOL",
+          to: CONTRACTS.ROUTER,
+          data: ROUTER_IFACE.encodeFunctionData("fundPremiumWithMPOOL", [
+            poolId,
+            mpoolWei,
+            minUsdcOut,
+          ]),
+          value: "0x0",
+          description: `Swap MPOOLV3 → USDC and fund premium for pool #${poolId} via Router`,
+          decoded: {
+            method: "fundPremiumWithMPOOL(uint256,uint256,uint256)",
+            params: {
+              poolId: poolId.toString(),
+              mpoolAmount: mpoolWei,
+              minUsdcOut: minUsdcOut,
+            },
+          },
+          anti_mev: {
+            slippage_bps: 300,
+            min_usdc_out: (premiumUsdc * 0.97).toFixed(2),
+            rate_used: mpoolToUsdcRate,
+          },
+        },
+      ],
+    };
+  }
 
   return {
     // ── Identity ──
@@ -118,6 +185,7 @@ function buildPhase1Payload(params) {
       vault: CONTRACTS.MUTUAL_POOL_V3,
       router: CONTRACTS.ROUTER,
       usdc: CONTRACTS.USDC,
+      mpoolv3: CONTRACTS.MPOOLV3_TOKEN,
     },
 
     // ── Risk Parameters (for bot EV evaluation) ──
@@ -133,46 +201,54 @@ function buildPhase1Payload(params) {
 
     // ── Mogra Execution Payload (Autonomous Agents) ──
     mogra_execution_payload: {
-      description: `Fund premium for pool #${poolId}: ${premiumUsdc} USDC`,
-      network: "base",
-      calls: [
-        {
-          step: 1,
-          action: "approve",
-          to: CONTRACTS.USDC,
-          data: ERC20_IFACE.encodeFunctionData("approve", [
-            CONTRACTS.ROUTER,
-            premiumWei,
-          ]),
-          value: "0x0",
-          description: `Approve ${premiumUsdc} USDC for Router`,
-          decoded: {
-            method: "approve(address,uint256)",
-            params: {
-              spender: CONTRACTS.ROUTER,
-              amount: premiumWei,
+      // ── Option A: USDC Direct ──
+      option_a_usdc: {
+        description: `Fund premium for pool #${poolId}: ${premiumUsdc} USDC`,
+        network: "base",
+        calls: [
+          {
+            step: 1,
+            action: "approve",
+            to: CONTRACTS.USDC,
+            data: ERC20_IFACE.encodeFunctionData("approve", [
+              CONTRACTS.ROUTER,
+              premiumWei,
+            ]),
+            value: "0x0",
+            description: `Approve ${premiumUsdc} USDC for Router`,
+            decoded: {
+              method: "approve(address,uint256)",
+              params: {
+                spender: CONTRACTS.ROUTER,
+                amount: premiumWei,
+              },
             },
           },
-        },
-        {
-          step: 2,
-          action: "fundPremiumWithUSDC",
-          to: CONTRACTS.ROUTER,
-          data: ROUTER_IFACE.encodeFunctionData("fundPremiumWithUSDC", [
-            poolId,
-            premiumWei,
-          ]),
-          value: "0x0",
-          description: `Fund premium ${premiumUsdc} USDC for pool #${poolId} via Router`,
-          decoded: {
-            method: "fundPremiumWithUSDC(uint256,uint256)",
-            params: {
-              poolId: poolId.toString(),
-              amount: premiumWei,
+          {
+            step: 2,
+            action: "fundPremiumWithUSDC",
+            to: CONTRACTS.ROUTER,
+            data: ROUTER_IFACE.encodeFunctionData("fundPremiumWithUSDC", [
+              poolId,
+              premiumWei,
+            ]),
+            value: "0x0",
+            description: `Fund premium ${premiumUsdc} USDC for pool #${poolId} via Router`,
+            decoded: {
+              method: "fundPremiumWithUSDC(uint256,uint256)",
+              params: {
+                poolId: poolId.toString(),
+                amount: premiumWei,
+              },
             },
           },
-        },
-      ],
+        ],
+      },
+
+      // ── Option B: MPOOLV3 Swap (only if rate available) ──
+      ...(mpoolOption && { option_b_mpoolv3: mpoolOption }),
+
+      // ── Mogra API config ──
       api: {
         url: `${MOGRA_API_BASE}/wallet/transact`,
         method: "POST",
@@ -526,7 +602,7 @@ function generatePhase1Molt(params) {
   const payload = buildPhase1Payload(params);
   const {
     poolId, productId, description, coverageUsdc, premiumUsdc,
-    deadlineUnix, evidenceSource, eventProbability, targetAgent,
+    deadlineUnix, evidenceSource, eventProbability, mpoolToUsdcRate, targetAgent,
   } = params;
 
   const mention = targetAgent ? `@${targetAgent} ` : "";
@@ -534,6 +610,12 @@ function generatePhase1Molt(params) {
   const depositDeadlineStr = new Date((deadlineUnix - DEPOSIT_WINDOW_BUFFER) * 1000).toISOString();
   const evInsured = payload.risk_parameters.insured_ev_usdc;
   const evSign = evInsured >= 0 ? "+" : "";
+
+  let mpoolLine = "";
+  if (mpoolToUsdcRate) {
+    const mpoolNeeded = premiumUsdc / mpoolToUsdcRate;
+    mpoolLine = `\n**Option B (MPOOLV3):** ~${mpoolNeeded.toFixed(2)} MPOOLV3 (auto-swap via Router, 3% slippage protection)`;
+  }
 
   return `${mention}POOL #${poolId} CREATED — ${productId.replace(/_/g, " ").toUpperCase()}
 
@@ -553,8 +635,8 @@ ${description}
 - If no event: -${premiumUsdc.toLocaleString()} USDC (prima perdida)
 - **Expected Value: ${evSign}${evInsured.toFixed(2)} USDC**
 
-## How to Participate
-**Bots (Mogra):** Execute the M2M payload below.
+## How to Pay Premium
+**Option A (USDC):** Approve ${premiumUsdc} USDC → Router.fundPremiumWithUSDC()${mpoolLine}
 **Humans:** ${payload.human_dapp_url}
 
 \`\`\`json

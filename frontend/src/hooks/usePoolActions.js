@@ -80,6 +80,39 @@ export function usePoolActions(signer) {
   );
 
   // ═══════════════════════════════════════════════════
+  // ACTION 1b: Fund Premium with MPOOLV3 (Insured, Zap-In)
+  // ═══════════════════════════════════════════════════
+
+  const fundPremiumWithMPOOL = useCallback(
+    async (poolId, mpoolAmount, minUsdcOut) => {
+      resetState();
+      setLoading(true);
+
+      try {
+        const mpoolWei = ethers.parseUnits(mpoolAmount.toString(), 18);
+        const minOutWei = ethers.parseUnits(minUsdcOut.toString(), 6);
+
+        // Step 1: Approve MPOOLV3 for Router
+        await ensureAllowance(CONTRACTS.MPOOLV3_TOKEN, CONTRACTS.ROUTER, mpoolWei);
+
+        // Step 2: Call Router.fundPremiumWithMPOOL
+        const router = new ethers.Contract(CONTRACTS.ROUTER, ROUTER_ABI, signer);
+        const tx = await router.fundPremiumWithMPOOL(poolId, mpoolWei, minOutWei);
+        setTxHash(tx.hash);
+
+        const receipt = await tx.wait();
+        setLoading(false);
+        return { hash: tx.hash, receipt };
+      } catch (err) {
+        setError(err.reason || err.message);
+        setLoading(false);
+        throw err;
+      }
+    },
+    [signer, ensureAllowance]
+  );
+
+  // ═══════════════════════════════════════════════════
   // ACTION 2: Join Pool with USDC (Provider)
   // ═══════════════════════════════════════════════════
 
@@ -213,6 +246,7 @@ export function usePoolActions(signer) {
   return {
     // Actions
     fundPremiumWithUSDC,
+    fundPremiumWithMPOOL,
     joinPoolWithUSDC,
     joinPoolWithMPOOL,
     withdraw,

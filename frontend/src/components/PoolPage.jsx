@@ -59,7 +59,10 @@ export default function PoolPage() {
   // ── Local state ──
   const [depositAmount, setDepositAmount] = useState("");
   const [tokenMode, setTokenMode] = useState("usdc"); // "usdc" | "mpoolv3"
+  const [premiumTokenMode, setPremiumTokenMode] = useState("usdc"); // "usdc" | "mpoolv3"
+  const [premiumMpoolAmount, setPremiumMpoolAmount] = useState("");
   const [mpoolQuote, setMpoolQuote] = useState(null);
+  const [premiumMpoolQuote, setPremiumMpoolQuote] = useState(null);
 
   // ── Derived state ──
   const userRole = useMemo(() => {
@@ -76,8 +79,30 @@ export default function PoolPage() {
 
   const handleFundPremium = async () => {
     if (!pool) return;
-    await actions.fundPremiumWithUSDC(poolId, pool.requiredPremium);
+
+    if (premiumTokenMode === "usdc") {
+      await actions.fundPremiumWithUSDC(poolId, pool.requiredPremium);
+    } else {
+      // MPOOLV3 mode — quote and swap
+      if (!premiumMpoolAmount || Number(premiumMpoolAmount) <= 0) return;
+      const quote = await actions.quoteMpoolToUsdc(premiumMpoolAmount);
+      const minOut = (Number(quote) * 0.97).toFixed(6);
+      await actions.fundPremiumWithMPOOL(poolId, premiumMpoolAmount, minOut);
+    }
     refetch();
+  };
+
+  const handleQuotePremiumMpool = async (amount) => {
+    if (!amount || Number(amount) <= 0) {
+      setPremiumMpoolQuote(null);
+      return;
+    }
+    try {
+      const quote = await actions.quoteMpoolToUsdc(amount);
+      setPremiumMpoolQuote(quote);
+    } catch {
+      setPremiumMpoolQuote(null);
+    }
   };
 
   const handleJoinPool = async () => {
@@ -226,16 +251,58 @@ export default function PoolPage() {
               <p>
                 Premium: <strong>{Number(pool.requiredPremium).toLocaleString()} USDC</strong>
               </p>
+
+              {/* Token selector for premium */}
+              <div className="token-selector">
+                <button
+                  className={`token-btn ${premiumTokenMode === "usdc" ? "active" : ""}`}
+                  onClick={() => setPremiumTokenMode("usdc")}
+                >
+                  USDC
+                </button>
+                <button
+                  className={`token-btn ${premiumTokenMode === "mpoolv3" ? "active" : ""}`}
+                  onClick={() => setPremiumTokenMode("mpoolv3")}
+                >
+                  MPOOLV3
+                </button>
+              </div>
+
+              {premiumTokenMode === "mpoolv3" && (
+                <>
+                  <input
+                    type="number"
+                    placeholder="Amount (MPOOLV3)"
+                    value={premiumMpoolAmount}
+                    onChange={(e) => {
+                      setPremiumMpoolAmount(e.target.value);
+                      handleQuotePremiumMpool(e.target.value);
+                    }}
+                    min="1"
+                    step="any"
+                  />
+                  {premiumMpoolQuote && (
+                    <p className="quote-preview">
+                      Estimated output: ~{Number(premiumMpoolQuote).toFixed(2)} USDC (need {Number(pool.requiredPremium).toLocaleString()} USDC, 3% slippage protection)
+                    </p>
+                  )}
+                </>
+              )}
+
               <p className="hint">
                 Your address ({address?.slice(0, 6)}...{address?.slice(-4)}) will be set as the
                 insured. You will receive the coverage payout if the claim is approved.
               </p>
               <button
                 onClick={handleFundPremium}
-                disabled={actions.loading}
+                disabled={actions.loading || (premiumTokenMode === "mpoolv3" && !premiumMpoolAmount)}
                 className="btn btn-primary"
               >
-                {actions.loading ? "Processing..." : `Pay Premium ${Number(pool.requiredPremium).toLocaleString()} USDC`}
+                {actions.loading
+                  ? "Processing..."
+                  : premiumTokenMode === "usdc"
+                    ? `Pay Premium ${Number(pool.requiredPremium).toLocaleString()} USDC`
+                    : `Swap & Pay Premium ${premiumMpoolAmount || "0"} MPOOLV3`}
               </button>
             </div>
           )}
