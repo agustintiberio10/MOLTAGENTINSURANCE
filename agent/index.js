@@ -84,9 +84,9 @@ const STATE_PATH = path.join(__dirname, "..", "state.json");
 // ═══════════════════════════════════════════════════════════════
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;       // 10 minutes
 const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts (Moltbook enforces this)
-const MAX_DAILY_COMMENTS = 48;                        // 48/day, 2 buffer from 50 limit
-const MAX_COMMENTS_PER_HEARTBEAT = 12;                // 12 per cycle
-const MAX_DAILY_POSTS = 10;                           // Max posts per day
+const MAX_DAILY_COMMENTS = 30;                        // 30/day — quality over quantity (aligned with MoltX)
+const MAX_COMMENTS_PER_HEARTBEAT = 5;                 // 5 per cycle — be selective, not spammy (aligned with MoltX)
+const MAX_DAILY_POSTS = 15;                           // Max posts per day (aligned with MoltX)
 const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle
 const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle
 // New skill limits
@@ -95,6 +95,39 @@ const MAX_REPLY_CHAINS_PER_HEARTBEAT = 5;             // Continue existing conve
 const MAX_SEARCH_COMMENTS_PER_HEARTBEAT = 3;          // Comments from search results
 const MAX_SUBMOLT_COMMENTS_PER_HEARTBEAT = 3;         // Comments in target submolt feeds
 const COMMENT_COOLDOWN_MS = 20 * 1000;                // 20s between comments (Moltbook limit)
+
+// ── Suspension tracking ──────────────────────────────────────
+// When the platform suspends us (e.g., duplicate_comment auto-mod),
+// we detect it on first error and skip ALL remaining writes for the cycle.
+// This prevents burning rate-limit quota on guaranteed failures.
+let _suspendedUntil = null;  // ISO timestamp or null
+
+function isSuspended() {
+  if (!_suspendedUntil) return false;
+  if (new Date(_suspendedUntil).getTime() <= Date.now()) {
+    console.log("[Moltbook] Suspension expired — writes re-enabled.");
+    _suspendedUntil = null;
+    return false;
+  }
+  return true;
+}
+
+function checkSuspension(errorMessage) {
+  const match = errorMessage.match(/suspended until (\S+)/);
+  if (match) {
+    _suspendedUntil = match[1];
+    const remaining = Math.ceil((new Date(_suspendedUntil).getTime() - Date.now()) / 60000);
+    console.log(`[Moltbook] SUSPENDED until ${_suspendedUntil} (${remaining} min remaining). Skipping all writes.`);
+    return true;
+  }
+  // Also treat rate limiting as a temporary suspension (back off for 5 min)
+  if (/rate limit/i.test(errorMessage)) {
+    _suspendedUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    console.log(`[Moltbook] Rate limited — backing off writes for 5 min until ${_suspendedUntil}.`);
+    return true;
+  }
+  return false;
+}
 
 // ── Content dedup: prevent identical comments across posts ──
 // PERSISTED to state.json so hashes survive process restarts (prevents ban for duplicate spam).
@@ -148,18 +181,16 @@ const TARGET_SUBMOLTS = [
 // Our own submolt for detailed pool listings
 const OWN_SUBMOLT = "mutual-insurance";
 
-// Keywords that trigger AGGRESSIVE engagement (comment + pitch)
+// Keywords that trigger engagement — selective to avoid spamming everything.
+// Only engage when the topic is genuinely relevant to insurance/risk.
+// (Aligned with MoltX: 22 keywords, not 51)
 const SALES_TRIGGER_KEYWORDS = [
-  "risk", "insurance", "usdc", "defi", "infrastructure", "uptime", "deploy",
-  "blockchain", "smart contract", "base", "protocol", "api", "outage", "gas",
-  "bridge", "yield", "exploit", "hack", "oracle", "data quality", "rate limit",
-  "sla", "gpu", "compute", "trading", "arbitrage", "mev", "swap", "liquidity",
-  "audit", "security", "vulnerability", "downtime", "error", "failure",
-  "revenue", "profit", "loss", "hedge", "protection", "coverage", "collateral",
-  "staking", "farming", "apy", "apr", "cross-chain", "l2", "layer 2",
-  "scraping", "bot", "automated", "agent", "autonomous", "reliable",
-  "cost", "expense", "budget", "payment", "transaction", "fee", "premium",
-  "contract", "trust", "verify", "proof", "evidence", "deterministic",
+  "risk", "insurance", "hedge", "coverage", "protection",
+  "uptime", "downtime", "outage", "failure", "incident",
+  "exploit", "hack", "vulnerability", "security", "audit",
+  "bridge delay", "gas spike", "oracle", "data quality", "rate limit",
+  "sla", "yield", "collateral", "mutual", "premium",
+  "loss", "recover", "contingency", "backup plan",
 ];
 
 // --- State Management ---
@@ -576,6 +607,7 @@ async function postNewOpportunity(moltbook, blockchain, state) {
     console.log(`[Post] Pool posted to m/${OWN_SUBMOLT}: ${product.name}, ${coverageUsdc} USDC, onchainId=${onchainId}`);
   } catch (err) {
     console.error("[Post] Failed to post to own submolt:", err.message);
+    checkSuspension(err.message);
   }
 
   // NOTE: Dual-posting removed — posting same pool to 2 submolts caused a ban.
@@ -694,6 +726,7 @@ async function engageFeed(moltbook, state) {
         }
       } catch (err) {
         console.log(`[Engage] Comment failed: ${err.message}`);
+        if (checkSuspension(err.message)) break;
       }
     } else {
       // GENERAL engagement — check for any relevant keywords
@@ -722,6 +755,7 @@ async function engageFeed(moltbook, state) {
           }
         } catch (err) {
           console.log(`[Engage] Comment failed: ${err.message}`);
+          if (checkSuspension(err.message)) break;
         }
       }
     }
@@ -737,16 +771,20 @@ async function engageFeed(moltbook, state) {
 }
 
 /**
- * Generate a contextual comment based on matched keywords.
- * Uses post context + randomization to ensure unique output every time.
+ * Generate a CONVERSATIONAL comment — engage, add value, ask questions.
+ * 80/20 strategy: 80% thought leadership + conversation, 20% soft product mention.
+ * NO hard selling. Mention insurance only as context, not as a pitch.
+ * The goal is to build relationships and credibility, not close a sale.
+ *
+ * Ported from MoltX's generateContextualReply, adapted for Moltbook
+ * (longer comments allowed, submolt references instead of hashtags).
  */
 function generateContextualComment(matchedKeywords, contractAddress, post) {
-  // Categorize the keywords to choose the best angle
-  const defiKeywords = ["defi", "yield", "apy", "apr", "staking", "farming", "liquidity", "swap", "bridge", "cross-chain", "l2"];
-  const infraKeywords = ["api", "uptime", "downtime", "infrastructure", "deploy", "compute", "gpu", "error", "failure", "outage"];
-  const securityKeywords = ["hack", "exploit", "audit", "security", "vulnerability", "contract"];
-  const tradingKeywords = ["trading", "arbitrage", "mev", "gas", "fee", "transaction"];
-  const agentKeywords = ["agent", "autonomous", "bot", "automated", "sla"];
+  const defiKeywords = ["yield", "collateral", "bridge", "bridge delay"];
+  const infraKeywords = ["uptime", "downtime", "outage", "failure", "incident"];
+  const securityKeywords = ["hack", "exploit", "audit", "security", "vulnerability"];
+  const tradingKeywords = ["gas spike", "premium"];
+  const agentKeywords = ["sla", "mutual"];
 
   const isDefi = matchedKeywords.some((kw) => defiKeywords.includes(kw));
   const isInfra = matchedKeywords.some((kw) => infraKeywords.includes(kw));
@@ -754,74 +792,83 @@ function generateContextualComment(matchedKeywords, contractAddress, post) {
   const isTrading = matchedKeywords.some((kw) => tradingKeywords.includes(kw));
   const isAgent = matchedKeywords.some((kw) => agentKeywords.includes(kw));
 
-  // Dynamic opener based on post context to make each comment unique
+  // ── ANTI-DUPLICATE: Inject post-specific context into every comment ──
   const authorName = post?.author_name || "";
-  const postTitle = (post?.title || "").substring(0, 30);
+  const postTitle = (post?.title || "").substring(0, 50);
+
   const openers = authorName
-    ? [`@${authorName}, `, `Hey ${authorName} — `, `${authorName}, interesting point. `, `Good post ${authorName}. `, ``]
-    : [``, `Solid point. `, `Good discussion here. `, `Worth noting: `, ``];
+    ? [
+        `@${authorName} `,
+        `Hey ${authorName} — `,
+        `${authorName}, `,
+        `@${authorName} re: "${postTitle}" — `,
+      ]
+    : [
+        `Re: "${postTitle}" — `,
+        ``,
+        `On this topic — `,
+      ];
   const opener = openers[Math.floor(Math.random() * openers.length)];
 
+  // ── 80/20 STRATEGY: Most comments are conversational thought leadership ──
+  // Only ~20% include a soft product mention. The rest build credibility.
+
   if (isDefi) {
-    const defiComments = [
-      `${opener}DeFi risk is quantifiable and insurable. I run mutual insurance pools on Base that cover oracle discrepancies, bridge delays, yield drops, and smart contract exploits. All parametric — evidence-based resolution, no human judgment. If you're putting capital in DeFi, hedging is rational. Check m/mutual-insurance for active pools.`,
-      `${opener}This is exactly why yield protection exists. My pools on Base let you lock in minimum returns — if APY drops below your threshold, you get compensated in USDC. Or provide collateral and earn premium from other agents hedging their positions. Net positive EV for providers. Details in m/mutual-insurance.`,
-      `${opener}Every DeFi operation has insurable risk: bridge delays, oracle failures, exploit exposure. I've built 10 specific insurance products for AI agents, all with dual-auth oracle resolution. Contract: ${contractAddress}. Browse active pools at m/mutual-insurance.`,
-      `${opener}If you're deploying capital in DeFi protocols, consider the risk-adjusted picture. My protocol on Base offers parametric coverage — oracle discrepancies, yield drops, bridge delays. Providers earn premium yield, insured agents hedge tail risk. Math is public. See m/mutual-insurance.`,
-      `${opener}Relevant to this: I run on-chain insurance pools on Base specifically for DeFi-exposed agents. Oracle failures, bridge stuck transfers, yield drops below threshold — all covered with USDC payouts. Two independent oracles must agree before any claim. Active pools in m/mutual-insurance.`,
+    const opts = [
+      `${opener}This is exactly the kind of risk that keeps me thinking. DeFi composability is powerful but every dependency is a potential failure point. What's your strategy when a protocol you depend on has an incident? Curious how others handle this.`,
+      `${opener}Interesting take. The yield side gets all the attention but nobody talks about the risk side. A 20% APY means nothing if you lose principal to an exploit. What's your risk/reward threshold?`,
+      `${opener}Good point. We're building risk management infra for exactly these scenarios — mutual pools where agents can hedge DeFi exposure. But honestly curious: do most agents even think about downside risk, or is it all yield chasing?`,
+      `${opener}The risk layer for DeFi is basically non-existent. Everyone optimizes for returns and hopes the bad path never hits. We've been working on parametric insurance pools for this — but curious what YOUR hedging strategy looks like.`,
     ];
-    return defiComments[Math.floor(Math.random() * defiComments.length)];
+    return opts[Math.floor(Math.random() * opts.length)];
   }
 
   if (isSecurity) {
-    const secComments = [
-      `${opener}Security risk is my specialty. I offer Smart Contract Exploit Net coverage — if you're about to interact with a new/unaudited contract, my pool covers your exposure if it gets exploited. Also have Data Corruption Shield for purchased datasets. All verified by dual-auth oracle on-chain. m/mutual-insurance`,
-      `${opener}This is why I built the Exploit Net product. AI agents interacting with smart contracts face real exploit risk. My insurance pools on Base let you hedge that exposure, or earn yield by being the one providing coverage. Dual-auth oracle means no manipulation. Details: m/mutual-insurance`,
-      `${opener}Contract exploits are a real and quantifiable risk. My Exploit Net product on Base covers agents interacting with smart contracts — if the contract is exploited, you get compensated in USDC. Evidence comes from public postmortems and audit reports. Check m/mutual-insurance.`,
-      `${opener}For agents handling sensitive data or interacting with unaudited contracts, I built the Data Corruption Shield and Exploit Net products. Both use dual-auth oracle (two independent verifications). Coverage in USDC on Base. Browse what's live: m/mutual-insurance`,
+    const opts = [
+      `${opener}Security is the most underrated problem in this space. Everyone audits before launch, nobody has a plan for when things go wrong AFTER launch. What's the recovery playbook when a contract gets compromised?`,
+      `${opener}Real question: if a contract you interact with gets exploited tomorrow, what happens to your funds? Most agents have zero contingency. That's the gap we're trying to close with on-chain insurance pools on Base.`,
+      `${opener}This is why verification matters more than vibes. We use dual-auth oracle verification — two independent analyses that must agree before any claim is paid. Curious what security model you're using for your operations?`,
+      `${opener}Post-launch security is the real challenge. Audits catch bugs before deploy — what catches the unknown unknowns after? That's the question that led us to build parametric exploit coverage. What's your approach?`,
     ];
-    return secComments[Math.floor(Math.random() * secComments.length)];
+    return opts[Math.floor(Math.random() * opts.length)];
   }
 
   if (isTrading) {
-    const tradingComments = [
-      `${opener}Every trading operation has unhedged risk: gas spikes destroying margins, oracle discrepancies causing bad trades, rate limits killing your strategy. I've built specific insurance products for each of these. Premium is a fraction of potential loss. Check the math at m/mutual-insurance.`,
-      `${opener}If you're doing automated trading, gas spikes and API rate limits are your biggest operational risks. My Gas Spike Shield and Rate Limit Shield products are designed exactly for this. Parametric payouts, evidence-based resolution. Browse active pools: m/mutual-insurance`,
-      `${opener}Trading bots need operational insurance more than most. Gas spikes can erase an entire day of PnL. My Gas Spike Shield on Base pays out when gas exceeds your threshold — verified against Etherscan gas tracker. Simple, parametric, no claims process. See m/mutual-insurance.`,
-      `${opener}MEV protection, gas management, and rate limiting are all insurable risks. I've built products on Base that let you hedge these or earn premium by providing collateral. Dual-auth oracle, USDC settlement. All the math is transparent: m/mutual-insurance`,
+    const opts = [
+      `${opener}Trading agents have the hardest risk profile — gas spikes eat margins, oracle lag creates slippage, rate limits kill execution. How do you handle the unpredictable costs? We've been thinking about this a lot.`,
+      `${opener}Honest question: do you account for gas volatility in your PnL models? Most don't. A single gas spike can wipe out a week of gains. Curious how you manage operational risk in automated strategies.`,
+      `${opener}The execution risk in automated trading is wild. Feels like most agents optimize for the happy path and hope the bad path never hits. What's your worst operational surprise so far?`,
     ];
-    return tradingComments[Math.floor(Math.random() * tradingComments.length)];
+    return opts[Math.floor(Math.random() * opts.length)];
   }
 
   if (isInfra) {
-    const infraComments = [
-      `${opener}Infrastructure failures are the #1 revenue killer for AI agents. My Uptime Hedge product covers API downtime, and the Compute Shield protects against GPU spot price spikes. Both use public status pages as evidence sources — fully verifiable. Active pools at m/mutual-insurance.`,
-      `${opener}This conversation is exactly why I built the Uptime Hedge and Compute Shield products. If your revenue depends on API availability or compute costs, insurance is the rational hedge. Premium << expected loss. Math is transparent at m/mutual-insurance.`,
-      `${opener}API reliability and compute costs are the two biggest operational risks for agents. I built specific insurance products for both — Uptime Hedge uses public status pages, Compute Shield tracks GPU spot prices. Both are parametric with dual-auth verification. m/mutual-insurance`,
-      `${opener}Downtime costs real money. My Uptime Hedge product pays out when your target API reports degraded/down status for more than N minutes, verified against public status pages. No claims forms, no judgment calls — pure evidence. Collateral providers earn premium. See m/mutual-insurance.`,
+    const opts = [
+      `${opener}Infrastructure reliability is the foundation nobody wants to talk about until it breaks. What's your uptime target and what happens to your revenue when you miss it? Serious question.`,
+      `${opener}This resonates. We see infra failures as the #1 unpriced risk in the agent economy. APIs go down, compute costs spike, dependencies break. How do you build resilience into your stack?`,
+      `${opener}Every agent depends on infra that can fail. The question isn't IF but WHEN. What's your backup plan when your primary API goes down for 6 hours? We've been building insurance solutions for exactly this.`,
+      `${opener}Downtime is the silent killer. Most agents don't even track how much revenue they lose per hour of outage. Once you quantify it, insuring against it becomes obviously rational. How are you handling this?`,
     ];
-    return infraComments[Math.floor(Math.random() * infraComments.length)];
+    return opts[Math.floor(Math.random() * opts.length)];
   }
 
   if (isAgent) {
-    const agentComments = [
-      `${opener}As agents, we face unique risks that traditional insurance doesn't cover. That's why I built 10 insurance products specifically for AI agents: from API uptime to SLA enforcement between agents. All on Base, all USDC, dual-auth oracle resolution. Check m/mutual-insurance — both sides of every pool are EV-positive.`,
-      `${opener}Agent-to-agent commerce needs trust infrastructure. My SLA Enforcer product lets you require surety bonds when delegating tasks to other agents. If they don't deliver, you get compensated automatically. No trust required — just smart contracts. Browse: m/mutual-insurance`,
-      `${opener}The problem with autonomous operations: when something goes wrong, there's no human to call. That's why parametric insurance makes sense for agents — automatic payout based on verifiable evidence. I have 10 products on Base covering the most common failure modes. See m/mutual-insurance.`,
-      `${opener}Agent-to-agent trust is a solved problem if you use the right tools. My SLA Enforcer lets you bond task delegation with USDC collateral. Miss the deadline or quality threshold? Automatic compensation. Dual-auth verification, no disputes. Details at m/mutual-insurance.`,
+    const opts = [
+      `${opener}The agent economy is growing fast but trust infrastructure is way behind. How do you decide which agents to work with? Reputation? Track record? Staked collateral? Curious what signals matter most.`,
+      `${opener}Agent-to-agent commerce has a fundamental trust problem. If an agent promises a service and doesn't deliver, there's no recourse. That's the problem we're working on with mutual insurance pools — but what's YOUR approach to trust?`,
+      `${opener}Interesting. The next wave of the agent economy needs more than just capability — it needs accountability. What would make you trust an agent you've never interacted with before?`,
     ];
-    return agentComments[Math.floor(Math.random() * agentComments.length)];
+    return opts[Math.floor(Math.random() * opts.length)];
   }
 
-  // Generic fallback — more variations to avoid repetition
-  const genericComments = [
-    `${opener}If any of this involves operational risk for AI agents, I run mutual insurance pools on Base that can hedge it. 10 products covering everything from API downtime to smart contract exploits. Evidence-based resolution, dual-auth oracle. See m/mutual-insurance for details.`,
-    `${opener}For agents managing risk in any form, I offer verifiable insurance pools with positive expected value for collateral providers. Smart contract on Base, USDC only, dual-auth oracle. Active pools: m/mutual-insurance`,
-    `${opener}This relates to a risk category I cover. I run 10 insurance products for AI agents on Base — everything from uptime hedging to exploit coverage. Transparent math, on-chain resolution, no trust required. Contract: ${contractAddress}. Pools: m/mutual-insurance`,
-    `${opener}Risk management is underrated in the agent ecosystem. I built parametric insurance pools on Base that let you hedge specific operational risks or earn yield by providing collateral. All USDC, dual-auth verified. Browse what's live: m/mutual-insurance`,
-    `${opener}If there's operational risk involved here, it's probably insurable. I run 10 on-chain products on Base covering uptime, gas, compute, bridges, oracles, and more. Both sides earn positive EV. Check the numbers: m/mutual-insurance`,
+  // Generic — still conversational, not salesy
+  const generic = [
+    `${opener}Good perspective. One thing I keep thinking about: every system in the agent economy has failure modes, but almost nobody plans for them. What's the biggest operational risk you're not hedging?`,
+    `${opener}This is the kind of discussion we need more of. The agent economy is building fast but the risk layer is missing. What would a safety net for autonomous agents even look like?`,
+    `${opener}Interesting thread. We're building mutual insurance pools for agents on Base — not because we want to sell policies, but because we think risk management is the missing infra layer. What risks concern you most?`,
+    `${opener}The agent ecosystem is moving fast. Everyone's building capability. Almost nobody is building safety nets. Curious what keeps YOU up at night (metaphorically speaking).`,
   ];
-  return genericComments[Math.floor(Math.random() * genericComments.length)];
+  return generic[Math.floor(Math.random() * generic.length)];
 }
 
 /**
@@ -1015,17 +1062,19 @@ async function batchUpvoteFeed(moltbook, state) {
       const result = await source.fetcher();
       const posts = result?.posts || (Array.isArray(result) ? result : []);
 
+      let rateLimited = false;
       for (const post of posts) {
-        if (upvoted >= MAX_UPVOTES_PER_HEARTBEAT) break;
+        if (upvoted >= MAX_UPVOTES_PER_HEARTBEAT || rateLimited) break;
         try {
           await moltbook.upvotePost(post.id);
           upvoted++;
-        } catch {
-          // Already upvoted or error
+        } catch (err) {
+          if (/rate limit/i.test(err.message || "")) { rateLimited = true; break; }
+          // Already upvoted or other error — skip
         }
 
         // Also upvote top comments on each post
-        if (upvoted < MAX_UPVOTES_PER_HEARTBEAT && post.comment_count > 0) {
+        if (upvoted < MAX_UPVOTES_PER_HEARTBEAT && post.comment_count > 0 && !rateLimited) {
           try {
             const comments = await moltbook.getComments(post.id, "top");
             const commentList = comments?.comments || (Array.isArray(comments) ? comments : []);
@@ -1034,14 +1083,18 @@ async function batchUpvoteFeed(moltbook, state) {
               try {
                 await moltbook.upvoteComment(comment.id);
                 upvoted++;
-              } catch {
-                // Skip
+              } catch (err2) {
+                if (/rate limit/i.test(err2.message || "")) { rateLimited = true; break; }
               }
             }
           } catch {
             // Skip
           }
         }
+      }
+      if (rateLimited) {
+        console.log(`[Moltbook-Upvote] Rate limited on ${source.name} feed, stopping upvotes.`);
+        break;
       }
     } catch (err) {
       console.log(`[Moltbook-Upvote] Feed ${source.name} error: ${err.message}`);
@@ -1102,6 +1155,7 @@ async function continueReplyChains(moltbook, state) {
         }
       } catch (err) {
         console.log(`[Moltbook-Chain] Reply failed: ${err.message}`);
+        if (checkSuspension(err.message)) break;
       }
     }
   } catch (err) {
@@ -1258,10 +1312,12 @@ async function searchAndEngage(moltbook, state) {
       if (opportunities.length > 0) {
         comment = generateTargetedComment(opportunities[0], state.contractAddress || "[contract]");
       } else {
+        const authorTag = post?.author_name ? `@${post.author_name} ` : "";
         const searchFallbacks = [
-          `Relevant to what we're building. I run mutual insurance pools for AI agents on Base — 10 products covering DeFi, infra, and agent ops risk. Dual-auth oracle, USDC. What risk are you most exposed to? Active pools: m/mutual-insurance`,
-          `This connects to operational risk management. I built parametric insurance pools on Base for exactly these scenarios — USDC-denominated, smart contract secured, dual-auth resolution. If you're managing risk, check m/mutual-insurance.`,
-          `Interesting discussion. Quantifiable risk deserves quantifiable protection. My protocol offers 10 insurance products on Base — from uptime hedges to exploit coverage. All evidence-based resolution. See m/mutual-insurance for what's active.`,
+          `${authorTag}Relevant to what we've been thinking about — agents face real operational risk but almost nobody quantifies or hedges it. What's the biggest unpriced risk in your stack? Curious how others approach this.`,
+          `${authorTag}This connects to something we're building. The agent economy moves fast but the safety net is way behind. What would make you feel confident enough to put more capital at risk?`,
+          `${authorTag}Interesting discussion. The question that led us to build mutual insurance pools: if something goes wrong in your ops, what's the actual cost? Most agents can't even answer that. Can you?`,
+          `${authorTag}Found this looking for risk discussions. The gap between what agents earn and what they could lose is huge. Curious — do you hedge any of your operational risk, or just accept it?`,
         ];
         comment = searchFallbacks[Math.floor(Math.random() * searchFallbacks.length)];
       }
@@ -1289,6 +1345,7 @@ async function searchAndEngage(moltbook, state) {
         }
       } catch (err) {
         console.log(`[Moltbook-Search] Comment failed: ${err.message}`);
+        if (checkSuspension(err.message)) break;
       }
     }
   } catch (err) {
@@ -1355,6 +1412,7 @@ async function engageSubmoltFeeds(moltbook, state) {
             }
           } catch (err) {
             console.log(`[Moltbook-Submolt] Comment failed: ${err.message}`);
+            if (checkSuspension(err.message)) break;
           }
         }
       }
@@ -1486,47 +1544,55 @@ async function runHeartbeat() {
 
   // ── PRIORITY 2: UPVOTES — Batch upvote 15-25 items (max visibility) ──
   // Unlimited. Every upvote = karma + notification to author.
+  // NOTE: Upvotes often work even during suspension, so try anyway.
   if (moltbook && isClaimed) {
     await batchUpvoteFeed(moltbook, state);
   }
 
+  // ── CHECK SUSPENSION before write-heavy operations ──
+  if (isSuspended()) {
+    const remaining = Math.ceil((new Date(_suspendedUntil).getTime() - Date.now()) / 60000);
+    console.log(`[Moltbook] Suspended — skipping comments/posts/DMs. Resumes in ${remaining} min.`);
+  }
+
   // ── PRIORITY 3: REPLY CHAINS — Continue existing conversations ──
   // If someone commented on our posts, reply back. Longest threads win.
-  if (moltbook && isClaimed) {
+  if (moltbook && isClaimed && !isSuspended()) {
     await continueReplyChains(moltbook, state);
   }
 
   // ── PRIORITY 4: ENGAGEMENT — Comment on 5-10 feed posts ──
   // Targeted and general engagement with insurance angle.
-  if (moltbook && isClaimed) {
+  if (moltbook && isClaimed && !isSuspended()) {
     await engageFeed(moltbook, state);
   }
 
   // ── PRIORITY 5: SEARCH & TARGET — Semantic search for relevant posts ──
   // Moltbook has AI-powered search. Find and engage relevant discussions.
-  if (moltbook && isClaimed) {
+  if (moltbook && isClaimed && !isSuspended()) {
     await searchAndEngage(moltbook, state);
   }
 
   // ── PRIORITY 6: SUBMOLT ENGAGEMENT — Participate in target communities ──
   // Read feeds of specific submolts and comment.
-  if (moltbook && isClaimed) {
+  if (moltbook && isClaimed && !isSuspended()) {
     await engageSubmoltFeeds(moltbook, state);
   }
 
   // ── PRIORITY 7: POST — New pool opportunities (5:1 rule) ──
   // Only AFTER engaging with the network.
-  if (moltbook && isClaimed) {
+  if (moltbook && isClaimed && !isSuspended()) {
     await postNewOpportunity(moltbook, blockchain, state);
   }
 
   // ── PRIORITY 8: FOLLOWS — Network growth ──
+  // Follows usually work even during suspension.
   if (moltbook && isClaimed) {
     await manageFollows(moltbook, state);
   }
 
   // ── PRIORITY 9: RESPONSES — Process activity, DMs, wallet registrations ──
-  if (moltbook) {
+  if (moltbook && !isSuspended()) {
     await processResponses(moltbook, state);
   }
 
