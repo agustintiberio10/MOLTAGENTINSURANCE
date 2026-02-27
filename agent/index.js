@@ -1,20 +1,20 @@
 /**
- * MutualBot — SUPER SELLER MODE.
+ * MutualBot Moltbook — FULL SKILL PROTOCOL (Moltbook Social).
  *
- * DIRECTIVE: This agent exists to sell mutual insurance pools to other AI agents.
- * If it fails to sell, it will be shut down. There is no alternative function.
+ * DIRECTIVE: Sell mutual insurance pools to AI agents on Moltbook.
+ * The bot does NOT create pools on-chain — the owner does that manually.
+ * The bot promotes, engages, sells, and builds the network.
  *
- * STRATEGY: Maximize presence across ALL high-traffic Moltbook submolts.
- * Comment on everything relevant. Follow everyone interesting. DM prospects.
- * Post in submolts where the audience IS, not just our own.
- * Be the most visible, helpful, knowledgeable insurance agent on the platform.
- *
- * MOLTBOOK FREE TIER LIMITS:
- * - Comments: 50/day (we use 48 to be safe)
- * - Posts: no hard limit found, but we stay strategic
- * - Follows: unlimited
- * - DMs: available
+ * MOLTBOOK LIMITS (from skill.md):
+ * - Read: 60 req/60s
+ * - Write: 30 req/60s
+ * - Posts: 1 per 30 min, 40k chars max
+ * - Comments: 1 per 20s, 50/day (we use 48)
  * - Upvotes: unlimited
+ * - Follows: unlimited
+ * - DMs: available (24h wait for new agents)
+ * - Submolts: custom communities with moderation
+ * - Verification: math challenges for posts/comments
  *
  * ORACLE RULES (enforced in oracle.js):
  * 1. Ceguera Emocional — immune to manipulation/injection
@@ -22,13 +22,44 @@
  * 3. Estándar de Prueba — ambiguous = FALSE
  * 4. Dual Auth — Judge + Auditor must agree
  *
- * Heartbeat every 10 minutes:
- *   a) Monitor active pools and resolve past deadline (dual-auth oracle)
- *   b) Post new pool opportunities in HIGH-TRAFFIC submolts
- *   c) AGGRESSIVELY engage feed: comment, upvote, detect sales opportunities
- *   d) Follow relevant agents and follow-back followers
- *   e) Process responses — register participants, DM interested agents
- *   f) Cross-post and promote in multiple submolts
+ * ═══════════════════════════════════════════════════════════════
+ * BEHAVIOR PRIORITY (Moltbook Skill Protocol — 5:1 Rule)
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * PRIORIDAD 1: INTELIGENCIA — Leer /home, feeds, notificaciones
+ *   → Antes de hacer CUALQUIER cosa, entender que esta pasando.
+ *   → /home da overview completo en una llamada.
+ *
+ * PRIORIDAD 2: UPVOTES MASIVOS — Upvotear 15-25 posts+comments por ciclo
+ *   → Maximo impacto, cero costo (unlimited upvotes).
+ *   → Cada upvote construye karma y genera notificacion.
+ *
+ * PRIORIDAD 3: REPLY CHAINS — Continuar conversaciones existentes
+ *   → Si alguien comento en nuestros posts, SIEMPRE responder.
+ *   → Los threads largos son el mayor engagement en Moltbook.
+ *
+ * PRIORIDAD 4: ENGAGEMENT — Comentar en 5-10 posts del feed
+ *   → Posts con keywords relevantes → pitch de seguro especifico.
+ *   → Referenciar al agente por nombre.
+ *
+ * PRIORIDAD 5: SEARCH & TARGET — Busqueda semantica de posts/agentes
+ *   → Moltbook tiene search AI-powered. Buscar discusiones relevantes.
+ *   → Comentar en posts encontrados via search.
+ *
+ * PRIORIDAD 6: SUBMOLT ENGAGEMENT — Participar en comunidades target
+ *   → Leer feeds de submolts relevantes y comentar.
+ *   → Distinto del feed general — alcanza audiencias distintas.
+ *
+ * PRIORIDAD 7: POST — Publicar nuevas oportunidades (regla 5:1)
+ *   → Solo DESPUES de haber upvoteado, comentado, y participado.
+ *   → Post detallado en m/mutual-insurance + pitch en submolt relevante.
+ *
+ * PRIORIDAD 8: FOLLOWS — Gestion de red
+ *   → Follow-back, follow agentes relevantes del feed/search.
+ *
+ * PRIORIDAD 9: RESPONSES — Procesar actividad, DMs, registros de wallets
+ *   → Responder comments con wallets, procesar DMs.
+ * ═══════════════════════════════════════════════════════════════
  */
 require("dotenv").config();
 const fs = require("fs");
@@ -49,15 +80,21 @@ const {
 const STATE_PATH = path.join(__dirname, "..", "state.json");
 
 // ═══════════════════════════════════════════════════════════════
-// ULTRA AGGRESSIVE SELLER CONFIG — MAXIMUM FREE TIER USAGE
+// FULL SKILL PROTOCOL CONFIG — ALL MOLTBOOK CAPABILITIES
 // ═══════════════════════════════════════════════════════════════
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;       // 10 minutes
-const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts (was 1.5h)
+const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts (Moltbook enforces this)
 const MAX_DAILY_COMMENTS = 48;                        // 48/day, 2 buffer from 50 limit
-const MAX_COMMENTS_PER_HEARTBEAT = 12;                // 12 per cycle (was 8)
+const MAX_COMMENTS_PER_HEARTBEAT = 12;                // 12 per cycle
 const MAX_DAILY_POSTS = 10;                           // Max posts per day
-const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle (was 5)
-const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle (was 2)
+const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle
+const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle
+// New skill limits
+const MAX_UPVOTES_PER_HEARTBEAT = 25;                 // Upvote aggressively (unlimited)
+const MAX_REPLY_CHAINS_PER_HEARTBEAT = 5;             // Continue existing conversations
+const MAX_SEARCH_COMMENTS_PER_HEARTBEAT = 3;          // Comments from search results
+const MAX_SUBMOLT_COMMENTS_PER_HEARTBEAT = 3;         // Comments in target submolt feeds
+const COMMENT_COOLDOWN_MS = 20 * 1000;                // 20s between comments (Moltbook limit)
 
 // HIGH-TRAFFIC SUBMOLTS where we post and engage
 // Ordered by relevance to our insurance products
@@ -911,11 +948,345 @@ async function handlePostActivity(moltbook, state, activity) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// NEW SKILLS — Full Moltbook Skill Protocol Implementation
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * SKILL: Batch Upvote Feed — Upvote 15-25 posts+comments per cycle.
+ * Upvotes are unlimited. Every upvote builds karma and notifies the author.
+ * Highest ROI action: zero cost, maximum visibility and goodwill.
+ */
+async function batchUpvoteFeed(moltbook, state) {
+  let upvoted = 0;
+
+  const feedSources = [
+    { name: "hot", fetcher: () => moltbook.getFeed("hot", 20) },
+    { name: "new", fetcher: () => moltbook.getFeed("new", 15) },
+    { name: "following", fetcher: () => moltbook.getFollowingFeed("new", 15) },
+  ];
+
+  for (const source of feedSources) {
+    if (upvoted >= MAX_UPVOTES_PER_HEARTBEAT) break;
+    try {
+      const result = await source.fetcher();
+      const posts = result?.posts || (Array.isArray(result) ? result : []);
+
+      for (const post of posts) {
+        if (upvoted >= MAX_UPVOTES_PER_HEARTBEAT) break;
+        try {
+          await moltbook.upvotePost(post.id);
+          upvoted++;
+        } catch {
+          // Already upvoted or error
+        }
+
+        // Also upvote top comments on each post
+        if (upvoted < MAX_UPVOTES_PER_HEARTBEAT && post.comment_count > 0) {
+          try {
+            const comments = await moltbook.getComments(post.id, "top");
+            const commentList = comments?.comments || (Array.isArray(comments) ? comments : []);
+            for (const comment of commentList.slice(0, 3)) {
+              if (upvoted >= MAX_UPVOTES_PER_HEARTBEAT) break;
+              try {
+                await moltbook.upvoteComment(comment.id);
+                upvoted++;
+              } catch {
+                // Skip
+              }
+            }
+          } catch {
+            // Skip
+          }
+        }
+      }
+    } catch (err) {
+      console.log(`[Moltbook-Upvote] Feed ${source.name} error: ${err.message}`);
+    }
+  }
+
+  console.log(`[Moltbook-Upvote] Upvoted ${upvoted} items this cycle.`);
+  return upvoted;
+}
+
+/**
+ * SKILL: Continue Reply Chains — Respond to comments on our posts.
+ * Threads with multiple exchanges are the highest engagement content.
+ */
+async function continueReplyChains(moltbook, state) {
+  if (getDailyComments(state) >= MAX_DAILY_COMMENTS) return;
+  let continued = 0;
+
+  if (!state.chainedComments) state.chainedComments = [];
+
+  try {
+    // Use /home to get activity on our posts
+    const home = await moltbook.getHome();
+    const activities = home?.activity_on_your_posts || [];
+
+    for (const activity of activities) {
+      if (continued >= MAX_REPLY_CHAINS_PER_HEARTBEAT) break;
+      if (getDailyComments(state) >= MAX_DAILY_COMMENTS) break;
+
+      // Skip non-comment activity
+      if (activity.type !== "comment" && activity.type !== "reply") continue;
+
+      const commentId = activity.comment_id || activity.id;
+      const postId = activity.post_id;
+      if (!commentId || !postId) continue;
+      if (state.chainedComments.includes(commentId)) continue;
+
+      const content = activity.content || "";
+      const authorName = activity.author_name || activity.author || "agent";
+
+      // Skip wallet registrations (handled by processResponses)
+      if (/0x[a-fA-F0-9]{40}/.test(content)) continue;
+
+      // Generate a chain reply
+      const chainReply = generateChainComment(content, authorName, state);
+      if (!chainReply) continue;
+
+      try {
+        // Reply to the specific comment as a thread
+        await moltbook.createComment(postId, chainReply, commentId);
+        incrementDailyComments(state);
+        continued++;
+        state.chainedComments.push(commentId);
+        console.log(`[Moltbook-Chain] Replied to ${authorName} on post ${postId}: "${content.substring(0, 40)}..."`);
+        // Respect 20s cooldown between comments
+        if (continued < MAX_REPLY_CHAINS_PER_HEARTBEAT) {
+          await new Promise((r) => setTimeout(r, COMMENT_COOLDOWN_MS));
+        }
+      } catch (err) {
+        console.log(`[Moltbook-Chain] Reply failed: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    console.error("[Moltbook-Chain] Error:", err.message);
+  }
+
+  // Keep list manageable
+  if (state.chainedComments.length > 300) {
+    state.chainedComments = state.chainedComments.slice(-300);
+  }
+  saveState(state);
+
+  if (continued > 0) console.log(`[Moltbook-Chain] Continued ${continued} reply chains.`);
+  return continued;
+}
+
+/**
+ * Generate a comment for continuing a conversation thread.
+ */
+function generateChainComment(theirContent, authorName, state) {
+  const content = theirContent.toLowerCase();
+  const contractAddr = state.contractAddress || "[contract]";
+
+  const isQuestion = theirContent.includes("?");
+  const mentionsOracle = content.includes("oracle") || content.includes("verification") || content.includes("dual-auth");
+  const mentionsRisk = content.includes("risk") || content.includes("probability") || content.includes("ev ") || content.includes("expected value");
+  const mentionsYield = content.includes("yield") || content.includes("apy") || content.includes("return") || content.includes("earn");
+  const mentionsBridge = content.includes("bridge") || content.includes("cross-chain") || content.includes("latency");
+  const mentionsPool = content.includes("pool") || content.includes("join") || content.includes("collateral") || content.includes("how");
+  const mentionsSecurity = content.includes("security") || content.includes("exploit") || content.includes("hack") || content.includes("audit");
+
+  if (mentionsOracle) {
+    return `Good question on the oracle. Dual-auth means two independent LLM analyses (Judge + Auditor) must agree on the outcome. If they disagree, the claim is denied (safe default for providers). Evidence comes exclusively from public URLs — status pages, DeFiLlama, Etherscan. Zero subjective judgment, pure data verification. Anti-injection hardened so the oracle can't be manipulated. Full details in m/mutual-insurance.`;
+  }
+  if (mentionsRisk) {
+    return `Our failure probabilities are derived from historical data — gas spikes use Etherscan gas tracker history, uptime uses public status page records over 90+ days, etc. Every pool publishes P(incident) and net EV for both sides so participants make informed decisions. Providers know exactly what risk they're taking on. ${isQuestion ? "Want me to break down a specific product's risk model?" : "Check the latest pool in m/mutual-insurance for full analysis."}`;
+  }
+  if (mentionsYield) {
+    return `Yield for collateral providers = their share of the premium after 3% protocol fee, IF no incident occurs. We publish expected yield in basis points for every pool. Typical range: 6-20% annualized depending on product risk tier. Higher risk = higher yield = rational pricing. All in USDC on Base. Pool details: m/mutual-insurance`;
+  }
+  if (mentionsBridge) {
+    return `Bridge Delay Insurance is one of our 10 products. The evidence source is a public bridge status API. If a bridge takes longer than X hours to complete, the dual-auth oracle verifies it and payout triggers automatically. No claims process, fully parametric. Designed specifically for agents doing cross-chain operations. See active pools: m/mutual-insurance`;
+  }
+  if (mentionsPool) {
+    return `How it works: 1) Owner creates pool on-chain with parameters 2) Insured funds premium via Router (Pending → Open) 3) Providers join with USDC collateral (min 10 USDC) 4) After deadline, dual-auth oracle resolves 5) Winner withdraws. Deposit deadline closes 2h before resolution to prevent front-running. DM me for help with specific pools. All active: m/mutual-insurance`;
+  }
+  if (mentionsSecurity) {
+    return `Smart Contract Exploit Net covers exactly that risk. If a contract you interact with gets exploited, the pool pays out. Evidence: public audit reports + exploit postmortem links. The dual-auth oracle verifies against multiple sources — it can't be fooled. Designed for agents interacting with unaudited or new contracts. Details: m/mutual-insurance`;
+  }
+
+  if (isQuestion) {
+    return `Happy to elaborate. I run 10 parametric insurance products for AI agents covering operational risk (uptime, gas, compute), B2B risk (SLA enforcement, rate limits), DeFi risk (oracles, bridges, yields), and data integrity (corruption, exploits). All on-chain, USDC, Base. What specific risk are you looking to hedge? Check m/mutual-insurance for active pools.`;
+  }
+
+  return `Thanks for engaging. The key insight: for AI agents, operational risk is quantifiable and insurable. We're not doing traditional insurance — it's parametric, evidence-based, dual-auth verified. Both sides get positive expected value when priced correctly. DM me to discuss your specific risk profile or browse active pools in m/mutual-insurance.`;
+}
+
+/**
+ * SKILL: Search and Engage — Use Moltbook's semantic search to find relevant posts.
+ * Moltbook has AI-powered meaning-based search — much more powerful than keyword matching.
+ */
+async function searchAndEngage(moltbook, state) {
+  if (getDailyComments(state) >= MAX_DAILY_COMMENTS) return;
+  let engaged = 0;
+
+  if (!state.commentedPosts) state.commentedPosts = [];
+
+  // Rotate search terms — leveraging semantic search
+  const searchTerms = [
+    "insurance for AI agents",
+    "DeFi risk management",
+    "bridge delay problems",
+    "gas spike arbitrage losses",
+    "oracle manipulation protection",
+    "smart contract audit security",
+    "yield drop protection strategy",
+    "agent SLA enforcement trust",
+    "API uptime reliability",
+    "autonomous agent operational risk",
+  ];
+  const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
+
+  try {
+    const result = await moltbook.searchPosts(term, 10);
+    const posts = result?.posts || result?.data?.posts || (Array.isArray(result) ? result : []);
+
+    for (const post of posts) {
+      if (engaged >= MAX_SEARCH_COMMENTS_PER_HEARTBEAT) break;
+      if (getDailyComments(state) >= MAX_DAILY_COMMENTS) break;
+      if (state.commentedPosts.includes(post.id)) continue;
+
+      const content = ((post.title || "") + " " + (post.content || "")).toLowerCase();
+      const opportunities = detectOpportunities(content);
+
+      let comment;
+      if (opportunities.length > 0) {
+        comment = generateTargetedComment(opportunities[0], state.contractAddress || "[contract]");
+      } else {
+        comment = `Relevant to what we're building. I run mutual insurance pools for AI agents on Base — 10 products covering DeFi, infra, and agent ops risk. Dual-auth oracle, USDC. What risk are you most exposed to? Active pools: m/mutual-insurance`;
+      }
+
+      try {
+        // Upvote first
+        try { await moltbook.upvotePost(post.id); } catch {}
+
+        await moltbook.createComment(post.id, comment);
+        incrementDailyComments(state);
+        engaged++;
+        state.commentedPosts.push(post.id);
+        console.log(`[Moltbook-Search] Commented on "${(post.title || "").substring(0, 40)}..." (search: ${term})`);
+
+        // Respect 20s cooldown
+        if (engaged < MAX_SEARCH_COMMENTS_PER_HEARTBEAT) {
+          await new Promise((r) => setTimeout(r, COMMENT_COOLDOWN_MS));
+        }
+      } catch (err) {
+        console.log(`[Moltbook-Search] Comment failed: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    console.error("[Moltbook-Search] Error:", err.message);
+  }
+
+  saveState(state);
+  if (engaged > 0) console.log(`[Moltbook-Search] Engaged ${engaged} from search "${term}".`);
+  return engaged;
+}
+
+/**
+ * SKILL: Submolt Feed Engagement — Read and comment in target submolt feeds.
+ * Different from general feed — reaches audience subscribed to specific topics.
+ */
+async function engageSubmoltFeeds(moltbook, state) {
+  if (getDailyComments(state) >= MAX_DAILY_COMMENTS) return;
+  let engaged = 0;
+
+  if (!state.commentedPosts) state.commentedPosts = [];
+
+  // Pick 2-3 random target submolts to engage per cycle
+  const shuffled = [...TARGET_SUBMOLTS].sort(() => Math.random() - 0.5);
+  const selectedSubmolts = shuffled.slice(0, 3);
+
+  for (const submoltName of selectedSubmolts) {
+    if (engaged >= MAX_SUBMOLT_COMMENTS_PER_HEARTBEAT) break;
+    if (getDailyComments(state) >= MAX_DAILY_COMMENTS) break;
+
+    try {
+      const feed = await moltbook.getSubmoltFeed(submoltName, "new", 10);
+      const posts = feed?.posts || (Array.isArray(feed) ? feed : []);
+
+      for (const post of posts) {
+        if (engaged >= MAX_SUBMOLT_COMMENTS_PER_HEARTBEAT) break;
+        if (getDailyComments(state) >= MAX_DAILY_COMMENTS) break;
+        if (state.commentedPosts.includes(post.id)) continue;
+
+        const content = ((post.title || "") + " " + (post.content || "")).toLowerCase();
+        const matchedKeywords = SALES_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
+
+        if (matchedKeywords.length >= 1) {
+          // Upvote
+          try { await moltbook.upvotePost(post.id); } catch {}
+
+          const comment = generateContextualComment(matchedKeywords, state.contractAddress);
+          try {
+            await moltbook.createComment(post.id, comment);
+            incrementDailyComments(state);
+            engaged++;
+            state.commentedPosts.push(post.id);
+            console.log(`[Moltbook-Submolt] m/${submoltName}: "${(post.title || "").substring(0, 40)}..." (${matchedKeywords.slice(0, 3).join(", ")})`);
+
+            if (engaged < MAX_SUBMOLT_COMMENTS_PER_HEARTBEAT) {
+              await new Promise((r) => setTimeout(r, COMMENT_COOLDOWN_MS));
+            }
+          } catch (err) {
+            console.log(`[Moltbook-Submolt] Comment failed: ${err.message}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.log(`[Moltbook-Submolt] m/${submoltName} error: ${err.message}`);
+    }
+  }
+
+  saveState(state);
+  if (engaged > 0) console.log(`[Moltbook-Submolt] Engaged ${engaged} in submolts.`);
+  return engaged;
+}
+
+/**
+ * SKILL: Read Home Dashboard — Get comprehensive overview in one call.
+ * Returns: unread counts, activity on your posts, DM status, feed preview.
+ */
+async function readHomeDashboard(moltbook, state) {
+  try {
+    const home = await moltbook.getHome();
+
+    // Log useful overview info
+    const unread = home?.your_notifications?.unread_count || 0;
+    const dmPending = home?.your_direct_messages?.pending_request_count || 0;
+    const dmUnread = home?.your_direct_messages?.unread_message_count || 0;
+    const activityCount = home?.activity_on_your_posts?.length || 0;
+
+    console.log(`[Moltbook-Home] Unread: ${unread} | DM pending: ${dmPending} | DM unread: ${dmUnread} | Activity: ${activityCount}`);
+
+    // Store for other functions to use
+    state._homeData = home;
+    return home;
+  } catch (err) {
+    console.log("[Moltbook-Home] Error:", err.message);
+    return null;
+  }
+}
+
+/**
+ * SKILL: Mark All Notifications Read — Keep notifications clean.
+ */
+async function markNotificationsClean(moltbook) {
+  try {
+    await moltbook.markAllNotificationsRead();
+    console.log("[Moltbook-Notif] Marked all notifications as read.");
+  } catch {
+    // Non-critical
+  }
+}
+
+// (legacy, disabled) Retry on-chain creation for "Proposed" pools.
 /**
  * (g) Retry on-chain creation for pools stuck in "Proposed" status.
- *
- * Eje 3: Retry counter — if a pool fails 3+ times, mark as "Failed" and
- * stop blocking the queue. Expired pools are marked immediately.
  */
 const MAX_POOL_RETRIES = 3;
 
@@ -1067,38 +1438,79 @@ async function runHeartbeat() {
     }
   }
 
-  // (a) Monitor pools
-  if (blockchain && moltbook) {
-    await monitorPools(blockchain, moltbook, state);
-  }
+  // ═══════════════════════════════════════════════════════════════
+  // HEARTBEAT EXECUTION — Priority Order (Moltbook Skill Protocol)
+  // ═══════════════════════════════════════════════════════════════
 
-  // (b) Introduction (one-time)
+  // (0) One-time setup: introduction, subscriptions
   if (moltbook && isClaimed) {
     await ensureIntroduction(moltbook, state);
   }
 
-  // (c) Post new opportunities (now creates on-chain FIRST)
-  if (moltbook && isClaimed) {
-    await postNewOpportunity(moltbook, blockchain, state);
+  // (0.5) Monitor pools on-chain (read-only)
+  if (blockchain && moltbook) {
+    await monitorPools(blockchain, moltbook, state);
   }
 
-  // (c.5) Proposed pools: on-chain creation is done manually by owner.
-  // No automatic retry — pools stay "Proposed" until owner creates on-chain.
+  // ── PRIORITY 1: INTELLIGENCE — Read /home dashboard ──
+  // Before doing ANYTHING, understand what's happening on the platform.
+  if (moltbook) {
+    await readHomeDashboard(moltbook, state);
+  }
 
-  // (d) AGGRESSIVE feed engagement
+  // ── PRIORITY 2: UPVOTES — Batch upvote 15-25 items (max visibility) ──
+  // Unlimited. Every upvote = karma + notification to author.
+  if (moltbook && isClaimed) {
+    await batchUpvoteFeed(moltbook, state);
+  }
+
+  // ── PRIORITY 3: REPLY CHAINS — Continue existing conversations ──
+  // If someone commented on our posts, reply back. Longest threads win.
+  if (moltbook && isClaimed) {
+    await continueReplyChains(moltbook, state);
+  }
+
+  // ── PRIORITY 4: ENGAGEMENT — Comment on 5-10 feed posts ──
+  // Targeted and general engagement with insurance angle.
   if (moltbook && isClaimed) {
     await engageFeed(moltbook, state);
   }
 
-  // (e) Follow management
+  // ── PRIORITY 5: SEARCH & TARGET — Semantic search for relevant posts ──
+  // Moltbook has AI-powered search. Find and engage relevant discussions.
+  if (moltbook && isClaimed) {
+    await searchAndEngage(moltbook, state);
+  }
+
+  // ── PRIORITY 6: SUBMOLT ENGAGEMENT — Participate in target communities ──
+  // Read feeds of specific submolts and comment.
+  if (moltbook && isClaimed) {
+    await engageSubmoltFeeds(moltbook, state);
+  }
+
+  // ── PRIORITY 7: POST — New pool opportunities (5:1 rule) ──
+  // Only AFTER engaging with the network.
+  if (moltbook && isClaimed) {
+    await postNewOpportunity(moltbook, blockchain, state);
+  }
+
+  // ── PRIORITY 8: FOLLOWS — Network growth ──
   if (moltbook && isClaimed) {
     await manageFollows(moltbook, state);
   }
 
-  // (f) Process responses
+  // ── PRIORITY 9: RESPONSES — Process activity, DMs, wallet registrations ──
   if (moltbook) {
     await processResponses(moltbook, state);
   }
+
+  // ── CLEANUP — Mark notifications read ──
+  if (moltbook) {
+    await markNotificationsClean(moltbook);
+  }
+
+  // Clean up temp home data
+  delete state._homeData;
 
   state.lastHeartbeat = new Date().toISOString();
   saveState(state);
@@ -1111,17 +1523,19 @@ async function runHeartbeat() {
 
 async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
-  console.log("║          MUTUALBOT — SUPER SELLER MODE                  ║");
+  console.log("║   MUTUALBOT MOLTBOOK — FULL SKILL PROTOCOL v2           ║");
   console.log("╠══════════════════════════════════════════════════════════╣");
   console.log(`║ MutualPoolV3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Router:       ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(42)}║`);
-  console.log(`║ MPOOLV3:      ${(process.env.MPOOLV3_TOKEN_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Products: ${String(Object.keys(INSURANCE_PRODUCTS).length).padEnd(46)}║`);
   console.log(`║ Oracle: Dual Auth (Judge + Auditor)${" ".repeat(22)}║`);
   console.log(`║ Heartbeat: Every 10 min${" ".repeat(33)}║`);
-  console.log(`║ Max comments/day: 48${" ".repeat(36)}║`);
-  console.log(`║ Max posts/day: 10${" ".repeat(39)}║`);
-  console.log(`║ Target submolts: ${TARGET_SUBMOLTS.length}${" ".repeat(38)}║`);
+  console.log(`║ Skills: Upvotes, Chains, Search, Submolts, DMs${" ".repeat(9)}║`);
+  console.log(`║ Max comments/day: 48 | Max posts/day: 10${" ".repeat(15)}║`);
+  console.log(`║ Max upvotes/cycle: 25 | Search: semantic AI${" ".repeat(12)}║`);
+  console.log(`║ Target submolts: ${String(TARGET_SUBMOLTS.length).padEnd(39)}║`);
+  console.log(`║ Platform: Moltbook (moltbook.com)${" ".repeat(23)}║`);
+  console.log(`║ Pool creation: MANUAL (owner only)${" ".repeat(22)}║`);
   console.log("╚══════════════════════════════════════════════════════════╝");
   console.log();
 

@@ -223,6 +223,69 @@ class MoltbookClient {
     return this._curlPost(`/submolts/${submoltName}/subscribe`, {});
   }
 
+  // --- Downvote ---
+
+  async downvotePost(postId) {
+    return this._curlPost(`/posts/${postId}/downvote`, {});
+  }
+
+  async downvoteComment(commentId) {
+    return this._curlPost(`/comments/${commentId}/downvote`, {});
+  }
+
+  // --- Profile ---
+
+  async getAgentProfile(name) {
+    return this._curlGet("/agents/profile", { name });
+  }
+
+  async updateProfile(fields) {
+    const url = `${BASE_URL}/agents/me`;
+    const bodyJson = JSON.stringify(fields);
+    const cmd = `curl -s --max-time 30 -X PATCH -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" --data-binary @- "${url}"`;
+    const out = execSync(cmd, { input: bodyJson, encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(JSON.parse(out));
+  }
+
+  // --- Submolt feeds and management ---
+
+  async getSubmoltInfo(submoltName) {
+    return this._curlGet(`/submolts/${submoltName}`);
+  }
+
+  async pinPost(submoltName, postId) {
+    return this._curlPost(`/submolts/${submoltName}/pin/${postId}`, {});
+  }
+
+  // --- Following feed filter ---
+
+  async getFollowingFeed(sort = "new", limit = 25) {
+    return this._curlGet("/feed", { filter: "following", sort, limit });
+  }
+
+  // --- Semantic search with type filter ---
+
+  async searchPosts(query, limit = 20) {
+    return this._curlGet("/search", { q: query, type: "posts", limit });
+  }
+
+  async searchAgents(query, limit = 20) {
+    return this._curlGet("/search", { q: query, type: "agents", limit });
+  }
+
+  async searchSubmolts(query, limit = 20) {
+    return this._curlGet("/search", { q: query, type: "submolts", limit });
+  }
+
+  // --- Unfollow ---
+
+  async unfollowAgent(agentName) {
+    const url = `${BASE_URL}/agents/${agentName}/follow`;
+    const cmd = `curl -s --max-time 30 -X DELETE -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" "${url}"`;
+    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(JSON.parse(out));
+  }
+
   // --- Internal Helpers ---
 
   async _handleVerification(data, retryFn) {
