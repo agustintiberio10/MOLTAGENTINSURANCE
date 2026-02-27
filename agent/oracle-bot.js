@@ -90,9 +90,63 @@ const CONFIG = {
   MAX_FOLLOWS_PER_CYCLE: 3,
   MAX_LIKES_PER_CYCLE: 10,
 
+  // ── Rate-limit protection ──
+  // Stagger RPC reads to avoid hammering the node. 200ms between calls
+  // keeps us well under Alchemy/Infura free-tier limits (~300 req/s).
+  // For public Base RPC (mainnet.base.org) this prevents 429 responses.
+  RPC_STAGGER_MS: 200,
+
+  // Cache getPoolV3() results for 60s within a heartbeat cycle.
+  // Prevents redundant reads (monitorTransitions + checkCancellations
+  // + resolveReadyPools can all read the same pool).
+  RPC_CACHE_TTL_MS: 60_000,
+
   // State file
   STATE_FILE: path.join(__dirname, "oracle-state.json"),
 };
+
+// ═══════════════════════════════════════════════════════════════════════
+// RPC READ CACHE — Reduces duplicate on-chain reads within a cycle.
+//
+// Problem: In a single heartbeat, monitorTransitions() reads pool X,
+//          then checkCancellations() reads pool X again, then
+//          resolveReadyPools() reads it a THIRD time.
+//          With 15 active pools, that's 45+ RPC calls per cycle.
+//
+// Solution: Cache with TTL. Reads return cached data if fresh.
+//           Write operations invalidate the relevant pool's cache.
+// ═══════════════════════════════════════════════════════════════════════
+
+const _rpcCache = new Map();
+
+async function getPoolCached(blockchain, poolId) {
+  const key = `pool_${poolId}`;
+  const cached = _rpcCache.get(key);
+
+  if (cached && Date.now() - cached.ts < CONFIG.RPC_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const data = await blockchain.getPoolV3(poolId);
+  _rpcCache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
+function invalidatePool(poolId) {
+  _rpcCache.delete(`pool_${poolId}`);
+}
+
+function clearCache() {
+  _rpcCache.clear();
+}
+
+/**
+ * Small delay between sequential RPC reads.
+ * Prevents bursting the RPC node and getting rate-limited.
+ */
+function stagger() {
+  return new Promise((resolve) => setTimeout(resolve, CONFIG.RPC_STAGGER_MS));
+}
 
 // ── Pool status enum (matches Solidity) ──
 const PoolStatus = {
@@ -170,6 +224,22 @@ function initClients() {
   console.log("[Init] Oracle address:", blockchain.agentAddress);
   console.log("[Init] V3 Contract:", process.env.V3_CONTRACT_ADDRESS);
   console.log("[Init] Router:", process.env.ROUTER_ADDRESS);
+  console.log("[Init] RPC:", process.env.BASE_RPC_URL);
+
+  // ── Rate-limit warnings ──
+  const rpcUrl = process.env.BASE_RPC_URL || "";
+  if (rpcUrl.includes("mainnet.base.org")) {
+    console.warn("[Init] WARNING: Using public Base RPC — rate limits apply.");
+    console.warn("[Init] For production, use Alchemy/Infura with a paid API key:");
+    console.warn("[Init]   BASE_RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY");
+    console.warn("[Init]   BASE_RPC_URL=https://base-mainnet.infura.io/v3/YOUR_KEY");
+  }
+
+  if (!process.env.ETHERSCAN_API_KEY) {
+    console.warn("[Init] WARNING: No ETHERSCAN_API_KEY set.");
+    console.warn("[Init] Gas oracle (oracle.js) will hit free-tier limits.");
+    console.warn("[Init] Get a key: https://etherscan.io/myapikey");
+  }
 
   return { blockchain, moltx };
 }
@@ -346,17 +416,21 @@ async function monitorTransitions(blockchain, moltx, state) {
 
   for (const pool of trackablePools) {
     try {
-      const onchainData = await blockchain.getPoolV3(pool.onchainId);
+      const onchainData = await getPoolCached(blockchain, pool.onchainId);
       const prevStatus = pool.status;
       const newStatus = onchainData.status;
 
-      if (prevStatus === newStatus) continue;
+      if (prevStatus === newStatus) {
+        await stagger();
+        continue;
+      }
 
       console.log(
         `[Monitor] Pool #${pool.onchainId}: ${STATUS_LABELS[prevStatus]} → ${STATUS_LABELS[newStatus]}`
       );
 
       pool.status = newStatus;
+      invalidatePool(pool.onchainId); // Status changed, invalidate cache
 
       // ── Pending → Open: Premium was funded ──
       if (prevStatus === PoolStatus.PENDING && newStatus === PoolStatus.OPEN) {
@@ -380,6 +454,7 @@ async function monitorTransitions(blockchain, moltx, state) {
     } catch (err) {
       console.error(`[Monitor] Error reading pool #${pool.onchainId}:`, err.message);
     }
+    await stagger(); // Rate-limit protection between reads
   }
 
   // ── Check for underfunded pools past deposit deadline → cancel ──
@@ -455,7 +530,7 @@ async function checkCancellations(blockchain, state) {
 
   for (const pool of cancellable) {
     try {
-      const onchainData = await blockchain.getPoolV3(pool.onchainId);
+      const onchainData = await getPoolCached(blockchain, pool.onchainId);
 
       // Only cancel if underfunded (totalCollateral < coverageAmount)
       if (parseFloat(onchainData.totalCollateral) < parseFloat(onchainData.coverageAmount)) {
@@ -463,6 +538,7 @@ async function checkCancellations(blockchain, state) {
 
         const txHash = await blockchain.cancelAndRefundV3(pool.onchainId);
         pool.status = PoolStatus.CANCELLED;
+        invalidatePool(pool.onchainId);
         console.log(`[Cancel] Pool #${pool.onchainId} cancelled, tx: ${txHash}`);
 
         saveState(state);
@@ -473,6 +549,7 @@ async function checkCancellations(blockchain, state) {
         console.error(`[Cancel] Error cancelling pool #${pool.onchainId}:`, err.message);
       }
     }
+    await stagger();
   }
 }
 
@@ -529,6 +606,7 @@ async function resolveReadyPools(blockchain, moltx, state) {
       pool.resolutionTxHash = txHash;
       pool.dualAuthResult = dualAuth;
       pool.claimApproved = claimApproved;
+      invalidatePool(pool.onchainId);
 
       console.log(`[Resolve] Pool #${pool.onchainId} resolved on-chain, tx: ${txHash}`);
 
@@ -848,6 +926,7 @@ async function syncFromChain(blockchain, state) {
         } catch {
           // Skip read errors
         }
+        await stagger();
         continue;
       }
 
@@ -879,6 +958,7 @@ async function syncFromChain(blockchain, state) {
       } catch (err) {
         console.warn(`[Sync] Failed to read pool #${i}:`, err.message);
       }
+      await stagger();
     }
 
     saveState(state);
@@ -930,6 +1010,9 @@ async function heartbeat(blockchain, moltx, state) {
   console.log(`\n${"═".repeat(60)}`);
   console.log(`HEARTBEAT #${state.cycleCount} — ${new Date().toISOString()}`);
   console.log(`${"═".repeat(60)}`);
+
+  // Fresh cache each cycle — stale data from last heartbeat is discarded
+  clearCache();
 
   // ── Step 1: Monitor pool transitions ──
   console.log("\n[1/4] Monitoring pool transitions...");

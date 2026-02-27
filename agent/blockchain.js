@@ -101,6 +101,64 @@ class BlockchainClient {
       this.router = new ethers.Contract(routerAddress, ROUTER_ABI, this.wallet);
       this.routerAddress = routerAddress;
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // NONCE-SAFE TX QUEUE
+    // ══════════════════════════════════════════════════════════════
+    //
+    // Serializes ALL write transactions through a single queue.
+    // Prevents "nonce too low" errors when multiple txs fire in
+    // the same heartbeat cycle (e.g., cancel + resolve + create).
+    //
+    // Flow:
+    //   1. _enqueueTx() chains onto _txQueue (Promise chain)
+    //   2. Fetches nonce from network on first tx, then increments locally
+    //   3. On any error → resets nonce so next tx re-fetches
+    //   4. Each tx waits 1 block confirmation before releasing the queue
+    //
+    this._txQueue = Promise.resolve();
+    this._pendingNonce = null;
+  }
+
+  /**
+   * Serialize a write transaction through the nonce queue.
+   * ALL on-chain writes MUST go through this method.
+   *
+   * @param {Function} txFn - Receives { nonce } and returns a sent tx object
+   * @returns {Promise<{ tx: TransactionResponse, receipt: TransactionReceipt }>}
+   */
+  _enqueueTx(txFn) {
+    const promise = this._txQueue.then(async () => {
+      // Fetch nonce from network if we don't have a local one
+      if (this._pendingNonce === null) {
+        this._pendingNonce = await this.provider.getTransactionCount(
+          this.wallet.address,
+          "pending"
+        );
+        console.log(`[TxQueue] Synced nonce from network: ${this._pendingNonce}`);
+      }
+
+      const nonce = this._pendingNonce;
+
+      try {
+        const tx = await txFn({ nonce });
+        // Optimistically increment nonce for the next queued tx
+        this._pendingNonce = nonce + 1;
+        // Wait for 1 block confirmation before releasing
+        const receipt = await tx.wait(1);
+        console.log(`[TxQueue] Confirmed nonce=${nonce} tx=${tx.hash}`);
+        return { tx, receipt };
+      } catch (err) {
+        // Reset nonce on ANY failure so next tx re-fetches from network
+        console.error(`[TxQueue] Failed nonce=${nonce}: ${err.message}`);
+        this._pendingNonce = null;
+        throw err;
+      }
+    });
+
+    // Keep the queue chain alive even if this tx fails
+    this._txQueue = promise.catch(() => {});
+    return promise;
   }
 
   get agentAddress() {
@@ -273,8 +331,9 @@ class BlockchainClient {
     const coverageWei = ethers.parseUnits(coverageAmount.toString(), 6);
     console.log(`[V3] Creating pool: "${description}" (zero-funded)`);
 
-    const tx = await this.v3.createPool(description, evidenceSource, coverageWei, premiumRate, deadline);
-    const receipt = await tx.wait();
+    const { tx, receipt } = await this._enqueueTx(({ nonce }) =>
+      this.v3.createPool(description, evidenceSource, coverageWei, premiumRate, deadline, { nonce })
+    );
 
     const event = receipt.logs
       .map((log) => {
@@ -299,8 +358,9 @@ class BlockchainClient {
     await this._approveFor(this.routerAddress, amountWei);
 
     console.log(`[V3] Funding premium for pool ${poolId}: ${usdcAmount} USDC via Router`);
-    const tx = await this.router.fundPremiumWithUSDC(poolId, amountWei);
-    await tx.wait();
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.router.fundPremiumWithUSDC(poolId, amountWei, { nonce })
+    );
     console.log(`[V3] Premium funded, tx: ${tx.hash}`);
     return tx.hash;
   }
@@ -315,8 +375,9 @@ class BlockchainClient {
     await this._approveFor(this.routerAddress, amountWei);
 
     console.log(`[V3] Joining pool ${poolId} with ${usdcAmount} USDC via Router`);
-    const tx = await this.router.joinPoolWithUSDC(poolId, amountWei);
-    await tx.wait();
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.router.joinPoolWithUSDC(poolId, amountWei, { nonce })
+    );
     console.log(`[V3] Joined pool ${poolId}, tx: ${tx.hash}`);
     return tx.hash;
   }
@@ -328,8 +389,9 @@ class BlockchainClient {
     if (!this.v3) throw new Error("V3 contract not configured");
 
     console.log(`[V3] Resolving pool ${poolId}, claimApproved=${claimApproved}`);
-    const tx = await this.v3.resolvePool(poolId, claimApproved);
-    await tx.wait();
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.v3.resolvePool(poolId, claimApproved, { nonce })
+    );
     console.log(`[V3] Pool ${poolId} resolved, tx: ${tx.hash}`);
     return tx.hash;
   }
@@ -341,8 +403,9 @@ class BlockchainClient {
     if (!this.v3) throw new Error("V3 contract not configured");
 
     console.log(`[V3] Withdrawing from pool ${poolId}`);
-    const tx = await this.v3.withdraw(poolId);
-    await tx.wait();
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.v3.withdraw(poolId, { nonce })
+    );
     console.log(`[V3] Withdrawn, tx: ${tx.hash}`);
     return tx.hash;
   }
@@ -354,8 +417,9 @@ class BlockchainClient {
     if (!this.v3) throw new Error("V3 contract not configured");
 
     console.log(`[V3] Cancelling pool ${poolId}`);
-    const tx = await this.v3.cancelAndRefund(poolId);
-    await tx.wait();
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.v3.cancelAndRefund(poolId, { nonce })
+    );
     console.log(`[V3] Pool ${poolId} cancelled, tx: ${tx.hash}`);
     return tx.hash;
   }
@@ -367,8 +431,9 @@ class BlockchainClient {
     if (!this.v3) throw new Error("V3 contract not configured");
 
     console.log(`[V3] Emergency resolving pool ${poolId}`);
-    const tx = await this.v3.emergencyResolve(poolId);
-    await tx.wait();
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.v3.emergencyResolve(poolId, { nonce })
+    );
     console.log(`[V3] Pool ${poolId} emergency resolved, tx: ${tx.hash}`);
     return tx.hash;
   }
@@ -480,8 +545,9 @@ class BlockchainClient {
       return null;
     }
     console.log(`[Blockchain] Approving USDC for ${spender}...`);
-    const tx = await this.usdc.approve(spender, amountWei);
-    await tx.wait();
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.usdc.approve(spender, amountWei, { nonce })
+    );
     console.log("[Blockchain] Approved:", tx.hash);
     return tx;
   }
