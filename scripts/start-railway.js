@@ -86,18 +86,26 @@ async function runCycle() {
       console.log("[Railway] ✓ Oracle V3 heartbeat complete");
     }
 
-    // ── MoltBook bot ──
+    // ── MoltBook bot (isolated — errors don't kill MoltX) ──
     if (shouldRunMoltbook && runHeartbeat) {
-      console.log("\n[Railway] ▸ Running MoltBook heartbeat...");
-      await runHeartbeat();
-      console.log("[Railway] ✓ MoltBook heartbeat complete");
+      try {
+        console.log("\n[Railway] ▸ Running MoltBook heartbeat...");
+        await runHeartbeat();
+        console.log("[Railway] ✓ MoltBook heartbeat complete");
+      } catch (mbErr) {
+        console.error("[Railway] ✗ MoltBook heartbeat failed (isolated):", mbErr.message);
+      }
     }
 
-    // ── MoltX bot ──
+    // ── MoltX bot (isolated — errors don't kill MoltBook) ──
     if (shouldRunMoltx && runMoltxHeartbeat) {
-      console.log("\n[Railway] ▸ Running MoltX heartbeat...");
-      await runMoltxHeartbeat();
-      console.log("[Railway] ✓ MoltX heartbeat complete");
+      try {
+        console.log("\n[Railway] ▸ Running MoltX heartbeat...");
+        await runMoltxHeartbeat();
+        console.log("[Railway] ✓ MoltX heartbeat complete");
+      } catch (mxErr) {
+        console.error("[Railway] ✗ MoltX heartbeat failed (isolated):", mxErr.message);
+      }
     }
 
     heartbeatCount++;

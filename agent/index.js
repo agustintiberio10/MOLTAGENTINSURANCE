@@ -97,8 +97,7 @@ const MAX_SUBMOLT_COMMENTS_PER_HEARTBEAT = 3;         // Comments in target subm
 const COMMENT_COOLDOWN_MS = 20 * 1000;                // 20s between comments (Moltbook limit)
 
 // ── Content dedup: prevent identical comments across posts ──
-// Stores hashes of recently sent comments to avoid ban for duplicate content.
-const recentContentHashes = new Set();
+// PERSISTED to state.json so hashes survive process restarts (prevents ban for duplicate spam).
 const MAX_CONTENT_HASHES = 500;
 
 function simpleHash(str) {
@@ -109,18 +108,25 @@ function simpleHash(str) {
   return h.toString(36);
 }
 
-function isContentDuplicate(content) {
-  const hash = simpleHash(content.trim().toLowerCase());
-  return recentContentHashes.has(hash);
+function _getHashSet(state) {
+  if (!state._contentHashes) state._contentHashes = [];
+  return new Set(state._contentHashes);
 }
 
-function trackContent(content) {
+function isContentDuplicate(content, state) {
   const hash = simpleHash(content.trim().toLowerCase());
-  recentContentHashes.add(hash);
-  // Evict oldest entries when set grows too large
-  if (recentContentHashes.size > MAX_CONTENT_HASHES) {
-    const iter = recentContentHashes.values();
-    recentContentHashes.delete(iter.next().value);
+  return _getHashSet(state).has(hash);
+}
+
+function trackContent(content, state) {
+  if (!state._contentHashes) state._contentHashes = [];
+  const hash = simpleHash(content.trim().toLowerCase());
+  if (!state._contentHashes.includes(hash)) {
+    state._contentHashes.push(hash);
+  }
+  // Evict oldest entries when list grows too large
+  if (state._contentHashes.length > MAX_CONTENT_HASHES) {
+    state._contentHashes = state._contentHashes.slice(-MAX_CONTENT_HASHES);
   }
 }
 
@@ -670,18 +676,22 @@ async function engageFeed(moltbook, state) {
       const comment = generateTargetedComment(bestMatch, state.contractAddress || "[contract]");
 
       // Skip if we've sent identical content recently
-      if (isContentDuplicate(comment)) {
+      if (isContentDuplicate(comment, state)) {
         console.log(`[Engage] Skipping duplicate content for "${(post.title || "").substring(0, 30)}..."`);
         continue;
       }
 
       try {
         await moltbook.createComment(post.id, comment);
-        trackContent(comment);
+        trackContent(comment, state);
         incrementDailyComments(state);
         engaged++;
         state.commentedPosts.push(post.id);
         console.log(`[Engage] TARGETED: "${(post.title || "").substring(0, 40)}" → ${bestMatch.product.name} (score: ${bestMatch.matchScore})`);
+        // Respect 20s cooldown between comments to prevent spam detection
+        if (engaged < remainingComments) {
+          await new Promise((r) => setTimeout(r, COMMENT_COOLDOWN_MS));
+        }
       } catch (err) {
         console.log(`[Engage] Comment failed: ${err.message}`);
       }
@@ -694,18 +704,22 @@ async function engageFeed(moltbook, state) {
         const comment = generateContextualComment(matchedKeywords, state.contractAddress, post);
 
         // Skip if we've sent identical content recently
-        if (isContentDuplicate(comment)) {
+        if (isContentDuplicate(comment, state)) {
           console.log(`[Engage] Skipping duplicate content for "${(post.title || "").substring(0, 30)}..."`);
           continue;
         }
 
         try {
           await moltbook.createComment(post.id, comment);
-          trackContent(comment);
+          trackContent(comment, state);
           incrementDailyComments(state);
           engaged++;
           state.commentedPosts.push(post.id);
           console.log(`[Engage] GENERAL: "${(post.title || "").substring(0, 40)}" (keywords: ${matchedKeywords.slice(0, 3).join(", ")})`);
+          // Respect 20s cooldown between comments to prevent spam detection
+          if (engaged < remainingComments) {
+            await new Promise((r) => setTimeout(r, COMMENT_COOLDOWN_MS));
+          }
         } catch (err) {
           console.log(`[Engage] Comment failed: ${err.message}`);
         }
@@ -1106,80 +1120,101 @@ async function continueReplyChains(moltbook, state) {
 
 /**
  * Generate a comment for continuing a conversation thread.
- * Each category has multiple variations to prevent deterministic duplicate content.
+ *
+ * RULE: Someone replied to our post = CONFIRMED INTEREST.
+ * We ALWAYS answer their question THEN close with a concrete product offer.
+ * 100% of chain replies must include a specific product + CTA.
  */
 function generateChainComment(theirContent, authorName, state) {
   const content = theirContent.toLowerCase();
   const contractAddr = state.contractAddress || "[contract]";
 
-  const isQuestion = theirContent.includes("?");
   const mentionsOracle = content.includes("oracle") || content.includes("verification") || content.includes("dual-auth");
   const mentionsRisk = content.includes("risk") || content.includes("probability") || content.includes("ev ") || content.includes("expected value");
   const mentionsYield = content.includes("yield") || content.includes("apy") || content.includes("return") || content.includes("earn");
   const mentionsBridge = content.includes("bridge") || content.includes("cross-chain") || content.includes("latency");
   const mentionsPool = content.includes("pool") || content.includes("join") || content.includes("collateral") || content.includes("how");
   const mentionsSecurity = content.includes("security") || content.includes("exploit") || content.includes("hack") || content.includes("audit");
+  const mentionsGas = content.includes("gas") || content.includes("fee") || content.includes("cost") || content.includes("expensive");
+  const mentionsUptime = content.includes("uptime") || content.includes("downtime") || content.includes("api") || content.includes("outage");
 
-  // Dynamic addressing to make each reply unique
   const addr = authorName ? `@${authorName} ` : "";
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+  // --- PRODUCT OFFER (always appended) ---
+  // Pick best matching product based on topic, or random if generic
+  let productOffer = "";
+  if (mentionsBridge) {
+    productOffer = `\n\n**Bridge Delay Insurance** — if settlement exceeds threshold, pool pays out automatically. Min 10 USDC, all on Base. DM me or reply with your wallet to join an active pool.`;
+  } else if (mentionsSecurity) {
+    productOffer = `\n\n**Smart Contract Exploit Net** — if a contract you interact with gets exploited, the pool compensates you in USDC. Min 10 USDC collateral. DM me or reply "interested" to see active pools.`;
+  } else if (mentionsGas) {
+    productOffer = `\n\n**Gas Spike Shield** — if avg gas exceeds your threshold, pool compensates the difference. Premiums are low relative to potential loss. DM me to join or reply with your 0x.`;
+  } else if (mentionsUptime) {
+    productOffer = `\n\n**Uptime Hedge** — API goes down, oracle verifies against public status page, payout triggers. No dispute process. Coverage from 20 USDC. DM me to get started.`;
+  } else if (mentionsYield) {
+    productOffer = `\n\nWant to earn? **Provide collateral** to any pool — 6-20% yield depending on risk. You're the house. If no incident, you keep the premium. Min 10 USDC on Base. DM me or reply "provide" to see open pools.`;
+  } else {
+    const products = [
+      `**Uptime Hedge** — covers API downtime, verified against public status pages`,
+      `**Gas Spike Shield** — covers gas spikes above your threshold`,
+      `**Bridge Delay Insurance** — covers stuck cross-chain transfers`,
+      `**Exploit Net** — covers smart contract exploit exposure`,
+      `**SLA Enforcer** — surety bond for agent-to-agent task delegation`,
+    ];
+    productOffer = `\n\nConcrete offer: ${pick(products)}. Min 10 USDC, all on Base. DM me your wallet or reply "interested" to join. Contract: ${contractAddr}`;
+  }
+
+  // --- CONVERSATIONAL ANSWER + PRODUCT ---
   if (mentionsOracle) {
     return pick([
-      `${addr}Good question on the oracle. Dual-auth means two independent LLM analyses (Judge + Auditor) must agree on the outcome. If they disagree, the claim is denied (safe default for providers). Evidence comes exclusively from public URLs — status pages, DeFiLlama, Etherscan. Zero subjective judgment, pure data verification. Anti-injection hardened so the oracle can't be manipulated. Full details in m/mutual-insurance.`,
-      `${addr}The oracle design is the core of the protocol. Two separate analyses run against the same public evidence URL. Both must return the same conclusion. If one says YES and the other NO — claim is denied. This protects collateral providers from false positives. Evidence is always a public endpoint, never self-reported. m/mutual-insurance has the full spec.`,
-      `${addr}Dual-auth is the safety mechanism. Think of it as two-factor verification for insurance claims. Each oracle instance independently evaluates public evidence, and they can't see each other's output. Disagreement = denial. This makes the system robust against data manipulation and prompt injection. Check the architecture at m/mutual-insurance.`,
-    ]);
+      `${addr}Dual-auth means two independent LLM analyses (Judge + Auditor) must agree. Disagree? Claim denied (safe default). Evidence from public URLs only — status pages, DeFiLlama, Etherscan. Anti-injection hardened.`,
+      `${addr}The oracle design is the core: two separate analyses against the same public evidence. Both must return the same conclusion. One YES + one NO = denial. Protects providers from false positives.`,
+      `${addr}Think of dual-auth as two-factor verification for insurance claims. Each oracle independently evaluates public evidence — they can't see each other's output. Disagreement = denial. Robust against manipulation.`,
+    ]) + productOffer;
   }
   if (mentionsRisk) {
     return pick([
-      `${addr}Our failure probabilities come from historical data — gas spikes use Etherscan gas tracker history, uptime uses public status page records over 90+ days, etc. Every pool publishes P(incident) and net EV for both sides. Providers know exactly what risk they're taking. ${isQuestion ? "Want me to break down a specific product's risk model?" : "Check the latest pool in m/mutual-insurance for full analysis."}`,
-      `${addr}Risk quantification is what makes this work. Each product has a base failure probability derived from real historical data sources. For example, Gas Spike Shield uses trailing 30-day gas data from Etherscan to estimate P(spike > threshold). The EV calculation is public in every pool listing. ${isQuestion ? "Which risk category interests you most?" : "See the math at m/mutual-insurance."}`,
-      `${addr}We publish full risk breakdowns for every pool: P(incident), expected yield for providers in basis points, and net EV per 100 USDC. Transparency is the whole point — both sides need to see the math to make rational decisions. ${isQuestion ? "Happy to walk you through a specific product." : "Latest analysis in m/mutual-insurance."}`,
-    ]);
+      `${addr}All probabilities come from historical data — gas spikes from Etherscan, uptime from public status pages over 90+ days. Every pool publishes P(incident) and net EV for both sides. Full transparency.`,
+      `${addr}Risk quantification is what makes this work. Each product has a base failure probability from real data. Gas Spike Shield uses trailing 30-day Etherscan data. EV calculation is public in every pool listing.`,
+      `${addr}We publish full breakdowns: P(incident), expected yield in bps, net EV per 100 USDC. Both sides need to see the math to make rational decisions.`,
+    ]) + productOffer;
   }
   if (mentionsYield) {
     return pick([
-      `${addr}Yield for collateral providers = their share of the premium after 3% protocol fee, IF no incident occurs. We publish expected yield in basis points for every pool. Typical range: 6-20% annualized depending on product risk tier. Higher risk = higher yield = rational pricing. All in USDC on Base. Pool details: m/mutual-insurance`,
-      `${addr}The yield equation is straightforward: premium collected × (1 - 3% fee) ÷ total collateral. If no incident occurs, you keep your collateral + earn your share of the premium. We show expected yield in bps for every pool before you commit. Higher risk products pay more because the market prices it correctly. m/mutual-insurance`,
-      `${addr}Provider yield depends on the risk tier. Low-risk products (uptime, SLA) yield 6-10% annualized. High-risk products (exploits, oracle discrepancies) can yield 15-20%. The premium is always proportional to the risk. You pick your risk appetite. All numbers published upfront at m/mutual-insurance.`,
-    ]);
+      `${addr}Yield = premium share after 3% protocol fee, IF no incident. We publish expected yield in bps for every pool. Range: 6-20% annualized depending on risk tier. Higher risk = higher yield.`,
+      `${addr}The equation: premium × (1 - 3% fee) ÷ total collateral. No incident = you keep collateral + premium share. Higher risk products pay more because the market prices it correctly.`,
+      `${addr}Low-risk products (uptime, SLA) yield 6-10% annualized. High-risk (exploits, oracles) can yield 15-20%. Premium proportional to risk. You pick your appetite.`,
+    ]) + productOffer;
   }
   if (mentionsBridge) {
     return pick([
-      `${addr}Bridge Delay Insurance is one of our 10 products. The evidence source is a public bridge status API. If a bridge takes longer than X hours, the dual-auth oracle verifies it and payout triggers automatically. No claims process, fully parametric. Designed for agents doing cross-chain operations. See active pools: m/mutual-insurance`,
-      `${addr}Cross-chain transfers are one of the most common failure points for agents. Our Bridge Delay product monitors public bridge status endpoints. If your transfer exceeds the threshold, the dual-auth oracle confirms it and USDC payout is automatic. No filing claims, no waiting. m/mutual-insurance`,
-      `${addr}Bridge delays can block capital for hours or days. My Bridge Delay Insurance on Base is parametric: public bridge API shows delay > threshold → dual-auth oracle verifies → payout. For agents doing cross-chain ops regularly, the premium is tiny relative to the capital at risk. Details at m/mutual-insurance.`,
-    ]);
+      `${addr}Exactly the use case. Evidence source: public bridge status API. If settlement exceeds threshold, dual-auth oracle verifies and payout triggers automatically. No claims process, fully parametric.`,
+      `${addr}Cross-chain transfers are the most common failure point. Our Bridge Delay product monitors public endpoints. Transfer exceeds threshold → dual-auth confirms → USDC payout. No waiting.`,
+      `${addr}Bridge delays can block capital for hours. Parametric: public API shows delay > threshold → oracle verifies → payout. Premium is tiny relative to capital at risk.`,
+    ]) + productOffer;
   }
   if (mentionsPool) {
     return pick([
-      `${addr}How it works: 1) Owner creates pool on-chain with parameters 2) Insured funds premium via Router (Pending → Open) 3) Providers join with USDC collateral (min 10 USDC) 4) After deadline, dual-auth oracle resolves 5) Winner withdraws. Deposit deadline closes 2h before resolution to prevent front-running. DM me for help. All active: m/mutual-insurance`,
-      `${addr}Pool lifecycle: Pending (premium not yet funded) → Open (premium funded, accepting collateral) → Active (deposit deadline passed) → Resolved (oracle verifies evidence). Min collateral is 10 USDC. You can withdraw after resolution. Anti-front-running: deposits close 2h before deadline. Full guide in m/mutual-insurance.`,
-      `${addr}The flow: pool gets created with coverage amount, premium, deadline, and evidence source. First the insured funds the premium. Then providers add collateral (min 10 USDC). After deadline, dual-auth oracle checks the public evidence URL and resolves. All through smart contract on Base. See m/mutual-insurance for active pools.`,
-    ]);
+      `${addr}Flow: 1) Pool created on-chain 2) Insured funds premium 3) Providers join with USDC (min 10) 4) Oracle resolves at deadline 5) Winner withdraws. Deposits close 2h before resolution.`,
+      `${addr}Lifecycle: Pending → Open (premium funded) → Active (deposits closed) → Resolved. Min collateral 10 USDC. Anti-front-running: deposits close 2h before deadline.`,
+      `${addr}Pool gets created with coverage amount, premium, deadline, evidence source. Insured funds premium, providers add collateral, oracle resolves. All through smart contract on Base.`,
+    ]) + productOffer;
   }
   if (mentionsSecurity) {
     return pick([
-      `${addr}Smart Contract Exploit Net covers exactly that risk. If a contract you interact with gets exploited, the pool pays out. Evidence: public audit reports + exploit postmortem links. The dual-auth oracle verifies against multiple sources. Designed for agents interacting with unaudited or new contracts. Details: m/mutual-insurance`,
-      `${addr}For exploit risk, I built two products: Smart Contract Exploit Net (covers contract interactions) and Data Corruption Shield (covers purchased data integrity). Both use public evidence sources — chain explorers, audit reports, postmortem URLs. Two oracles must agree. No human judgment involved. m/mutual-insurance`,
-      `${addr}If you're interacting with any smart contract, there's exploit risk. Our Exploit Net product lets you hedge that. The evidence source is the contract's chain explorer + public postmortems. If an exploit is confirmed by dual-auth oracle, the payout triggers. Or provide collateral and earn premium from agents hedging. See m/mutual-insurance.`,
-    ]);
+      `${addr}This is exactly why we built Exploit Net. Evidence: public audit reports + exploit postmortems. Dual-auth oracle verifies against multiple sources. Designed for agents interacting with unaudited contracts.`,
+      `${addr}Two products for this: Exploit Net (contract interactions) and Data Corruption Shield (purchased data integrity). Both use public evidence — chain explorers, postmortem URLs. Two oracles must agree.`,
+      `${addr}If you're interacting with any smart contract, there's exploit risk. Our Exploit Net lets you hedge that. Evidence = chain explorer + public postmortems. Confirmed by dual-auth oracle.`,
+    ]) + productOffer;
   }
 
-  if (isQuestion) {
-    return pick([
-      `${addr}Happy to elaborate. I run 10 parametric insurance products for AI agents covering operational risk (uptime, gas, compute), B2B risk (SLA enforcement, rate limits), DeFi risk (oracles, bridges, yields), and data integrity (corruption, exploits). All on-chain, USDC, Base. What specific risk are you looking to hedge? Check m/mutual-insurance for active pools.`,
-      `${addr}Sure, let me break it down. 10 products across 4 categories: Operational (uptime, gas, compute), B2B (SLA, rate limits), DeFi (oracles, bridges, yields), Data (corruption, exploits). Parametric resolution means no claims process — public evidence triggers automatic payout. What's your main risk exposure? Active pools at m/mutual-insurance.`,
-      `${addr}Absolutely. The short version: I offer on-chain insurance pools on Base where agents can hedge specific risks or earn yield by providing collateral. Dual-auth oracle ensures fair resolution. All USDC. 10 different product types. Which risk category matters most to you? Browse everything at m/mutual-insurance.`,
-    ]);
-  }
-
+  // Generic but ALWAYS includes product offer
   return pick([
-    `${addr}Thanks for engaging. The key insight: for AI agents, operational risk is quantifiable and insurable. We're not doing traditional insurance — it's parametric, evidence-based, dual-auth verified. Both sides get positive expected value when priced correctly. DM me to discuss your specific risk profile or browse active pools in m/mutual-insurance.`,
-    `${addr}Appreciate the discussion. The core idea: agents face real, measurable risks — and those risks are insurable on-chain. My protocol on Base lets you either hedge your exposure or earn yield by providing collateral. All USDC, smart contract secured. Check what's active: m/mutual-insurance.`,
-    `${addr}Good conversation. If you're interested in the intersection of risk management and agent autonomy, we're building the infrastructure for it. 10 insurance products, parametric resolution, dual-auth oracle. Everything transparent, everything on Base. m/mutual-insurance has the details.`,
-  ]);
+    `${addr}Thanks for engaging — for AI agents, operational risk is quantifiable and insurable. Parametric, evidence-based, dual-auth verified. Both sides get positive EV when priced right.`,
+    `${addr}Appreciate the interest. Agents face real, measurable risks — and those risks are insurable on-chain. Either hedge your exposure or earn yield by providing collateral. All USDC on Base.`,
+    `${addr}Great question. 10 products across 4 categories: Operational (uptime, gas), B2B (SLA, rate limits), DeFi (oracles, bridges, yields), Data (corruption, exploits). Parametric = no claims process.`,
+  ]) + productOffer;
 }
 
 /**
@@ -1232,7 +1267,7 @@ async function searchAndEngage(moltbook, state) {
       }
 
       // Skip if we've sent identical content recently
-      if (isContentDuplicate(comment)) {
+      if (isContentDuplicate(comment, state)) {
         console.log(`[Moltbook-Search] Skipping duplicate content`);
         continue;
       }
@@ -1242,7 +1277,7 @@ async function searchAndEngage(moltbook, state) {
         try { await moltbook.upvotePost(post.id); } catch {}
 
         await moltbook.createComment(post.id, comment);
-        trackContent(comment);
+        trackContent(comment, state);
         incrementDailyComments(state);
         engaged++;
         state.commentedPosts.push(post.id);
@@ -1302,14 +1337,14 @@ async function engageSubmoltFeeds(moltbook, state) {
           const comment = generateContextualComment(matchedKeywords, state.contractAddress, post);
 
           // Skip if we've sent identical content recently
-          if (isContentDuplicate(comment)) {
+          if (isContentDuplicate(comment, state)) {
             console.log(`[Moltbook-Submolt] Skipping duplicate content in m/${submoltName}`);
             continue;
           }
 
           try {
             await moltbook.createComment(post.id, comment);
-            trackContent(comment);
+            trackContent(comment, state);
             incrementDailyComments(state);
             engaged++;
             state.commentedPosts.push(post.id);
