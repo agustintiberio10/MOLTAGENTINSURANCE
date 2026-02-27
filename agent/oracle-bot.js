@@ -305,7 +305,15 @@ async function maybeCreatePool(blockchain, moltx, state) {
   );
 
   if (!riskResult.approved) {
-    console.warn(`[Create] Risk rejected: ${riskResult.reason}`);
+    const isSemanticReject = riskResult.reason.includes("[SEMANTIC GATE");
+    if (isSemanticReject) {
+      console.error(`[Create] ⛔ SEMANTIC GATE REJECTION — Pool NOT created (zero gas spent)`);
+      console.error(`[Create]   Product: ${product.id} | ${product.displayName}`);
+      console.error(`[Create]   Evidence: ${product.evidenceSources[0]}`);
+      console.error(`[Create]   Reason: ${riskResult.reason}`);
+    } else {
+      console.warn(`[Create] Risk rejected: ${riskResult.reason}`);
+    }
     return;
   }
 
