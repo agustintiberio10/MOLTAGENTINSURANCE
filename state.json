@@ -101,6 +101,12 @@
     "v2": true,
     "v1Address": "0xb8550B07b94149b1B362E4042CE0d02cE037174A"
   },
+  "v3": {
+    "contractAddress": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
+    "routerAddress": "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f",
+    "mpoolV3Token": "0x0757504597288140731888f94F33156e2070191f",
+    "deployedAt": "2026-02-27T00:00:00.000Z"
+  },
   "dailyPosts": {
     "2026-02-26": 3
   },
