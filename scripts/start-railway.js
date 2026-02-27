@@ -1,5 +1,6 @@
 /**
  * Railway Combined Runner — runs both MoltBook + MoltX bots in one service.
+ * v2.1 — FallbackProvider + retry limits + gasLimit fix
  *
  * Features:
  * - HTTP health check endpoint (Railway uses PORT env var)
