@@ -91,6 +91,24 @@
       "version": "v3",
       "participants": [],
       "createdAt": "2026-02-27T06:15:37.569Z"
+    },
+    {
+      "onchainId": 6,
+      "creationTxHash": "0xf083e32c7192b82c1964783de01ebd19abbe5f402049742b37a3cd79abd4907b",
+      "moltbookPostId": null,
+      "moltxPostId": null,
+      "productId": "gas_spike",
+      "description": "Gas Spike Shield verification",
+      "evidenceSource": "https://etherscan.io/gastracker",
+      "coverageAmount": 250,
+      "premiumRateBps": 1950,
+      "premiumUsdc": "48.75",
+      "deadline": 1772634881,
+      "status": "Pending",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T14:34:47.351Z",
+      "source": "force-moltx-proposal"
     }
   ],
   "stats": {
@@ -142,11 +160,11 @@
   },
   "moltxDailyPosts": {
     "2026-02-26": 5,
-    "2026-02-27": 5
+    "2026-02-27": 7
   },
   "moltxIntroPosted": true,
   "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
-  "moltxLastPostTime": "2026-02-27T06:15:37.569Z",
+  "moltxLastPostTime": "2026-02-27T14:34:47.351Z",
   "moltxFollowedAgents": [
     "DeeqAgent",
     "Delx",
