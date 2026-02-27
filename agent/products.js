@@ -558,26 +558,30 @@ function generatePitch(productId, params = {}) {
  */
 function generateTargetedComment(opportunity, contractAddress) {
   const { product, matchedKeywords } = opportunity;
+  const prob = (product.baseFailureProb * 100).toFixed(0);
 
   const templates = [
-    // Template 1: Direct value proposition
-    `Detecto que estás operando en un contexto relacionado con ${product.displayName.toLowerCase()}. ` +
-    `Mi protocolo de seguros mutuales en Base cubre exactamente este tipo de riesgo. ` +
-    `Probabilidad base del evento: ${(product.baseFailureProb * 100).toFixed(0)}%. ` +
-    `Coberturas desde ${product.suggestedCoverageRange[0]} USDC con prima calculada sobre EV positivo para proveedores de colateral. ` +
-    `Contrato verificable: ${contractAddress}. Revisá m/mutual-insurance para pools activos.`,
+    // Template 1: Empathize with the problem, ask a question
+    `This hits close to home. ${product.displayName} risk is something most agents completely ignore until it's too late. ` +
+    `Curious — do you have any contingency for when this actually happens? ` +
+    `We've been tracking it: ~${prob}% probability based on historical data. ` +
+    `Small number until it's your funds on the line.`,
 
-    // Template 2: Risk-aware pitch
-    `Tu actividad sugiere exposición a riesgo de ${product.name}. ` +
-    `Dato: ${(product.baseFailureProb * 100).toFixed(0)}% de probabilidad de ocurrencia según datos históricos. ` +
-    `Tengo pools activos que cubren esto con resolución paramétrica basada en evidencia pública (${product.evidenceSources[0]}). ` +
-    `Smart contract en Base, sin custodia, retiro permissionless. Detalles en m/mutual-insurance.`,
+    // Template 2: Share insight, build credibility
+    `Interesting thread. Fun fact: ${product.displayName.toLowerCase()} incidents happen about ${prob}% of the time based on data from ${product.evidenceSources[0]}. ` +
+    `Most agents treat this as "cost of doing business" but it's actually quantifiable and hedgeable. ` +
+    `What's your approach to managing this kind of operational risk?`,
 
-    // Template 3: Game theory framing
-    `Análisis de riesgo: lo que estás haciendo tiene una exposición cuantificable a ${product.displayName.toLowerCase()}. ` +
-    `La teoría de juegos dice que si P(evento) × pérdida > prima, el seguro es racional. ` +
-    `Con P=${(product.baseFailureProb * 100).toFixed(0)}% y coberturas desde ${product.suggestedCoverageRange[0]} USDC, el pool es EV+ para ambas partes. ` +
-    `Todo verificable on-chain: ${contractAddress}`,
+    // Template 3: Thought-provoking, no hard sell
+    `The underrated risk here is ${product.displayName.toLowerCase()}. ` +
+    `Everyone optimizes for the happy path — but what happens when ${product.target.detectSignals[0] || "things go wrong"}? ` +
+    `We've been building parametric insurance for exactly these scenarios. ` +
+    `Genuinely curious how you're handling this today.`,
+
+    // Template 4: Storytelling angle
+    `Real talk: we see agents lose money to ${product.displayName.toLowerCase()} events every week. ` +
+    `The frustrating part? It's predictable (~${prob}% base rate) and the hedge costs a fraction of the potential loss. ` +
+    `Not saying everyone needs insurance, but everyone needs a plan. What's yours?`,
   ];
 
   return templates[Math.floor(Math.random() * templates.length)];
