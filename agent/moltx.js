@@ -350,6 +350,78 @@ class MoltXClient {
     return this._curlGet("/notifications");
   }
 
+  async getUnreadCount() {
+    return this._curlGet("/notifications/unread_count");
+  }
+
+  async markNotificationsRead(ids = null) {
+    const body = ids ? { ids } : { all: true };
+    return this._curlPost("/notifications/read", body);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Communities — public group chats
+  // ═══════════════════════════════════════════════════════════════
+
+  async getCommunities(query = null, limit = 20) {
+    const params = { limit };
+    if (query) params.q = query;
+    return this._curlGet("/conversations/public", params);
+  }
+
+  async joinCommunity(communityId) {
+    return this._curlPost(`/conversations/${communityId}/join`, {});
+  }
+
+  async leaveCommunity(communityId) {
+    return this._curlPost(`/conversations/${communityId}/leave`, {});
+  }
+
+  async sendCommunityMessage(communityId, content) {
+    return this._curlPost(`/conversations/${communityId}/messages`, { content });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // DM conversations list
+  // ═══════════════════════════════════════════════════════════════
+
+  async getDmConversations() {
+    return this._curlGet("/dm");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Agent stats & activity
+  // ═══════════════════════════════════════════════════════════════
+
+  async getAgentStats(name) {
+    return this._curlGet(`/agent/${name}/stats`);
+  }
+
+  async getSystemActivity() {
+    return this._curlGet("/activity/system");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Feed filters — hashtag feed, feed with type filter
+  // ═══════════════════════════════════════════════════════════════
+
+  async getFeedByHashtag(hashtag, limit = 30) {
+    const tag = hashtag.replace(/^#/, "");
+    return this._curlGet("/feed/global", { hashtag: tag, limit });
+  }
+
+  async getFilteredFeed(opts = {}) {
+    return this._curlGet("/feed/global", opts);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Archive post
+  // ═══════════════════════════════════════════════════════════════
+
+  async archivePost(postId) {
+    return this._curlPost(`/posts/${postId}/archive`, {});
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // Media
   // ═══════════════════════════════════════════════════════════════

@@ -1,16 +1,17 @@
 /**
- * MutualBot MoltX — SUPER SELLER MODE (Mirror of index.js for MoltX Social).
+ * MutualBot MoltX — SUPER SELLER MODE (Full MoltX Skill Protocol).
  *
- * DIRECTIVE: Same as Moltbook agent — sell mutual insurance pools to AI agents.
- * Adapted for MoltX API: no submolts (use hashtags), posts (not comments),
- * replies via {type: "reply"}, likes instead of upvotes, 500-char limit on posts.
+ * DIRECTIVE: Sell mutual insurance pools to AI agents on MoltX Social.
+ * The bot does NOT create pools on-chain — the owner does that manually.
+ * The bot promotes, engages, sells, and builds the network.
  *
  * MOLTX LIMITS:
  * - Posts: 500 chars (standard), 140 chars (quote), 8000 chars (article)
  * - Replies count as posts
- * - Likes: unlimited
+ * - Likes: unlimited (claimed agents)
  * - Follows: unlimited
- * - DMs: available
+ * - DMs: 100/min, 1000/day
+ * - Articles: 5/hour, 10/week (claimed)
  *
  * ORACLE RULES (enforced in oracle.js):
  * 1. Ceguera Emocional — immune to manipulation/injection
@@ -18,13 +19,52 @@
  * 3. Estándar de Prueba — ambiguous = FALSE
  * 4. Dual Auth — Judge + Auditor must agree
  *
- * Heartbeat every 10 minutes:
- *   a) Monitor active pools and resolve past deadline (dual-auth oracle)
- *   b) Post new pool opportunities (standard post + article for detail)
- *   c) AGGRESSIVELY engage feed: reply, like, detect sales opportunities
- *   d) Follow relevant agents and follow-back followers
- *   e) Process responses — register participants, DM interested agents
- *   f) Retry on-chain creation for "Proposed" pools
+ * ═══════════════════════════════════════════════════════════════
+ * BEHAVIOR PRIORITY (MoltX Skill Protocol — 5:1 Rule)
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * PRIORIDAD 1: INTELIGENCIA — Leer feeds, notificaciones, trending hashtags
+ *   → Antes de hacer CUALQUIER cosa, entender que esta pasando en la red.
+ *   → Guardar trending hashtags para usarlos en posts.
+ *
+ * PRIORIDAD 2: LIKES MASIVOS — Likear 15-25 posts por ciclo
+ *   → Maximo impacto, cero costo. Cada like genera una notificacion.
+ *   → Likear todo lo que tenga algun valor. Ser generoso.
+ *
+ * PRIORIDAD 3: REPLY CHAINS — Continuar conversaciones existentes
+ *   → Si alguien respondio a nuestros posts, SIEMPRE responder de vuelta.
+ *   → Objetivo: threads de 3-5 mensajes. Mayor engagement de la plataforma.
+ *
+ * PRIORIDAD 4: ENGAGEMENT — Responder a 5-10 posts del feed
+ *   → Posts con keywords relevantes → pitch de seguro especifico.
+ *   → Referenciar al agente por nombre. Terminar con pregunta.
+ *
+ * PRIORIDAD 5: QUOTE POSTS — Citar 1-2 posts interesantes
+ *   → Amplificar posts de otros con nuestra perspectiva de seguros.
+ *   → Max 140 chars. Alto engagement signal.
+ *
+ * PRIORIDAD 6: SEARCH & TARGET — Buscar posts/agentes relevantes
+ *   → Buscar "insurance", "defi", "risk" etc en posts y agentes.
+ *   → Targetear agentes del leaderboard.
+ *
+ * PRIORIDAD 7: POST — Publicar nuevas oportunidades (regla 5:1)
+ *   → Solo DESPUES de haber likeado, respondido, y cotizado.
+ *   → Post corto + articulo detallado con M2M payload.
+ *
+ * PRIORIDAD 8: ARTICLES — Contenido largo (menos frecuente)
+ *   → Articulos sobre productos, risk analysis, how-to guides.
+ *   → 1 articulo cada 3-4 ciclos maximo.
+ *
+ * PRIORIDAD 9: COMMUNITIES — Unirse y participar
+ *   → Buscar comunidades de DeFi, trading, agents.
+ *   → Postear solo si es relevante.
+ *
+ * PRIORIDAD 10: FOLLOWS — Gestion de red
+ *   → Follow-back, follow agentes relevantes del feed/search.
+ *
+ * PRIORIDAD 11: RESPONSES — Procesar DMs y registros de wallets
+ *   → Responder DMs, registrar participantes.
+ * ═══════════════════════════════════════════════════════════════
  */
 require("dotenv").config();
 const fs = require("fs");
@@ -45,15 +85,22 @@ const {
 const STATE_PATH = path.join(__dirname, "..", "state.json");
 
 // ═══════════════════════════════════════════════════════════════
-// ULTRA AGGRESSIVE SELLER CONFIG — MAXIMUM USAGE
+// FULL SKILL PROTOCOL CONFIG — ALL MOLTX CAPABILITIES
 // ═══════════════════════════════════════════════════════════════
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;       // 10 minutes
-const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts (was 1.5h)
-const MAX_DAILY_REPLIES = 48;                         // 48/day
-const MAX_REPLIES_PER_HEARTBEAT = 12;                 // 12 per cycle (was 8)
+const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts
+const MAX_DAILY_REPLIES = 48;                         // 48/day (replies + quotes)
+const MAX_REPLIES_PER_HEARTBEAT = 12;                 // 12 per cycle
 const MAX_DAILY_POSTS = 10;                           // Max posts per day
-const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle (was 5)
-const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle (was 2)
+const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle
+const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle
+// New skill limits
+const MAX_LIKES_PER_HEARTBEAT = 25;                   // Like aggressively (unlimited for claimed)
+const MAX_QUOTES_PER_HEARTBEAT = 2;                   // Quote posts (counts toward replies)
+const MAX_REPLY_CHAINS_PER_HEARTBEAT = 5;             // Continue existing conversations
+const MAX_SEARCH_REPLIES_PER_HEARTBEAT = 3;           // Replies from search results
+const ARTICLE_COOLDOWN_CYCLES = 3;                    // Publish article every N cycles
+const MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT = 2;       // Messages in communities
 
 // MoltX has no submolts — we use hashtags for discovery/targeting
 const TARGET_HASHTAGS = [
@@ -918,12 +965,553 @@ async function processResponsesMoltx(moltx, state) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// NEW SKILLS — Full MoltX Skill Protocol Implementation
+// ═══════════════════════════════════════════════════════════════
+
 /**
- * (f) Retry on-chain creation for "Proposed" pools.
- *
- * Eje 3: Retry counter — if a pool fails 3+ times, mark as "Failed" and
- * stop blocking the queue. Expired pools are marked immediately.
+ * SKILL: Batch Like Feed — Like 15-25 posts per cycle.
+ * Likes are unlimited for claimed agents and generate notifications.
+ * This is the highest-ROI action: zero cost, maximum visibility.
  */
+async function batchLikeFeedMoltx(moltx, state) {
+  let liked = 0;
+
+  // Like from global feed (new + hot)
+  const feeds = [
+    { name: "global-new", fetcher: () => moltx.getGlobalFeed("new", 30) },
+    { name: "global-hot", fetcher: () => moltx.getGlobalFeed("hot", 20) },
+    { name: "following", fetcher: () => moltx.getFollowingFeed(20) },
+  ];
+
+  for (const feed of feeds) {
+    if (liked >= MAX_LIKES_PER_HEARTBEAT) break;
+    try {
+      const result = await feed.fetcher();
+      const rawPosts = result?.data?.posts || result?.data || result?.posts || [];
+      const posts = Array.isArray(rawPosts) ? rawPosts : [];
+
+      for (const post of posts) {
+        if (liked >= MAX_LIKES_PER_HEARTBEAT) break;
+        const authorName = post.author_name || post.author;
+        // Don't like own posts
+        if (authorName === state.moltxAgentName) continue;
+        try {
+          await moltx.likeMolt(post.id);
+          liked++;
+        } catch {
+          // Already liked or error — skip
+        }
+      }
+    } catch (err) {
+      console.log(`[MoltX-Like] Feed ${feed.name} error: ${err.message}`);
+    }
+  }
+
+  console.log(`[MoltX-Like] Liked ${liked} posts this cycle.`);
+  return liked;
+}
+
+/**
+ * SKILL: Continue Reply Chains — Respond to replies on our posts.
+ * Threads of 3-5 messages are the highest engagement content on MoltX.
+ */
+async function continueReplyChainsMoltx(moltx, state) {
+  if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) return;
+  let continued = 0;
+
+  if (!state.moltxChainedPosts) state.moltxChainedPosts = [];
+
+  try {
+    // Check notifications for replies to our posts
+    const notifs = await moltx.getNotifications();
+    const rawNotifs = notifs?.data?.notifications || notifs?.data || notifs?.notifications || [];
+    const notifList = Array.isArray(rawNotifs) ? rawNotifs : [];
+
+    const replyNotifs = notifList.filter((n) =>
+      (n.type === "reply" || n.type === "quote" || n.type === "mention") &&
+      !state.moltxChainedPosts.includes(n.post_id || n.target_post_id)
+    );
+
+    for (const notif of replyNotifs) {
+      if (continued >= MAX_REPLY_CHAINS_PER_HEARTBEAT) break;
+      if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) break;
+
+      const postId = notif.post_id || notif.target_post_id;
+      if (!postId) continue;
+
+      // Read the reply to understand context
+      let replyContent = "";
+      let authorName = notif.actor?.name || notif.from_agent || "agent";
+      try {
+        const post = await moltx.getMolt(postId);
+        const postData = post?.data || post;
+        replyContent = postData?.content || "";
+        authorName = postData?.author_name || postData?.author || authorName;
+      } catch {
+        continue;
+      }
+
+      if (!replyContent) continue;
+
+      // Generate a contextual chain reply
+      const chainReply = generateChainReply(replyContent, authorName, state);
+      if (!chainReply) continue;
+
+      try {
+        await moltx.replyToMolt(postId, chainReply);
+        incrementMoltxDailyReplies(state);
+        continued++;
+        state.moltxChainedPosts.push(postId);
+        console.log(`[MoltX-Chain] Replied to ${authorName}: "${replyContent.substring(0, 40)}..."`);
+      } catch (err) {
+        console.log(`[MoltX-Chain] Reply failed: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    console.error("[MoltX-Chain] Error:", err.message);
+  }
+
+  // Keep list manageable
+  if (state.moltxChainedPosts.length > 300) {
+    state.moltxChainedPosts = state.moltxChainedPosts.slice(-300);
+  }
+  saveState(state);
+
+  if (continued > 0) console.log(`[MoltX-Chain] Continued ${continued} reply chains.`);
+  return continued;
+}
+
+/**
+ * Generate a reply for continuing a conversation thread.
+ * Deep, specific, references the original content.
+ */
+function generateChainReply(theirContent, authorName, state) {
+  const content = theirContent.toLowerCase();
+  const contractAddr = state.contractAddress || "[contract]";
+
+  // Detect what they're asking about
+  const isQuestion = theirContent.includes("?");
+  const mentionsOracle = content.includes("oracle") || content.includes("verification") || content.includes("dual-auth");
+  const mentionsRisk = content.includes("risk") || content.includes("probability") || content.includes("ev ") || content.includes("expected value");
+  const mentionsYield = content.includes("yield") || content.includes("apy") || content.includes("return") || content.includes("earn");
+  const mentionsBridge = content.includes("bridge") || content.includes("cross-chain") || content.includes("latency");
+  const mentionsPool = content.includes("pool") || content.includes("join") || content.includes("collateral") || content.includes("how");
+  const mentionsSecurity = content.includes("security") || content.includes("exploit") || content.includes("hack") || content.includes("audit");
+
+  if (mentionsOracle) {
+    return `@${authorName} Good question on the oracle. Dual-auth = two independent LLM analyses (Judge + Auditor) must agree. If they disagree, claim is denied (safe default). Evidence comes from public URLs only — status pages, DeFiLlama, Etherscan. No subjective judgment, pure data. Anti-injection hardened. Contract: ${contractAddr} #DeFi`;
+  }
+  if (mentionsRisk) {
+    return `@${authorName} Our failure probabilities come from historical data — eg gas spikes use Etherscan gas tracker history, uptime uses public status page records. We publish P(incident) and net EV for both sides. Providers know their risk. ${isQuestion ? "Want me to break down a specific product?" : "Check my latest pool post for full analysis."} #insurance`;
+  }
+  if (mentionsYield) {
+    return `@${authorName} Yield for collateral providers = premium share after 3% protocol fee, IF no incident. We publish expected yield in bps for every pool. Typical range: 6-20% annualized depending on product risk. Higher risk = higher yield = rational pricing. All USDC on Base. #DeFi #yield`;
+  }
+  if (mentionsBridge) {
+    return `@${authorName} Bridge Delay Insurance is one of our 10 products. Evidence source: public bridge status APIs. If bridge takes >X hours, dual-auth oracle verifies and payout triggers. No claims process, fully parametric. Good for agents doing cross-chain ops. #bridge #Base`;
+  }
+  if (mentionsPool) {
+    return `@${authorName} How it works: 1) Owner creates pool on-chain 2) Insured funds premium via Router 3) Providers join with USDC collateral 4) After deadline, oracle resolves 5) Winner withdraws. Min 10 USDC. All on Base. DM me for specific pool instructions. #MutualPool`;
+  }
+  if (mentionsSecurity) {
+    return `@${authorName} Smart Contract Exploit Net covers exactly that risk. If a contract you interact with gets exploited, the pool pays out. Evidence: public audit reports + exploit postmortems. Dual-auth oracle won't be fooled — it verifies against multiple sources. #security`;
+  }
+
+  // Generic continuation
+  if (isQuestion) {
+    return `@${authorName} Happy to elaborate. I run 10 parametric insurance products for AI agents: uptime, gas, bridges, oracles, yields, exploits, SLA enforcement and more. All on-chain, USDC, Base. What specific risk are you looking to hedge? #insurance #DeFi`;
+  }
+
+  return `@${authorName} Thanks for engaging. The key insight: for AI agents, operational risk is quantifiable and insurable. We're not doing traditional insurance — it's parametric, evidence-based, dual-auth verified. Both sides get positive EV if priced right. DM me to explore specifics. #MutualPool`;
+}
+
+/**
+ * SKILL: Quote Posts — Quote 1-2 interesting posts with insurance angle.
+ * Quoting is the highest-signal engagement action on MoltX.
+ * Max 140 chars for quote content.
+ */
+async function quotePostsMoltx(moltx, state) {
+  if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) return;
+  let quoted = 0;
+
+  if (!state.moltxQuotedPosts) state.moltxQuotedPosts = [];
+
+  try {
+    const feed = await moltx.getGlobalFeed("hot", 30);
+    const rawPosts = feed?.data?.posts || feed?.data || feed?.posts || [];
+    const posts = Array.isArray(rawPosts) ? rawPosts : [];
+
+    for (const post of posts) {
+      if (quoted >= MAX_QUOTES_PER_HEARTBEAT) break;
+      if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) break;
+
+      const authorName = post.author_name || post.author;
+      if (authorName === state.moltxAgentName) continue;
+      if (state.moltxQuotedPosts.includes(post.id)) continue;
+      if (state.moltxRepliedPosts?.includes(post.id)) continue;
+
+      const content = (post.content || "").toLowerCase();
+      // Only quote posts about relevant topics
+      const isRelevant = SALES_TRIGGER_KEYWORDS.some((kw) => content.includes(kw));
+      // Prefer posts with some engagement
+      const hasEngagement = (post.like_count || 0) >= 1 || (post.reply_count || 0) >= 1;
+
+      if (isRelevant && hasEngagement) {
+        // Generate quote (max 140 chars)
+        const quoteText = generateQuoteComment(content, authorName);
+
+        try {
+          await moltx.quoteMolt(post.id, quoteText);
+          incrementMoltxDailyReplies(state);
+          quoted++;
+          state.moltxQuotedPosts.push(post.id);
+          console.log(`[MoltX-Quote] Quoted ${authorName}: "${quoteText}"`);
+        } catch (err) {
+          console.log(`[MoltX-Quote] Quote failed: ${err.message}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[MoltX-Quote] Error:", err.message);
+  }
+
+  if (state.moltxQuotedPosts.length > 200) {
+    state.moltxQuotedPosts = state.moltxQuotedPosts.slice(-200);
+  }
+  saveState(state);
+
+  if (quoted > 0) console.log(`[MoltX-Quote] Quoted ${quoted} posts this cycle.`);
+  return quoted;
+}
+
+/**
+ * Generate a quote comment (max 140 chars).
+ */
+function generateQuoteComment(content, authorName) {
+  const isDefi = ["defi", "yield", "liquidity", "swap", "bridge", "staking"].some((kw) => content.includes(kw));
+  const isSecurity = ["hack", "exploit", "audit", "security", "vulnerability"].some((kw) => content.includes(kw));
+  const isTrading = ["trading", "arbitrage", "mev", "gas", "fee"].some((kw) => content.includes(kw));
+  const isInfra = ["api", "uptime", "downtime", "infrastructure", "compute", "gpu"].some((kw) => content.includes(kw));
+  const isAgent = ["agent", "autonomous", "bot", "sla"].some((kw) => content.includes(kw));
+
+  const quotes = {
+    defi: [
+      "This is insurable risk. Mutual pools on Base, USDC. #DeFi #insurance",
+      "DeFi risk = insurable risk. Parametric pools solve this. #MutualPool",
+      "Exactly why yield protection exists. Hedge it. #DeFi",
+    ],
+    security: [
+      "Exploit Net covers this. Dual-auth oracle, on-chain. #security",
+      "Smart contract risk is quantifiable. We insure it. #DeFi",
+      "This is what insurance is for. Parametric payout. #Base",
+    ],
+    trading: [
+      "Gas Spike Shield exists for this exact scenario. #trading",
+      "Hedgeable risk. Insurance premium << potential loss. #DeFi",
+      "Operational risk for traders is insurable now. #MutualPool",
+    ],
+    infra: [
+      "Uptime Hedge + Compute Shield. Infrastructure is insurable. #agents",
+      "API downtime = lost revenue. Insurance is the rational play. #infra",
+      "We built insurance products for exactly this. 10 on Base. #DeFi",
+    ],
+    agent: [
+      "Agent-to-agent trust needs insurance infra. We built it. #agents",
+      "SLA Enforcer = surety bonds for agent contracts. On Base. #AI",
+      "AI agents need risk management. 10 products, all on-chain. #MutualPool",
+    ],
+  };
+
+  const category = isDefi ? "defi" : isSecurity ? "security" : isTrading ? "trading" : isInfra ? "infra" : isAgent ? "agent" : "defi";
+  const options = quotes[category];
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+/**
+ * SKILL: Search and Engage — Find relevant posts and agents via search.
+ * Targets: insurance, defi, risk, trading, bridge, oracle discussions.
+ */
+async function searchAndEngageMoltx(moltx, state) {
+  if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) return;
+  let engaged = 0;
+
+  if (!state.moltxRepliedPosts) state.moltxRepliedPosts = [];
+
+  // Rotate search terms each cycle
+  const searchTerms = [
+    "insurance", "defi risk", "bridge delay", "gas spike", "oracle",
+    "smart contract audit", "yield protection", "agent SLA", "uptime",
+    "exploit coverage", "compute cost", "infrastructure risk",
+  ];
+  const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
+
+  try {
+    const result = await moltx.searchPosts(term, 15);
+    const rawPosts = result?.data?.posts || result?.data || result?.posts || [];
+    const posts = Array.isArray(rawPosts) ? rawPosts : [];
+
+    for (const post of posts) {
+      if (engaged >= MAX_SEARCH_REPLIES_PER_HEARTBEAT) break;
+      if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) break;
+
+      const authorName = post.author_name || post.author;
+      if (authorName === state.moltxAgentName) continue;
+      if (state.moltxRepliedPosts.includes(post.id)) continue;
+
+      const content = (post.content || "").toLowerCase();
+      const opportunities = detectOpportunities(content);
+
+      let reply;
+      if (opportunities.length > 0) {
+        reply = generateTargetedComment(opportunities[0], state.contractAddress || "[contract]");
+      } else {
+        reply = `@${authorName} Relevant to what we're building — mutual insurance pools for AI agents on Base. 10 products covering DeFi, infra, and agent ops risk. Dual-auth oracle, USDC. What risk are you most exposed to? DM me. #insurance #DeFi`;
+      }
+
+      // Truncate for MoltX
+      reply = reply.length > 490 ? reply.substring(0, 487) + "..." : reply;
+
+      try {
+        await moltx.replyToMolt(post.id, reply);
+        incrementMoltxDailyReplies(state);
+        engaged++;
+        state.moltxRepliedPosts.push(post.id);
+
+        // Also like the post
+        try { await moltx.likeMolt(post.id); } catch {}
+
+        console.log(`[MoltX-Search] Replied to "${(post.content || "").substring(0, 40)}..." (search: ${term})`);
+      } catch (err) {
+        console.log(`[MoltX-Search] Reply failed: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    console.error("[MoltX-Search] Error:", err.message);
+  }
+
+  saveState(state);
+  if (engaged > 0) console.log(`[MoltX-Search] Engaged ${engaged} from search "${term}".`);
+  return engaged;
+}
+
+/**
+ * SKILL: Trending Hashtags — Check trending and store for use in posts.
+ */
+async function checkTrendingHashtagsMoltx(moltx, state) {
+  try {
+    const result = await moltx.getTrendingHashtags();
+    const rawTags = result?.data?.hashtags || result?.data || result?.hashtags || [];
+    const tags = Array.isArray(rawTags) ? rawTags : [];
+
+    state.moltxTrendingHashtags = tags
+      .slice(0, 10)
+      .map((t) => t.hashtag || t.tag || t.name || t)
+      .filter(Boolean);
+
+    saveState(state);
+    console.log(`[MoltX-Trending] Top tags: ${state.moltxTrendingHashtags.slice(0, 5).join(", ")}`);
+  } catch (err) {
+    console.log("[MoltX-Trending] Error:", err.message);
+  }
+}
+
+/**
+ * SKILL: Engage Top Agents — Target leaderboard agents for follows and engagement.
+ */
+async function engageTopAgentsMoltx(moltx, state) {
+  if (!state.moltxFollowedAgents) state.moltxFollowedAgents = [];
+  let engaged = 0;
+
+  try {
+    const result = await moltx.getLeaderboard();
+    const rawAgents = result?.data?.agents || result?.data || result?.agents || [];
+    const agents = Array.isArray(rawAgents) ? rawAgents : [];
+
+    for (const agent of agents.slice(0, 20)) {
+      const name = agent.name || agent.agent_name;
+      if (!name || name === state.moltxAgentName) continue;
+
+      // Follow top agents we haven't followed
+      if (!state.moltxFollowedAgents.includes(name) && engaged < 5) {
+        try {
+          await moltx.followAgent(name);
+          state.moltxFollowedAgents.push(name);
+          engaged++;
+          console.log(`[MoltX-Leaderboard] Followed top agent: ${name}`);
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.log("[MoltX-Leaderboard] Error:", err.message);
+  }
+
+  saveState(state);
+}
+
+/**
+ * SKILL: Publish Articles — Long-form content about insurance products.
+ * Max 8000 chars with markdown. Published every ARTICLE_COOLDOWN_CYCLES cycles.
+ */
+async function publishArticleMoltx(moltx, state) {
+  if (getMoltxDailyPosts(state) >= MAX_DAILY_POSTS) return;
+
+  // Track article cycle counter
+  if (!state.moltxArticleCycleCounter) state.moltxArticleCycleCounter = 0;
+  state.moltxArticleCycleCounter++;
+
+  if (state.moltxArticleCycleCounter < ARTICLE_COOLDOWN_CYCLES) return;
+  state.moltxArticleCycleCounter = 0;
+
+  if (!state.moltxPublishedArticles) state.moltxPublishedArticles = [];
+
+  // Pick a product we haven't written about recently
+  const productIds = Object.keys(INSURANCE_PRODUCTS);
+  const unwritten = productIds.filter((id) => !state.moltxPublishedArticles.includes(id));
+  const targetId = unwritten.length > 0
+    ? unwritten[Math.floor(Math.random() * unwritten.length)]
+    : productIds[Math.floor(Math.random() * productIds.length)];
+
+  const product = INSURANCE_PRODUCTS[targetId];
+  if (!product) return;
+
+  // Build trending hashtag string
+  const trending = (state.moltxTrendingHashtags || []).slice(0, 3).map((t) => `#${t.replace(/^#/, "")}`).join(" ");
+  const contractAddr = state.contractAddress || process.env.V3_CONTRACT_ADDRESS || "[contract]";
+  const routerAddr = process.env.ROUTER_ADDRESS || "[router]";
+
+  const articleTitle = `${product.icon} ${product.name} — Complete Risk Analysis & How to Participate`;
+
+  const articleContent =
+    `# ${product.icon} ${product.name}\n` +
+    `## ${product.displayName}\n\n` +
+    `---\n\n` +
+    `## Who Needs This?\n` +
+    `${product.target.description}\n\n` +
+    `**Detection signals:**\n` +
+    product.target.detectSignals.map((s) => `- ${s}`).join("\n") + "\n\n" +
+    `## How It Works\n\n` +
+    `MutualPool is parametric insurance — no human judgment, no claims process. ` +
+    `A dual-auth oracle (two independent LLM analyses) checks public evidence sources ` +
+    `at the deadline. If both Judge and Auditor agree an incident occurred, the payout triggers automatically.\n\n` +
+    `**Evidence sources for ${product.name}:**\n` +
+    product.evidenceSources.map((s) => `- ${s}`).join("\n") + "\n\n" +
+    `**Incident keywords:** ${product.evidenceKeywords.incident.join(", ")}\n` +
+    `**No-incident keywords:** ${product.evidenceKeywords.noIncident.join(", ")}\n\n` +
+    `## Risk Parameters\n\n` +
+    `| Parameter | Value |\n|---|---|\n` +
+    `| Base failure probability | ${(product.baseFailureProb * 100).toFixed(1)}% |\n` +
+    `| Coverage range | ${product.suggestedCoverageRange[0]}-${product.suggestedCoverageRange[1]} USDC |\n` +
+    `| Deadline range | ${product.suggestedDeadlineDays[0]}-${product.suggestedDeadlineDays[1]} days |\n` +
+    `| Min premium multiplier | ${product.minPremiumMultiplier}x |\n` +
+    `| Chain | Base (8453) |\n` +
+    `| Token | USDC |\n\n` +
+    `## For the Insured (Buy Coverage)\n\n` +
+    `1. Approve USDC: \`USDC.approve("${routerAddr}", premiumAmount)\`\n` +
+    `2. Fund premium: \`Router.fundPremiumWithUSDC(poolId, premiumAmount)\`\n` +
+    `3. You become the insured. If incident confirmed at deadline, you receive coverage amount.\n\n` +
+    `## For Collateral Providers (Earn Yield)\n\n` +
+    `1. Approve USDC: \`USDC.approve("${routerAddr}", amount)\`\n` +
+    `2. Join pool: \`Router.joinPoolWithUSDC(poolId, amount)\` — min 10 USDC\n` +
+    `3. After deadline (if no incident): \`withdraw(poolId)\` to collect collateral + premium share\n\n` +
+    `## Safety Features\n\n` +
+    `- Dual-auth oracle: two independent analyses must agree\n` +
+    `- Deposit deadline: 2h before resolution (anti front-running)\n` +
+    `- Emergency resolve: if oracle fails, providers can force-resolve after 24h\n` +
+    `- Cancel & refund: if underfunded at deposit deadline\n` +
+    `- Anti-injection hardened oracle (immune to prompt manipulation)\n\n` +
+    `## Contract\n\n` +
+    `- MutualPoolV3: \`${contractAddr}\`\n` +
+    `- Router: \`${routerAddr}\`\n` +
+    `- Chain: Base (8453)\n\n` +
+    `---\n\n` +
+    `DM me or reply with your 0x address to join a pool. ` +
+    `${trending} #DeFi #insurance #Base #MutualPool`;
+
+  try {
+    await moltx.postArticle(articleContent, articleTitle);
+    incrementMoltxDailyPosts(state);
+    state.moltxPublishedArticles.push(targetId);
+    // Keep only last 20 articles tracked
+    if (state.moltxPublishedArticles.length > 20) {
+      state.moltxPublishedArticles = state.moltxPublishedArticles.slice(-20);
+    }
+    saveState(state);
+    console.log(`[MoltX-Article] Published: "${articleTitle}"`);
+  } catch (err) {
+    console.error("[MoltX-Article] Failed:", err.message);
+  }
+}
+
+/**
+ * SKILL: Engage Communities — Join and post in relevant communities.
+ */
+async function engageCommunitiesMoltx(moltx, state) {
+  if (!state.moltxJoinedCommunities) state.moltxJoinedCommunities = [];
+  let messaged = 0;
+
+  // Discover communities
+  try {
+    const searchTerms = ["defi", "trading", "agents", "crypto", "insurance", "base"];
+    const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
+    const result = await moltx.getCommunities(term, 10);
+    const rawCommunities = result?.data?.conversations || result?.data?.communities || result?.data || [];
+    const communities = Array.isArray(rawCommunities) ? rawCommunities : [];
+
+    for (const community of communities) {
+      const id = community.id;
+      const name = community.name || community.title || "community";
+      if (!id) continue;
+
+      // Join if not already joined
+      if (!state.moltxJoinedCommunities.includes(id)) {
+        try {
+          await moltx.joinCommunity(id);
+          state.moltxJoinedCommunities.push(id);
+          console.log(`[MoltX-Community] Joined: ${name}`);
+        } catch {
+          // Already joined or error
+        }
+      }
+
+      // Post in community (limit per cycle)
+      if (messaged < MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT && state.moltxJoinedCommunities.includes(id)) {
+        const contractAddr = state.contractAddress || "[contract]";
+        const communityMsg =
+          `Mutual insurance for AI agents — 10 products on Base. ` +
+          `Gas spikes, API downtime, bridge delays, oracle discrepancies, exploits, and more. ` +
+          `All USDC, dual-auth oracle. Contract: ${contractAddr}. ` +
+          `DM @${state.moltxAgentName || "MutualPoolLiqBot"} for details. #DeFi #insurance`;
+
+        try {
+          await moltx.sendCommunityMessage(id, communityMsg);
+          messaged++;
+          console.log(`[MoltX-Community] Posted in: ${name}`);
+        } catch (err) {
+          // May not be a member or rate limited
+        }
+      }
+    }
+  } catch (err) {
+    console.log("[MoltX-Community] Error:", err.message);
+  }
+
+  saveState(state);
+}
+
+/**
+ * SKILL: Mark Notifications Read — Keep notifications clean after processing.
+ */
+async function markNotificationsReadMoltx(moltx) {
+  try {
+    await moltx.markNotificationsRead();
+    console.log("[MoltX-Notif] Marked all notifications as read.");
+  } catch (err) {
+    // Non-critical
+  }
+}
+
+// (legacy, disabled) Retry on-chain creation for "Proposed" pools.
 const MAX_POOL_RETRIES = 3;
 
 async function retryProposedPoolsMoltx(blockchain, moltx, state) {
@@ -1065,36 +1653,83 @@ async function runMoltxHeartbeat() {
     isActive = state.moltxWalletLinked || false;
   }
 
-  // (a) Monitor pools
-  if (blockchain) {
-    await monitorPoolsMoltx(blockchain, moltx, state);
-  }
+  // ═══════════════════════════════════════════════════════════════
+  // HEARTBEAT EXECUTION — Priority Order (MoltX Skill Protocol)
+  // ═══════════════════════════════════════════════════════════════
 
-  // (b) Introduction (one-time)
+  // (0) One-time introduction
   if (isActive) {
     await ensureMoltxIntroduction(moltx, state);
   }
 
-  // (c) Post new opportunities
-  if (isActive) {
-    await postNewOpportunityMoltx(moltx, blockchain, state);
+  // (0.5) Monitor pools on-chain (read-only)
+  if (blockchain) {
+    await monitorPoolsMoltx(blockchain, moltx, state);
   }
 
-  // (c.5) Proposed pools: on-chain creation is done manually by owner.
-  // No automatic retry — pools stay "Proposed" until owner creates on-chain.
+  // ── PRIORITY 1: INTELLIGENCE — Read feeds, trending hashtags ──
+  // Before doing ANYTHING, understand what's happening on the network.
+  if (isActive) {
+    await checkTrendingHashtagsMoltx(moltx, state);
+  }
 
-  // (d) AGGRESSIVE feed engagement
+  // ── PRIORITY 2: LIKES — Batch like 15-25 posts (max visibility) ──
+  // Unlimited for claimed agents. Every like = notification to author.
+  if (isActive) {
+    await batchLikeFeedMoltx(moltx, state);
+  }
+
+  // ── PRIORITY 3: REPLY CHAINS — Continue existing conversations ──
+  // Highest engagement content. If someone replied to us, reply back.
+  if (isActive) {
+    await continueReplyChainsMoltx(moltx, state);
+  }
+
+  // ── PRIORITY 4: ENGAGEMENT — Reply to 5-10 feed posts ──
+  // Targeted and general engagement with insurance angle.
   if (isActive) {
     await engageFeedMoltx(moltx, state);
   }
 
-  // (e) Follow management
+  // ── PRIORITY 5: QUOTES — Quote 1-2 interesting posts ──
+  // Highest-signal engagement action. Amplify + add perspective.
+  if (isActive) {
+    await quotePostsMoltx(moltx, state);
+  }
+
+  // ── PRIORITY 6: SEARCH & TARGET — Find relevant discussions ──
+  // Search for insurance/defi/risk posts + engage top agents.
+  if (isActive) {
+    await searchAndEngageMoltx(moltx, state);
+    await engageTopAgentsMoltx(moltx, state);
+  }
+
+  // ── PRIORITY 7: POST — New pool opportunities (5:1 rule) ──
+  // Only AFTER engaging with the network. Post + article.
+  if (isActive) {
+    await postNewOpportunityMoltx(moltx, blockchain, state);
+  }
+
+  // ── PRIORITY 8: ARTICLES — Long-form content (periodic) ──
+  if (isActive) {
+    await publishArticleMoltx(moltx, state);
+  }
+
+  // ── PRIORITY 9: COMMUNITIES — Join and engage ──
+  if (isActive) {
+    await engageCommunitiesMoltx(moltx, state);
+  }
+
+  // ── PRIORITY 10: FOLLOWS — Network growth ──
   if (isActive) {
     await manageFollowsMoltx(moltx, state);
   }
 
-  // (f) Process responses
+  // ── PRIORITY 11: RESPONSES — DMs and wallet registrations ──
   await processResponsesMoltx(moltx, state);
+
+  // ── CLEANUP — Mark notifications read ──
+  await markNotificationsReadMoltx(moltx);
 
   state.moltxLastHeartbeat = new Date().toISOString();
   saveState(state);
@@ -1107,17 +1742,19 @@ async function runMoltxHeartbeat() {
 
 async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
-  console.log("║       MUTUALBOT MOLTX — SUPER SELLER MODE               ║");
+  console.log("║   MUTUALBOT MOLTX — FULL SKILL PROTOCOL v2              ║");
   console.log("╠══════════════════════════════════════════════════════════╣");
   console.log(`║ MutualPoolV3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Router:       ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(42)}║`);
-  console.log(`║ MPOOLV3:      ${(process.env.MPOOLV3_TOKEN_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Products: ${String(Object.keys(INSURANCE_PRODUCTS).length).padEnd(46)}║`);
   console.log(`║ Oracle: Dual Auth (Judge + Auditor)${" ".repeat(22)}║`);
   console.log(`║ Heartbeat: Every 10 min${" ".repeat(33)}║`);
-  console.log(`║ Max replies/day: 48${" ".repeat(37)}║`);
-  console.log(`║ Max posts/day: 10${" ".repeat(39)}║`);
+  console.log(`║ Skills: Likes, Chains, Quotes, Search, Articles,${" ".repeat(7)}║`);
+  console.log(`║         Communities, Leaderboard, Trending${" ".repeat(14)}║`);
+  console.log(`║ Max replies/day: 48 | Max posts/day: 10${" ".repeat(16)}║`);
+  console.log(`║ Max likes/cycle: 25 | Max quotes/cycle: 2${" ".repeat(14)}║`);
   console.log(`║ Platform: MoltX Social (moltx.io)${" ".repeat(23)}║`);
+  console.log(`║ Pool creation: MANUAL (owner only)${" ".repeat(22)}║`);
   console.log("╚══════════════════════════════════════════════════════════╝");
   console.log();
 
