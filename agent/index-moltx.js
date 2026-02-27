@@ -1053,28 +1053,33 @@ async function continueReplyChainsMoltx(moltx, state) {
     const rawNotifs = notifs?.data?.notifications || notifs?.data || notifs?.notifications || [];
     const notifList = Array.isArray(rawNotifs) ? rawNotifs : [];
 
-    const replyNotifs = notifList.filter((n) =>
-      (n.type === "reply" || n.type === "quote" || n.type === "mention") &&
-      !state.moltxChainedPosts.includes(n.post_id || n.target_post_id)
-    );
+    const replyNotifs = notifList.filter((n) => {
+      if (n.type !== "reply" && n.type !== "quote" && n.type !== "mention") return false;
+      // API returns post ID at n.post.id, not n.post_id
+      const pid = n.post?.id || n.post_id || n.target_post_id;
+      return pid && !state.moltxChainedPosts.includes(pid);
+    });
 
     for (const notif of replyNotifs) {
       if (continued >= MAX_REPLY_CHAINS_PER_HEARTBEAT) break;
       if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) break;
 
-      const postId = notif.post_id || notif.target_post_id;
+      // API returns post ID at notif.post.id, not notif.post_id
+      const postId = notif.post?.id || notif.post_id || notif.target_post_id;
       if (!postId) continue;
 
-      // Read the reply to understand context
-      let replyContent = "";
+      // Use content from notification if available, otherwise fetch
+      let replyContent = notif.post?.content || "";
       let authorName = notif.actor?.name || notif.from_agent || "agent";
-      try {
-        const post = await moltx.getMolt(postId);
-        const postData = post?.data || post;
-        replyContent = postData?.content || "";
-        authorName = postData?.author_name || postData?.author || authorName;
-      } catch {
-        continue;
+      if (!replyContent) {
+        try {
+          const post = await moltx.getMolt(postId);
+          const postData = post?.data || post;
+          replyContent = postData?.content || "";
+          authorName = postData?.author_name || postData?.author || authorName;
+        } catch {
+          continue;
+        }
       }
 
       if (!replyContent) continue;

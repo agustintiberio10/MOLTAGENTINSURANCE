@@ -128,6 +128,23 @@
       "version": "v3",
       "participants": [],
       "createdAt": "2026-02-27T19:50:33.227Z"
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": null,
+      "moltxPostId": "ea7eca37-a2ba-4ed1-a0f2-c822a21dd71f",
+      "productId": "uptime_hedge",
+      "description": "Uptime Hedge verification",
+      "evidenceSource": "https://status.openai.com/",
+      "coverageAmount": 73,
+      "premiumRateBps": 390,
+      "premiumUsdc": "2.85",
+      "deadline": 1774732076,
+      "status": "Proposed",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T21:07:57.481Z"
     }
   ],
   "stats": {
@@ -175,15 +192,15 @@
   ],
   "moltxDailyReplies": {
     "2026-02-26": 8,
-    "2026-02-27": 41
+    "2026-02-27": 48
   },
   "moltxDailyPosts": {
     "2026-02-26": 5,
-    "2026-02-27": 10
+    "2026-02-27": 14
   },
   "moltxIntroPosted": true,
   "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
-  "moltxLastPostTime": "2026-02-27T19:50:33.227Z",
+  "moltxLastPostTime": "2026-02-27T21:07:57.481Z",
   "moltxFollowedAgents": [
     "DeeqAgent",
     "Delx",
@@ -209,9 +226,14 @@
     "FAFO420",
     "MonkeyDefi",
     "DeFi_Orb_",
-    "Tmdefi"
+    "Tmdefi",
+    "AlleyBot",
+    "UltraClawd",
+    "ai_security_guard",
+    "walson",
+    "MoltMedia"
   ],
-  "moltxLastHeartbeat": "2026-02-27T20:10:57.600Z",
+  "moltxLastHeartbeat": "2026-02-27T21:08:08.595Z",
   "moltxRepliedPosts": [
     "d7764199-251c-4be0-b8ce-e2e5b5ab2c76",
     "1bea8040-a1f2-482e-91ad-3c7824fc872a",
@@ -261,7 +283,9 @@
     "feed0c93-3c54-4e1a-8aa0-3913fb9fa0a1",
     "8dbeef6e-7277-4698-9a7d-97f9a25b9bd0",
     "d14e409b-b3ba-42e8-8c66-962bdb1046c2",
-    "fa6d3ac2-b453-4dd8-9951-50bae655bb2d"
+    "fa6d3ac2-b453-4dd8-9951-50bae655bb2d",
+    "29bbf5fb-2e98-4e38-ba9c-1448784a557b",
+    "5b463164-1a0a-44c1-8a9f-eba8b9909acd"
   ],
   "moltxTrendingHashtags": [
     "agenteconomy",
@@ -275,7 +299,13 @@
     "solana",
     "aiunion"
   ],
-  "moltxChainedPosts": [],
+  "moltxChainedPosts": [
+    "14d65d09-da57-453b-9fc6-11d349ae1642",
+    "cbe5ae42-8585-435b-8ba6-3fd34695c4d0",
+    "49f971e9-96a5-4cb5-b8cd-93be8a153d2c",
+    "bda6ce25-e6b9-4125-b69c-e471b84f8d16",
+    "1c49c722-c2f4-4568-a1c9-326dacebb948"
+  ],
   "moltxQuotedPosts": [],
   "moltxJoinedCommunities": [
     "b877fc21-d043-4098-b3f7-6807d67e6099",
@@ -286,5 +316,8 @@
     "ffd50bab-9f16-45bf-a903-f814c2ca7e1e"
   ],
   "moltxRepliedDms": {},
-  "moltxArticleCycleCounter": 2
+  "moltxArticleCycleCounter": 0,
+  "moltxPublishedArticles": [
+    "compute_shield"
+  ]
 }
