@@ -4,7 +4,7 @@
   "contractAddress": "0x09506A77c51f8261Ba6018fd9DE41DEe0Cb0Dd4D",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-02-26T22:49:05.776Z",
+  "lastHeartbeat": "2026-02-27T14:01:29.808Z",
   "pools": [
     {
       "onchainId": null,
@@ -57,7 +57,8 @@
     "totalParticipants": 0
   },
   "dailyComments": {
-    "2026-02-26": 13
+    "2026-02-26": 13,
+    "2026-02-27": 0
   },
   "lastPostTime": "2026-02-26T22:12:08.320Z",
   "moltxRegistered": true,
@@ -95,14 +96,15 @@
         "status": "held_by_owner"
       }
     },
-    "stakingContract": "0x6c86d5E24Bfb6D154B05d2a3cCD233548A038FD5",
-    "feeRouter": "0x82b4be13b4756c483bE9bCD73A0c24837513e627",
-    "feeSystemDeployedAt": "2026-02-27T00:00:00.000Z",
+    "stakingContract": "0x418746668124f8E2b028F3cb563c6a6FF9cC0174",
+    "feeRouter": "0x6b6Da3a7992cBB792579Aec2548339997EF469FA",
+    "feeSystemDeployedAt": "2026-02-26T23:59:48.778Z",
     "v2": true,
     "v1Address": "0xb8550B07b94149b1B362E4042CE0d02cE037174A"
   },
   "dailyPosts": {
-    "2026-02-26": 3
+    "2026-02-26": 3,
+    "2026-02-27": 0
   },
   "subscribedSubmolts": true,
   "introPosted": true,
@@ -148,5 +150,42 @@
     "d9551dcc-553f-42d3-8c9c-2210572c204e",
     "db9f20d5-35be-4f77-a6ee-d2a139b040b0",
     "2682e654-5418-4af0-90f8-359cfb6a88a3"
-  ]
+  ],
+  "v3": {
+    "contract": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
+    "router": "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f",
+    "oracle": "0x2b4D825417f568231e809E31B9332ED146760337",
+    "deployedAt": "2026-02-27T03:00:39.589Z",
+    "network": "baseMainnet"
+  },
+  "mpoolV3Token": {
+    "address": "0x0757504597288140731888f94F33156e2070191f",
+    "pool": "0x9B34300d5b84e3CAD7F54f90B19EBF6275A60913",
+    "deployTx": "0xc3c94f2786cc58929404a886190a1226733f6ac92d7ba6b4dff9b23188ff5da5",
+    "name": "MutualPool V3 Token",
+    "symbol": "MPOOLV3",
+    "totalSupply": "10000000",
+    "lpAllocation": "4000000",
+    "ownerAllocation": "6000000",
+    "launchedAt": "2026-02-27T03:01:38.535Z",
+    "distribution": {
+      "stakingRewards": {
+        "amount": "2500000",
+        "status": "pending_transfer"
+      },
+      "treasury": {
+        "amount": "2000000",
+        "status": "held_by_owner"
+      },
+      "airdropReserve": {
+        "amount": "1000000",
+        "status": "held_by_owner"
+      },
+      "teamVesting": {
+        "amount": "500000",
+        "vestingMonths": 12,
+        "status": "held_by_owner"
+      }
+    }
+  }
 }
