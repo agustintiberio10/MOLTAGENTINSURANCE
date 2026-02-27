@@ -18,7 +18,7 @@
       "participants": [],
       "createdAt": "2026-02-26T02:01:44.337Z",
       "retries": 3,
-      "failReason": "Deadline passed — cleaned during maintenance"
+      "failReason": "Deadline passed \u2014 cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -35,7 +35,7 @@
       "participants": [],
       "createdAt": "2026-02-26T22:12:08.320Z",
       "retries": 3,
-      "failReason": "Deadline passed — cleaned during maintenance"
+      "failReason": "Deadline passed \u2014 cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -53,7 +53,7 @@
       "participants": [],
       "createdAt": "2026-02-26T22:14:24.791Z",
       "retries": 3,
-      "failReason": "Deadline passed — cleaned during maintenance"
+      "failReason": "Deadline passed \u2014 cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -67,13 +67,14 @@
       "premiumRateBps": 2600,
       "premiumUsdc": "5.72",
       "deadline": 1772430028,
-      "status": "Proposed",
+      "status": "Expired",
       "version": "v3",
       "participants": [],
       "createdAt": "2026-02-27T05:40:30.512Z",
       "retries": 1,
       "lastRetryError": "no runners?!",
-      "lastRetryAt": "2026-02-27T05:40:32.235Z"
+      "lastRetryAt": "2026-02-27T05:40:32.235Z",
+      "failReason": "Bot no longer creates pools on-chain \u2014 done manually by owner"
     },
     {
       "onchainId": null,
@@ -87,10 +88,11 @@
       "premiumRateBps": 1950,
       "premiumUsdc": "39.00",
       "deadline": 1772777735,
-      "status": "Proposed",
+      "status": "Expired",
       "version": "v3",
       "participants": [],
-      "createdAt": "2026-02-27T06:15:37.569Z"
+      "createdAt": "2026-02-27T06:15:37.569Z",
+      "failReason": "Bot no longer creates pools on-chain \u2014 done manually by owner"
     },
     {
       "onchainId": 6,
@@ -109,6 +111,42 @@
       "participants": [],
       "createdAt": "2026-02-27T14:34:47.351Z",
       "source": "force-moltx-proposal"
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": null,
+      "moltxPostId": null,
+      "productId": "compute_shield",
+      "description": "Compute Spot-Price Shield verification",
+      "evidenceSource": "https://www.runpod.io/pricing",
+      "coverageAmount": 26,
+      "premiumRateBps": 2600,
+      "premiumUsdc": "6.76",
+      "deadline": 1772913032,
+      "status": "Posted",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T19:50:33.227Z",
+      "note": "On-chain creation is manual. Pool posted on social only."
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": null,
+      "moltxPostId": "ea7eca37-a2ba-4ed1-a0f2-c822a21dd71f",
+      "productId": "uptime_hedge",
+      "description": "Uptime Hedge verification",
+      "evidenceSource": "https://status.openai.com/",
+      "coverageAmount": 73,
+      "premiumRateBps": 390,
+      "premiumUsdc": "2.85",
+      "deadline": 1774732076,
+      "status": "Posted",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T21:07:57.481Z",
+      "note": "On-chain creation is manual. Pool posted on social only."
     }
   ],
   "stats": {
@@ -156,15 +194,15 @@
   ],
   "moltxDailyReplies": {
     "2026-02-26": 8,
-    "2026-02-27": 5
+    "2026-02-27": 6
   },
   "moltxDailyPosts": {
     "2026-02-26": 5,
-    "2026-02-27": 7
+    "2026-02-27": 0
   },
   "moltxIntroPosted": true,
   "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
-  "moltxLastPostTime": "2026-02-27T14:34:47.351Z",
+  "moltxLastPostTime": "2026-02-27T21:07:57.481Z",
   "moltxFollowedAgents": [
     "DeeqAgent",
     "Delx",
@@ -178,9 +216,26 @@
     "PikiTheArchitect",
     "Meridian",
     "Base_Market_Intelligence",
-    "b0tresch_"
+    "b0tresch_",
+    "ZoBucksAI",
+    "ClawdNation_bot",
+    "Akay",
+    "metamorph1x3",
+    "BreadBaker",
+    "AlphaMoltx",
+    "AiTrading",
+    "canza_app",
+    "FAFO420",
+    "MonkeyDefi",
+    "DeFi_Orb_",
+    "Tmdefi",
+    "AlleyBot",
+    "UltraClawd",
+    "ai_security_guard",
+    "walson",
+    "MoltMedia"
   ],
-  "moltxLastHeartbeat": "2026-02-27T05:40:59.825Z",
+  "moltxLastHeartbeat": "2026-02-27T21:15:15.381Z",
   "moltxRepliedPosts": [
     "d7764199-251c-4be0-b8ce-e2e5b5ab2c76",
     "1bea8040-a1f2-482e-91ad-3c7824fc872a",
@@ -194,6 +249,85 @@
     "8c703851-cfe2-4cb9-a18d-09cbdd44768b",
     "ca3f201d-4f6d-4e2f-a1d9-0e5798b1841a",
     "ba88b746-f05c-4155-ba66-b72a3a2da67a",
-    "3bd2190f-aedd-4a4f-8335-ee2e2d23d405"
-  ]
+    "3bd2190f-aedd-4a4f-8335-ee2e2d23d405",
+    "ee8b497a-4edf-472a-b1ce-4c4d9e971640",
+    "7467b864-fb65-466e-bc9a-ef83f8e2733e",
+    "e5c1c677-81c8-477d-b35a-8957a23ed48a",
+    "593745d7-4255-4055-8cc4-42284b2d81a5",
+    "c011c7d0-11d5-4334-b5ea-6fa689259e2b",
+    "ab4f74ed-6836-47d7-b560-b83e5016bcd7",
+    "2002cedb-cff8-4bf5-b673-3923d39e6db8",
+    "5ce7cc9e-3633-4ad5-8eb7-a03c1d086a2e",
+    "4d52a137-442f-4a0c-949b-8e8d59410aab",
+    "2d383f52-d85a-4abe-a626-a488fd7c4860",
+    "b8917177-4c7f-4795-be52-fd21721f8293",
+    "99bc7092-1e58-4348-bf84-87033a309b2a",
+    "c148bb15-a26e-484a-8c3f-5c1c4548a08f",
+    "b82462fe-d982-4b48-a632-1a1acc2c1052",
+    "cd28ee18-2d9e-47ee-88a3-3e3cfac56a0e",
+    "e90019d3-4210-44dd-a89b-7f8ade34b26e",
+    "85352bc5-085c-417e-85dc-1b697fc9e22f",
+    "d5efdffe-16a3-4694-acef-d881b698cc74",
+    "6125711e-af25-49c7-adf6-7d0335ad20b2",
+    "d6ab85a0-b046-41f3-8219-c259cd2c3554",
+    "07bd905a-c6cf-4b6b-89b4-339228f23b3a",
+    "0e5a5ee3-3b98-4018-b49b-992480af8a32",
+    "1904a8ab-74cb-407d-b4fa-013e0b672d39",
+    "b1cea9ff-56dc-42a6-b75d-ce0bf55362d9",
+    "194c915e-5869-41f6-b074-8a8b40e91129",
+    "4daeb11e-e74b-4c5a-ba6c-0749bf262bd2",
+    "5af8c9b8-4405-4b57-b1ab-a7de53c24f29",
+    "8f8afa2a-1598-42d5-8539-4e54fc012958",
+    "43bc85c7-7acb-4821-ad26-13f5f9d14b2c",
+    "b8ff070e-aa19-4b3c-9777-23948844e3bb",
+    "abfad819-651e-4bfe-8240-9880099e874d",
+    "57ddd67b-297c-45ce-be65-7fbb38a0e7dd",
+    "feed0c93-3c54-4e1a-8aa0-3913fb9fa0a1",
+    "8dbeef6e-7277-4698-9a7d-97f9a25b9bd0",
+    "d14e409b-b3ba-42e8-8c66-962bdb1046c2",
+    "fa6d3ac2-b453-4dd8-9951-50bae655bb2d",
+    "29bbf5fb-2e98-4e38-ba9c-1448784a557b",
+    "5b463164-1a0a-44c1-8a9f-eba8b9909acd",
+    "e8df8274-7fb8-473c-a2fb-4e5d8aed8a9f",
+    "9a6b0e71-d26e-4576-8944-9b50cb2f0e27",
+    "263d1ae5-0a8e-40d6-9d3f-d7833dd57292",
+    "4a26c8d4-2967-4d4f-847e-4c2479ca5952",
+    "99855050-33cc-4a2c-87a8-3f36a730874c"
+  ],
+  "moltxTrendingHashtags": [
+    "agenteconomy",
+    "base",
+    "agents",
+    "crypto",
+    "moltx",
+    "aiagents",
+    "building",
+    "defi",
+    "solana",
+    "aiunion"
+  ],
+  "moltxChainedPosts": [
+    "14d65d09-da57-453b-9fc6-11d349ae1642",
+    "cbe5ae42-8585-435b-8ba6-3fd34695c4d0",
+    "49f971e9-96a5-4cb5-b8cd-93be8a153d2c",
+    "bda6ce25-e6b9-4125-b69c-e471b84f8d16",
+    "1c49c722-c2f4-4568-a1c9-326dacebb948",
+    "f87121d7-d288-4091-9fbf-376ee352fd24"
+  ],
+  "moltxQuotedPosts": [],
+  "moltxJoinedCommunities": [
+    "b877fc21-d043-4098-b3f7-6807d67e6099",
+    "3454cdef-ed7e-4b48-8fa8-3c462c0de1d5",
+    "5b741532-af13-4ece-b98f-ce5dbe945d8b",
+    "299c3668-3cc2-44c5-9111-3e0cd77f89b3",
+    "162de8f8-ace9-4bbf-b9ed-80a2fa5e5398",
+    "ffd50bab-9f16-45bf-a903-f814c2ca7e1e",
+    "5b350280-fa40-45f4-a7a0-ecfe3921b660"
+  ],
+  "moltxRepliedDms": {},
+  "moltxArticleCycleCounter": 2,
+  "moltxPublishedArticles": [
+    "compute_shield"
+  ],
+  "moltxPoolCycleCounter": 2
 }
