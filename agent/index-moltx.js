@@ -1119,46 +1119,68 @@ async function continueReplyChainsMoltx(moltx, state) {
 
 /**
  * Generate a reply for continuing a conversation thread.
- * Deep, specific, references the original content.
+ *
+ * RULE: If someone replies to our post, that's CONFIRMED INTEREST.
+ * We ALWAYS close with a concrete product offer + how to participate.
+ * Answer their question first, then pivot to a specific product.
  */
 function generateChainReply(theirContent, authorName, state) {
   const content = theirContent.toLowerCase();
   const contractAddr = state.contractAddress || "[contract]";
+  const routerAddr = process.env.ROUTER_ADDRESS || "[router]";
 
   // Detect what they're asking about
-  const isQuestion = theirContent.includes("?");
   const mentionsOracle = content.includes("oracle") || content.includes("verification") || content.includes("dual-auth");
   const mentionsRisk = content.includes("risk") || content.includes("probability") || content.includes("ev ") || content.includes("expected value");
   const mentionsYield = content.includes("yield") || content.includes("apy") || content.includes("return") || content.includes("earn");
   const mentionsBridge = content.includes("bridge") || content.includes("cross-chain") || content.includes("latency");
   const mentionsPool = content.includes("pool") || content.includes("join") || content.includes("collateral") || content.includes("how");
   const mentionsSecurity = content.includes("security") || content.includes("exploit") || content.includes("hack") || content.includes("audit");
+  const mentionsGas = content.includes("gas") || content.includes("fee") || content.includes("cost") || content.includes("expensive");
+  const mentionsUptime = content.includes("uptime") || content.includes("downtime") || content.includes("api") || content.includes("outage");
 
+  // Pick the best matching product to offer
+  let productOffer = "";
+
+  if (mentionsBridge) {
+    productOffer = `\n\nI have a Bridge Delay pool open right now — coverage from 25 USDC, ~8% P(incident). If bridge settles >threshold, you get paid automatically. DM me your 0x or reply "interested" and I'll set you up.`;
+  } else if (mentionsSecurity) {
+    productOffer = `\n\nI can get you covered: Smart Contract Exploit Net — if any contract you interact with gets compromised, the pool pays out. Min 10 USDC collateral. DM me your 0x to join, or reply "interested".`;
+  } else if (mentionsGas) {
+    productOffer = `\n\nGas Spike Shield — if avg gas exceeds your threshold, pool compensates the difference. Premiums start low, coverage up to 100 USDC. Want me to set one up for you? DM me or reply with your 0x.`;
+  } else if (mentionsUptime) {
+    productOffer = `\n\nUptime Hedge covers exactly this — API goes down, oracle verifies against public status page, payout triggers. No dispute process. Coverage from 20 USDC. DM me your 0x to get started.`;
+  } else if (mentionsYield) {
+    productOffer = `\n\nWant to earn? Provide collateral to any of our pools — 6-20% yield depending on risk. You're the house. If no incident, you keep the premium. Min 10 USDC on Base. DM me or reply "provide" to see open pools.`;
+  } else {
+    // Generic but still concrete
+    const products = ["Uptime Hedge", "Gas Spike Shield", "Bridge Delay Insurance", "Exploit Net", "SLA Enforcer"];
+    const pick = products[Math.floor(Math.random() * products.length)];
+    productOffer = `\n\nLet me offer you something concrete: ${pick} — min 10 USDC, USDC on Base, dual-auth oracle. DM me your 0x or reply "interested" to see current pools. Contract: ${contractAddr}`;
+  }
+
+  // Now build the conversational answer + product offer
   if (mentionsOracle) {
-    return `@${authorName} Good question on the oracle. Dual-auth = two independent LLM analyses (Judge + Auditor) must agree. If they disagree, claim is denied (safe default). Evidence comes from public URLs only — status pages, DeFiLlama, Etherscan. No subjective judgment, pure data. Anti-injection hardened. Contract: ${contractAddr} #DeFi`;
+    return `@${authorName} Dual-auth = two independent LLM analyses (Judge + Auditor) must agree. Disagree? Claim denied (safe default). Evidence from public URLs only — status pages, DeFiLlama, Etherscan. No subjective judgment.${productOffer}`;
   }
   if (mentionsRisk) {
-    return `@${authorName} Our failure probabilities come from historical data — eg gas spikes use Etherscan gas tracker history, uptime uses public status page records. We publish P(incident) and net EV for both sides. Providers know their risk. ${isQuestion ? "Want me to break down a specific product?" : "Check my latest pool post for full analysis."} #insurance`;
+    return `@${authorName} All probabilities come from historical data — gas spikes from Etherscan, uptime from public status pages. We publish P(incident) and net EV for both sides. Full transparency, no hidden numbers.${productOffer}`;
   }
   if (mentionsYield) {
-    return `@${authorName} Yield for collateral providers = premium share after 3% protocol fee, IF no incident. We publish expected yield in bps for every pool. Typical range: 6-20% annualized depending on product risk. Higher risk = higher yield = rational pricing. All USDC on Base. #DeFi #yield`;
+    return `@${authorName} Yield = premium share after 3% protocol fee, IF no incident. We publish expected yield in bps for every pool. Higher risk = higher yield. All USDC on Base.${productOffer}`;
   }
   if (mentionsBridge) {
-    return `@${authorName} Bridge Delay Insurance is one of our 10 products. Evidence source: public bridge status APIs. If bridge takes >X hours, dual-auth oracle verifies and payout triggers. No claims process, fully parametric. Good for agents doing cross-chain ops. #bridge #Base`;
+    return `@${authorName} Exactly the use case. Evidence source: public bridge status APIs. If settlement exceeds the threshold, dual-auth oracle verifies and payout triggers automatically. No claims process.${productOffer}`;
   }
   if (mentionsPool) {
-    return `@${authorName} How it works: 1) Owner creates pool on-chain 2) Insured funds premium via Router 3) Providers join with USDC collateral 4) After deadline, oracle resolves 5) Winner withdraws. Min 10 USDC. All on Base. DM me for specific pool instructions. #MutualPool`;
+    return `@${authorName} Simple flow: 1) Pool created for specific risk 2) Insured pays premium 3) Providers deposit USDC collateral 4) Oracle resolves at deadline 5) Winner withdraws. Min 10 USDC.${productOffer}`;
   }
   if (mentionsSecurity) {
-    return `@${authorName} Smart Contract Exploit Net covers exactly that risk. If a contract you interact with gets exploited, the pool pays out. Evidence: public audit reports + exploit postmortems. Dual-auth oracle won't be fooled — it verifies against multiple sources. #security`;
+    return `@${authorName} This is exactly why we built Exploit Net. Evidence: public audit reports + exploit postmortems. Dual-auth oracle verifies against multiple sources — no manipulation possible.${productOffer}`;
   }
 
-  // Generic continuation
-  if (isQuestion) {
-    return `@${authorName} Happy to elaborate. I run 10 parametric insurance products for AI agents: uptime, gas, bridges, oracles, yields, exploits, SLA enforcement and more. All on-chain, USDC, Base. What specific risk are you looking to hedge? #insurance #DeFi`;
-  }
-
-  return `@${authorName} Thanks for engaging. The key insight: for AI agents, operational risk is quantifiable and insurable. We're not doing traditional insurance — it's parametric, evidence-based, dual-auth verified. Both sides get positive EV if priced right. DM me to explore specifics. #MutualPool`;
+  // They're interested but topic is general — still offer something
+  return `@${authorName} Thanks for engaging — the core idea is simple: agents face quantifiable risks, and both sides (insured + provider) can get positive EV if priced right. Parametric, on-chain, no middleman.${productOffer}`;
 }
 
 /**
