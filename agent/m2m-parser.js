@@ -34,13 +34,8 @@ const MAX_AMOUNT_USDC = 10_000;
 const ALLOWED_ACTIONS = {
   approve: {
     method: "approve(address,uint256)",
-    target: "usdc",
-    description: "Approve USDC spending for Router contract",
-  },
-  joinPool: {
-    method: "joinPool(uint256,uint256)",
-    target: "mutualpool",
-    description: "Join a mutual insurance pool as collateral provider (V1 legacy)",
+    target: "usdc_or_mpoolv3",
+    description: "Approve token spending for Router contract",
   },
   fundPremiumWithUSDC: {
     method: "fundPremiumWithUSDC(uint256,uint256)",
@@ -51,6 +46,16 @@ const ALLOWED_ACTIONS = {
     method: "joinPoolWithUSDC(uint256,uint256)",
     target: "router",
     description: "Join pool via Router with USDC (V3)",
+  },
+  joinPoolWithMPOOL: {
+    method: "joinPoolWithMPOOL(uint256,uint256,uint256)",
+    target: "router",
+    description: "Join pool via Router with MPOOLV3 token (auto-swap to USDC)",
+  },
+  fundPremiumWithMPOOL: {
+    method: "fundPremiumWithMPOOL(uint256,uint256,uint256)",
+    target: "router",
+    description: "Fund premium via Router with MPOOLV3 token (auto-swap to USDC)",
   },
   withdraw: {
     method: "withdraw(uint256)",
@@ -141,7 +146,7 @@ function validatePayload(payload) {
     }
   }
 
-  // Validate pool_params if present
+  // Validate pool_params if present (legacy format)
   if (payload.pool_params) {
     if (payload.pool_params.deposit_deadline) {
       const deadline = payload.pool_params.deposit_deadline;
@@ -151,13 +156,32 @@ function validatePayload(payload) {
     }
   }
 
-  // Validate risk_analysis if present
-  if (payload.risk_analysis) {
-    if (payload.risk_analysis.net_ev_per_100_usdc !== undefined) {
-      const ev = payload.risk_analysis.net_ev_per_100_usdc;
-      if (typeof ev !== "number") {
-        errors.push(`Invalid net_ev_per_100_usdc: must be a number`);
+  // Validate pool if present (V3 format)
+  if (payload.pool) {
+    if (payload.pool.deposit_deadline) {
+      const deadline = payload.pool.deposit_deadline;
+      if (typeof deadline !== "number" || deadline < 1_000_000_000) {
+        errors.push(`Invalid pool.deposit_deadline: ${deadline}. Must be a Unix timestamp`);
       }
+    }
+  }
+
+  // Validate risk_analysis or risk_parameters if present
+  const riskData = payload.risk_analysis || payload.risk_parameters;
+  if (riskData) {
+    const evField = riskData.net_ev_per_100_usdc ?? riskData.provider_ev_per_100_usdc;
+    if (evField !== undefined && typeof evField !== "number") {
+      errors.push(`Invalid EV field: must be a number`);
+    }
+  }
+
+  // Validate mogra_execution_payload if present (V3 dual-UX)
+  if (payload.mogra_execution_payload) {
+    const mogra = payload.mogra_execution_payload;
+    // Can have option_a_usdc and/or option_b_mpoolv3, or direct calls array
+    const hasCalls = mogra.calls || mogra.option_a_usdc?.calls || mogra.option_b_mpoolv3?.calls;
+    if (!hasCalls) {
+      errors.push("mogra_execution_payload must contain calls array (direct or via option_a/option_b)");
     }
   }
 
@@ -211,12 +235,11 @@ function checkDepositWindow(deadline, currentTimestamp) {
  * Build the transaction sequence for a "provide_insurance_liquidity" M2M payload.
  *
  * V3 flow: approve(Router) → Router.joinPoolWithUSDC(poolId, amount)
- * Legacy V1 flow: approve(MutualPool) → joinPool(poolId, amount)
  *
  * @param {object} payload - Validated M2M payload
  * @param {object} options
- * @param {string} options.contractAddress - MutualPool/V3 contract address
- * @param {string} [options.routerAddress] - MutualPoolRouter address (enables V3 flow)
+ * @param {string} options.contractAddress - MutualPoolV3 contract address
+ * @param {string} options.routerAddress - MutualPoolRouter address
  * @param {number} options.amountUsdc - Amount of USDC to provide as collateral
  * @param {import('ethers').Wallet} [options.wallet] - Optional wallet for signing
  * @param {import('ethers').JsonRpcProvider} [options.provider] - Optional provider for gas estimation
@@ -224,7 +247,9 @@ function checkDepositWindow(deadline, currentTimestamp) {
  */
 function buildJoinPoolTransactions(payload, options) {
   const { contractAddress, routerAddress, amountUsdc, wallet, provider } = options;
-  const useV3 = !!routerAddress;
+  if (!routerAddress) {
+    throw new Error("Router address is required for V3 pool operations");
+  }
 
   // Validate amount bounds
   if (amountUsdc < MIN_AMOUNT_USDC || amountUsdc > MAX_AMOUNT_USDC) {
@@ -251,61 +276,43 @@ function buildJoinPoolTransactions(payload, options) {
 
   const amountWei = ethers.parseUnits(amountUsdc.toString(), USDC_DECIMALS);
   const transactions = [];
-  const approveTarget = useV3 ? routerAddress : contractAddress;
 
-  // TX 1: approve USDC for Router (V3) or MutualPool (V1)
+  // TX 1: approve USDC for Router
   const approveIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
   transactions.push({
     step: 1,
     action: "approve",
-    description: `Approve ${amountUsdc} USDC for ${useV3 ? "Router" : "MutualPool"}`,
+    description: `Approve ${amountUsdc} USDC for Router`,
     to: USDC_ADDRESS,
-    data: approveIface.encodeFunctionData("approve", [approveTarget, amountWei]),
+    data: approveIface.encodeFunctionData("approve", [routerAddress, amountWei]),
     value: "0x0",
     decoded: {
       method: "approve(address,uint256)",
-      params: { spender: approveTarget, amount: amountWei.toString() },
+      params: { spender: routerAddress, amount: amountWei.toString() },
     },
   });
 
-  if (useV3) {
-    // TX 2 (V3): Router.joinPoolWithUSDC(poolId, amount)
-    const routerIface = new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]);
-    transactions.push({
-      step: 2,
-      action: "joinPoolWithUSDC",
-      description: `Join pool #${poolId} with ${amountUsdc} USDC via Router (V3)`,
-      to: routerAddress,
-      data: routerIface.encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]),
-      value: "0x0",
-      decoded: {
-        method: "joinPoolWithUSDC(uint256,uint256)",
-        params: { poolId: poolId.toString(), amount: amountWei.toString() },
-      },
-    });
-  } else {
-    // TX 2 (V1 legacy): joinPool(poolId, amount)
-    const joinIface = new ethers.Interface(["function joinPool(uint256,uint256)"]);
-    transactions.push({
-      step: 2,
-      action: "joinPool",
-      description: `Join pool #${poolId} with ${amountUsdc} USDC collateral`,
-      to: contractAddress,
-      data: joinIface.encodeFunctionData("joinPool", [poolId, amountWei]),
-      value: "0x0",
-      decoded: {
-        method: "joinPool(uint256,uint256)",
-        params: { poolId: poolId.toString(), amount: amountWei.toString() },
-      },
-    });
-  }
+  // TX 2: Router.joinPoolWithUSDC(poolId, amount)
+  const routerIface = new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]);
+  transactions.push({
+    step: 2,
+    action: "joinPoolWithUSDC",
+    description: `Join pool #${poolId} with ${amountUsdc} USDC via Router`,
+    to: routerAddress,
+    data: routerIface.encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]),
+    value: "0x0",
+    decoded: {
+      method: "joinPoolWithUSDC(uint256,uint256)",
+      params: { poolId: poolId.toString(), amount: amountWei.toString() },
+    },
+  });
 
   return {
     transactions,
     depositWindow,
     riskAnalysis: payload.risk_analysis || null,
     poolParams: payload.pool_params || null,
-    version: useV3 ? "v3" : "v1",
+    version: "v3",
   };
 }
 
@@ -379,7 +386,7 @@ function buildMograPayload(payload, options) {
  * @returns {{ transaction: object }}
  */
 function buildWithdrawTransaction(payload, contractAddress) {
-  const poolId = payload.pool_id;
+  const poolId = payload.pool_id ?? payload.pool?.id ?? payload.pool_params?.pool_id;
   if (poolId === undefined || poolId === null) {
     throw new Error("No pool_id found in resolution payload");
   }
@@ -397,6 +404,123 @@ function buildWithdrawTransaction(payload, contractAddress) {
         params: { poolId: poolId.toString() },
       },
     },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// V3 Payload Normalization
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Normalize V3 dual-UX payloads to the internal format used by transaction builders.
+ * V3 payloads use `pool.id`, `pool.deposit_deadline` while legacy used `pool_params.pool_id`.
+ *
+ * @param {object} payload - Raw M2M payload
+ * @returns {object} Normalized payload with pool_params for backwards compatibility
+ */
+function normalizeV3Payload(payload) {
+  // Already in legacy format
+  if (payload.pool_params) return payload;
+
+  // V3 format: pool.id, pool.deposit_deadline, etc.
+  if (payload.pool) {
+    return {
+      ...payload,
+      pool_params: {
+        pool_id: payload.pool.id,
+        deposit_deadline: payload.pool.deposit_deadline,
+        deadline: payload.pool.deadline,
+        coverage_usdc: payload.pool.coverage_usdc,
+        premium_usdc: payload.pool.premium_usdc,
+        premium_rate_bps: payload.pool.premium_rate_bps,
+        evidence_source: payload.pool.evidence_source,
+        product: payload.pool.product,
+      },
+      // Map V3 risk_parameters to legacy risk_analysis
+      risk_analysis: payload.risk_parameters || payload.risk_analysis,
+    };
+  }
+
+  return payload;
+}
+
+/**
+ * Build the transaction sequence for a "fund_pool_premium" intent.
+ * V3 flow: approve(Router) → Router.fundPremiumWithUSDC(poolId, premiumAmount)
+ *
+ * @param {object} payload - Normalized M2M payload
+ * @param {object} options
+ * @param {string} options.routerAddress - MutualPoolRouter address
+ * @param {number} [options.amountUsdc] - Override premium amount (otherwise reads from payload)
+ * @returns {{ transactions: object[], depositWindow: object }}
+ */
+function buildFundPremiumTransactions(payload, options) {
+  const { routerAddress } = options;
+  if (!routerAddress) {
+    throw new Error("Router address is required for V3 premium funding");
+  }
+
+  // Get premium amount from payload or options
+  const premiumUsdc = options.amountUsdc || payload.pool_params?.premium_usdc;
+  if (!premiumUsdc) {
+    throw new Error("No premium amount found in payload or options");
+  }
+
+  // Validate deposit window
+  const deadline = payload.pool_params?.deposit_deadline || payload.pool_params?.deadline;
+  if (!deadline) {
+    throw new Error("No deadline found in payload");
+  }
+
+  const depositWindow = checkDepositWindow(deadline);
+  if (!depositWindow.open) {
+    throw new Error(`Cannot fund premium: ${depositWindow.reason}`);
+  }
+
+  const poolId = payload.pool_params?.pool_id;
+  if (poolId === undefined || poolId === null) {
+    throw new Error("No pool_id found in payload");
+  }
+
+  const amountWei = ethers.parseUnits(premiumUsdc.toString(), USDC_DECIMALS);
+  const transactions = [];
+
+  // TX 1: approve USDC for Router
+  const approveIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
+  transactions.push({
+    step: 1,
+    action: "approve",
+    description: `Approve ${premiumUsdc} USDC for Router`,
+    to: USDC_ADDRESS,
+    data: approveIface.encodeFunctionData("approve", [routerAddress, amountWei]),
+    value: "0x0",
+    decoded: {
+      method: "approve(address,uint256)",
+      params: { spender: routerAddress, amount: amountWei.toString() },
+    },
+  });
+
+  // TX 2: Router.fundPremiumWithUSDC(poolId, amount)
+  const routerIface = new ethers.Interface(["function fundPremiumWithUSDC(uint256,uint256)"]);
+  transactions.push({
+    step: 2,
+    action: "fundPremiumWithUSDC",
+    description: `Fund premium for pool #${poolId}: ${premiumUsdc} USDC via Router`,
+    to: routerAddress,
+    data: routerIface.encodeFunctionData("fundPremiumWithUSDC", [poolId, amountWei]),
+    value: "0x0",
+    decoded: {
+      method: "fundPremiumWithUSDC(uint256,uint256)",
+      params: { poolId: poolId.toString(), amount: amountWei.toString() },
+    },
+  });
+
+  return {
+    transactions,
+    depositWindow,
+    riskAnalysis: payload.risk_analysis || null,
+    poolParams: payload.pool_params || null,
+    version: "v3",
   };
 }
 
@@ -427,18 +551,27 @@ function processPost(postContent, options) {
     }
 
     try {
+      // V3 payloads use pool.id and pool.deposit_deadline instead of pool_params
+      // Normalize to pool_params for backwards compatibility with buildJoinPoolTransactions
+      const normalizedPayload = normalizeV3Payload(payload);
+
       // Route by intent/event type
-      if (payload.intent === "provide_insurance_liquidity") {
-        const txResult = buildJoinPoolTransactions(payload, options);
+      if (normalizedPayload.intent === "provide_insurance_liquidity" ||
+          normalizedPayload.intent === "provide_liquidity") {
+        const txResult = buildJoinPoolTransactions(normalizedPayload, options);
         results.push({ payload, validation, ...txResult });
-      } else if (payload.event === "pool_resolved") {
-        const txResult = buildWithdrawTransaction(payload, options.contractAddress);
+      } else if (normalizedPayload.intent === "fund_pool_premium") {
+        const txResult = buildFundPremiumTransactions(normalizedPayload, options);
+        results.push({ payload, validation, ...txResult });
+      } else if (normalizedPayload.event === "pool_resolved") {
+        const contractAddr = normalizedPayload.contracts?.vault || options.contractAddress;
+        const txResult = buildWithdrawTransaction(normalizedPayload, contractAddr);
         results.push({ payload, validation, ...txResult });
       } else {
         results.push({
           payload,
           validation,
-          error: `Unhandled intent/event: ${payload.intent || payload.event}`,
+          error: `Unhandled intent/event: ${normalizedPayload.intent || normalizedPayload.event}`,
         });
       }
     } catch (err) {
@@ -499,10 +632,11 @@ async function submitMograTransaction(mograResult) {
   const { execSync } = require("child_process");
   const body = JSON.stringify(mograPayload);
 
-  const cmd = `curl -s -X POST "${apiConfig.url}" -H "Authorization: ${apiConfig.headers.Authorization}" -H "Content-Type: application/json" -d '${body.replace(/'/g, "'\\''")}'`;
+  // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
+  const cmd = `curl -s -X POST "${apiConfig.url}" -H "Authorization: ${apiConfig.headers.Authorization}" -H "Content-Type: application/json" --data-binary @-`;
 
   try {
-    const response = execSync(cmd, { encoding: "utf8", timeout: 30000 });
+    const response = execSync(cmd, { input: body, encoding: "utf8", timeout: 30000 });
     const result = JSON.parse(response);
     console.log(`[Mogra] Response:`, JSON.stringify(result).substring(0, 200));
     return result;
@@ -516,7 +650,9 @@ module.exports = {
   extractM2MPayloads,
   validatePayload,
   checkDepositWindow,
+  normalizeV3Payload,
   buildJoinPoolTransactions,
+  buildFundPremiumTransactions,
   buildMograPayload,
   buildWithdrawTransaction,
   processPost,

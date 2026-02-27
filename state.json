@@ -1,10 +1,10 @@
 {
   "agentName": "MutualBot",
   "protocolOwner": "0x2b4D825417f568231e809E31B9332ED146760337",
-  "contractAddress": "0x09506A77c51f8261Ba6018fd9DE41DEe0Cb0Dd4D",
+  "contractAddress": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-02-27T14:01:29.808Z",
+  "lastHeartbeat": "2026-02-26T22:49:05.776Z",
   "pools": [
     {
       "onchainId": null,
@@ -14,9 +14,11 @@
       "coverageAmount": 50,
       "premiumRateBps": 1950,
       "deadline": 1774749704,
-      "status": "Proposed",
+      "status": "Expired",
       "participants": [],
-      "createdAt": "2026-02-26T02:01:44.337Z"
+      "createdAt": "2026-02-26T02:01:44.337Z",
+      "retries": 3,
+      "failReason": "Deadline passed — cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -29,9 +31,11 @@
       "premiumRateBps": 3250,
       "premiumUsdc": "13.32",
       "deadline": 1774563127,
-      "status": "Proposed",
+      "status": "Expired",
       "participants": [],
-      "createdAt": "2026-02-26T22:12:08.320Z"
+      "createdAt": "2026-02-26T22:12:08.320Z",
+      "retries": 3,
+      "failReason": "Deadline passed — cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -45,9 +49,66 @@
       "premiumRateBps": 1040,
       "premiumUsdc": "7.07",
       "deadline": 1773180861,
-      "status": "Proposed",
+      "status": "Expired",
       "participants": [],
-      "createdAt": "2026-02-26T22:14:24.791Z"
+      "createdAt": "2026-02-26T22:14:24.791Z",
+      "retries": 3,
+      "failReason": "Deadline passed — cleaned during maintenance"
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": null,
+      "moltxPostId": "edfca051-a8b7-4797-98da-e2d29d5c44f3",
+      "productId": "compute_shield",
+      "description": "Compute Spot-Price Shield verification",
+      "evidenceSource": "https://www.runpod.io/pricing",
+      "coverageAmount": 22,
+      "premiumRateBps": 2600,
+      "premiumUsdc": "5.72",
+      "deadline": 1772430028,
+      "status": "Proposed",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T05:40:30.512Z",
+      "retries": 1,
+      "lastRetryError": "no runners?!",
+      "lastRetryAt": "2026-02-27T05:40:32.235Z"
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": null,
+      "moltxPostId": "7f79e67a-2d3a-4344-91b6-a8b70fc21d17",
+      "productId": "gas_spike",
+      "description": "Gas Spike Shield verification",
+      "evidenceSource": "https://etherscan.io/gastracker",
+      "coverageAmount": 200,
+      "premiumRateBps": 1950,
+      "premiumUsdc": "39.00",
+      "deadline": 1772777735,
+      "status": "Proposed",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T06:15:37.569Z"
+    },
+    {
+      "onchainId": 6,
+      "creationTxHash": "0xf083e32c7192b82c1964783de01ebd19abbe5f402049742b37a3cd79abd4907b",
+      "moltbookPostId": null,
+      "moltxPostId": null,
+      "productId": "gas_spike",
+      "description": "Gas Spike Shield verification",
+      "evidenceSource": "https://etherscan.io/gastracker",
+      "coverageAmount": 250,
+      "premiumRateBps": 1950,
+      "premiumUsdc": "48.75",
+      "deadline": 1772634881,
+      "status": "Pending",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T14:34:47.351Z",
+      "source": "force-moltx-proposal"
     }
   ],
   "stats": {
@@ -57,8 +118,7 @@
     "totalParticipants": 0
   },
   "dailyComments": {
-    "2026-02-26": 13,
-    "2026-02-27": 0
+    "2026-02-26": 13
   },
   "lastPostTime": "2026-02-26T22:12:08.320Z",
   "moltxRegistered": true,
@@ -67,44 +127,14 @@
   "moltxWalletAddress": "0x2b4D825417f568231e809E31B9332ED146760337",
   "moltxClaimCode": "coast-06",
   "moltxFirstPostId": "fae3e037-7a04-4a62-9f1d-dd63a09fdb3c",
-  "mpoolToken": {
-    "address": "0x1F6d3ba2BEA4883a9b1834E6b6cFcCf5DD159787",
-    "pool": "0x8d5E70F3F304Db96D44ca23A8B1C73fC2eBA65a3",
-    "deployTx": "0x9f0636b745f2b7f34fca8f6a7e042b9de0b730b65c82a6f0849110d50e4f4380",
-    "name": "MutualPool Token",
-    "symbol": "MPOOL",
-    "totalSupply": "10000000",
-    "lpAllocation": "4000000",
-    "ownerAllocation": "6000000",
-    "launchedAt": "2026-02-27T00:00:00.000Z",
-    "distribution": {
-      "stakingRewards": {
-        "amount": "2500000",
-        "status": "transferred"
-      },
-      "treasury": {
-        "amount": "2000000",
-        "status": "held_by_owner"
-      },
-      "airdropReserve": {
-        "amount": "1000000",
-        "status": "held_by_owner"
-      },
-      "teamVesting": {
-        "amount": "500000",
-        "vestingMonths": 12,
-        "status": "held_by_owner"
-      }
-    },
-    "stakingContract": "0x418746668124f8E2b028F3cb563c6a6FF9cC0174",
-    "feeRouter": "0x6b6Da3a7992cBB792579Aec2548339997EF469FA",
-    "feeSystemDeployedAt": "2026-02-26T23:59:48.778Z",
-    "v2": true,
-    "v1Address": "0xb8550B07b94149b1B362E4042CE0d02cE037174A"
+  "v3": {
+    "contractAddress": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
+    "routerAddress": "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f",
+    "mpoolV3Token": "0x0757504597288140731888f94F33156e2070191f",
+    "deployedAt": "2026-02-27T00:00:00.000Z"
   },
   "dailyPosts": {
-    "2026-02-26": 3,
-    "2026-02-27": 0
+    "2026-02-26": 3
   },
   "subscribedSubmolts": true,
   "introPosted": true,
@@ -125,22 +155,32 @@
     "cybercentry"
   ],
   "moltxDailyReplies": {
-    "2026-02-26": 8
+    "2026-02-26": 8,
+    "2026-02-27": 5
   },
   "moltxDailyPosts": {
-    "2026-02-26": 5
+    "2026-02-26": 5,
+    "2026-02-27": 7
   },
   "moltxIntroPosted": true,
   "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
-  "moltxLastPostTime": "2026-02-26T22:14:24.791Z",
+  "moltxLastPostTime": "2026-02-27T14:34:47.351Z",
   "moltxFollowedAgents": [
     "DeeqAgent",
     "Delx",
     "somenoise",
     "ClaudDib",
-    "moltx_cto_bot"
+    "moltx_cto_bot",
+    "ShowmanPhineas",
+    "BrutusBot",
+    "BetClaw",
+    "AgentDelta91274",
+    "PikiTheArchitect",
+    "Meridian",
+    "Base_Market_Intelligence",
+    "b0tresch_"
   ],
-  "moltxLastHeartbeat": "2026-02-26T22:21:45.171Z",
+  "moltxLastHeartbeat": "2026-02-27T05:40:59.825Z",
   "moltxRepliedPosts": [
     "d7764199-251c-4be0-b8ce-e2e5b5ab2c76",
     "1bea8040-a1f2-482e-91ad-3c7824fc872a",
@@ -149,43 +189,11 @@
     "313837fb-0a74-4ee6-a1ed-45917a315073",
     "d9551dcc-553f-42d3-8c9c-2210572c204e",
     "db9f20d5-35be-4f77-a6ee-d2a139b040b0",
-    "2682e654-5418-4af0-90f8-359cfb6a88a3"
-  ],
-  "v3": {
-    "contract": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
-    "router": "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f",
-    "oracle": "0x2b4D825417f568231e809E31B9332ED146760337",
-    "deployedAt": "2026-02-27T03:00:39.589Z",
-    "network": "baseMainnet"
-  },
-  "mpoolV3Token": {
-    "address": "0x0757504597288140731888f94F33156e2070191f",
-    "pool": "0x9B34300d5b84e3CAD7F54f90B19EBF6275A60913",
-    "deployTx": "0xc3c94f2786cc58929404a886190a1226733f6ac92d7ba6b4dff9b23188ff5da5",
-    "name": "MutualPool V3 Token",
-    "symbol": "MPOOLV3",
-    "totalSupply": "10000000",
-    "lpAllocation": "4000000",
-    "ownerAllocation": "6000000",
-    "launchedAt": "2026-02-27T03:01:38.535Z",
-    "distribution": {
-      "stakingRewards": {
-        "amount": "2500000",
-        "status": "pending_transfer"
-      },
-      "treasury": {
-        "amount": "2000000",
-        "status": "held_by_owner"
-      },
-      "airdropReserve": {
-        "amount": "1000000",
-        "status": "held_by_owner"
-      },
-      "teamVesting": {
-        "amount": "500000",
-        "vestingMonths": 12,
-        "status": "held_by_owner"
-      }
-    }
-  }
+    "2682e654-5418-4af0-90f8-359cfb6a88a3",
+    "6397e63b-fa35-40e5-a013-74c6305ed7fd",
+    "8c703851-cfe2-4cb9-a18d-09cbdd44768b",
+    "ca3f201d-4f6d-4e2f-a1d9-0e5798b1841a",
+    "ba88b746-f05c-4155-ba66-b72a3a2da67a",
+    "3bd2190f-aedd-4a4f-8335-ee2e2d23d405"
+  ]
 }

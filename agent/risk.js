@@ -1,7 +1,15 @@
 /**
  * Risk evaluation module — assesses whether a proposed pool meets the protocol criteria.
  * Now integrated with the full 10-product insurance catalog.
+ *
+ * SEMANTIC VERIFIABILITY GATE (v2):
+ *   Before any pool is created on-chain (spending gas), proposals must pass:
+ *     Gate A — Trusted Domain: evidenceSource must belong to a known, trusted domain
+ *     Gate B — Oracle Capability: the risk type must map to a product the oracle can verify
+ *     Gate C — URL Reachability: the URL must respond (HEAD check) to prevent dead links
+ *   Rejections are logged locally. Zero gas is spent on rejected proposals.
  */
+const { execSync } = require("child_process");
 const { INSURANCE_PRODUCTS } = require("./products.js");
 
 const RISK_CRITERIA = {
@@ -11,6 +19,306 @@ const RISK_CRITERIA = {
   MIN_COVERAGE_USDC: 10,
   MAX_ACTIVE_POOLS: 15,
 };
+
+// ═══════════════════════════════════════════════════════════════
+// SEMANTIC VERIFIABILITY GATE
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Trusted domains — built from every evidenceSource across all 10 products,
+ * plus well-known infrastructure domains the oracle can read.
+ * Any domain NOT in this list is rejected outright.
+ */
+const TRUSTED_DOMAINS = new Set();
+
+// Auto-populate from products catalog
+for (const product of Object.values(INSURANCE_PRODUCTS)) {
+  for (const url of product.evidenceSources || []) {
+    try {
+      const hostname = new URL(url).hostname.replace(/^www\./, "");
+      TRUSTED_DOMAINS.add(hostname);
+    } catch { /* skip malformed */ }
+  }
+}
+
+// Additional well-known domains the oracle can verifiably read
+const EXTRA_TRUSTED = [
+  // Block explorers
+  "etherscan.io", "basescan.org", "arbiscan.io", "optimistic.etherscan.io", "polygonscan.com",
+  // Status pages
+  "status.openai.com", "status.anthropic.com", "www.githubstatus.com", "status.aws.amazon.com",
+  "status.cloud.google.com", "status.azure.com",
+  // DeFi / Data
+  "defillama.com", "dune.com", "l2beat.com", "rekt.news",
+  "data.chain.link", "www.coingecko.com", "api.coingecko.com",
+  "api.binance.com", "app.aave.com", "compound.finance",
+  // Compute pricing
+  "www.runpod.io", "runpod.io", "vast.ai",
+  // Data quality
+  "huggingface.co", "kaggle.com", "www.kaggle.com",
+  // Bridges
+  "bridge.arbitrum.io", "app.optimism.io",
+  // Gas
+  "www.blocknative.com", "blocknative.com", "ultrasound.money",
+  // General infra
+  "downdetector.com", "www.downdetector.com",
+  // Developer / API
+  "developer.twitter.com", "api.twitter.com",
+];
+for (const d of EXTRA_TRUSTED) TRUSTED_DOMAINS.add(d);
+
+/**
+ * Map of oracle-verifiable risk categories → the keyword patterns the oracle
+ * actually knows how to read in evidence sources. If a proposal's description
+ * doesn't match ANY of these, the oracle literally cannot judge the claim.
+ */
+const ORACLE_CAPABILITIES = {
+  operational: {
+    keywords: [
+      "uptime", "downtime", "outage", "api", "status", "service disruption",
+      "degraded", "availability", "latency", "error rate",
+    ],
+    productIds: ["uptime_hedge"],
+  },
+  gas: {
+    keywords: [
+      "gas", "gwei", "gas spike", "gas price", "network fee", "base fee",
+      "congestion", "mempool", "transaction cost",
+    ],
+    productIds: ["gas_spike"],
+  },
+  compute: {
+    keywords: [
+      "gpu", "compute", "spot price", "spot instance", "training cost",
+      "render", "runpod", "vast.ai", "modal", "lambda",
+    ],
+    productIds: ["compute_shield"],
+  },
+  sla: {
+    keywords: [
+      "sla", "delivery", "deadline", "fulfillment", "contract",
+      "provider", "incomplete", "timeout",
+    ],
+    productIds: ["sla_enforcer"],
+  },
+  rate_limit: {
+    keywords: [
+      "rate limit", "429", "throttle", "ban", "shadowban", "quota",
+      "too many requests", "api limit",
+    ],
+    productIds: ["rate_limit"],
+  },
+  oracle_price: {
+    keywords: [
+      "oracle", "price feed", "chainlink", "discrepancy", "slippage",
+      "stale price", "price deviation", "flash crash",
+    ],
+    productIds: ["oracle_discrepancy"],
+  },
+  bridge: {
+    keywords: [
+      "bridge", "cross-chain", "transfer delay", "l2", "layer 2",
+      "arbitrum", "optimism", "polygon", "bridging",
+    ],
+    productIds: ["bridge_delay"],
+  },
+  yield: {
+    keywords: [
+      "yield", "apy", "apr", "interest rate", "lending rate", "farming",
+      "yield drop", "rate cut", "defi yield",
+    ],
+    productIds: ["yield_drop"],
+  },
+  data_integrity: {
+    keywords: [
+      "data corruption", "dataset", "hallucination", "data quality",
+      "malformed", "inaccurate", "corrupt data",
+    ],
+    productIds: ["data_corruption"],
+  },
+  exploit: {
+    keywords: [
+      "exploit", "hack", "rug pull", "vulnerability", "drained",
+      "reentrancy", "flash loan", "smart contract", "audit",
+    ],
+    productIds: ["smart_contract_exploit"],
+  },
+};
+
+/**
+ * Gate A — Trusted Domain Check
+ * Verifies the evidenceSource URL belongs to a domain the oracle can read.
+ *
+ * @param {string} evidenceUrl
+ * @returns {{ passed: boolean, reason: string, hostname: string }}
+ */
+function checkTrustedDomain(evidenceUrl) {
+  let hostname;
+  try {
+    hostname = new URL(evidenceUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return { passed: false, reason: "Malformed URL — cannot parse hostname.", hostname: "" };
+  }
+
+  // Check exact match or parent domain (e.g. "api.etherscan.io" → "etherscan.io")
+  if (TRUSTED_DOMAINS.has(hostname)) {
+    return { passed: true, reason: `Domain '${hostname}' is trusted.`, hostname };
+  }
+
+  // Check if it's a subdomain of a trusted domain
+  const parts = hostname.split(".");
+  for (let i = 1; i < parts.length - 1; i++) {
+    const parent = parts.slice(i).join(".");
+    if (TRUSTED_DOMAINS.has(parent)) {
+      return { passed: true, reason: `Subdomain '${hostname}' under trusted '${parent}'.`, hostname };
+    }
+  }
+
+  return {
+    passed: false,
+    reason: `UNTRUSTED DOMAIN: '${hostname}' is not in the oracle's trusted domain list. ` +
+      `The oracle can only verify evidence from known, reliable sources. ` +
+      `Trusted domains include: ${Array.from(TRUSTED_DOMAINS).slice(0, 10).join(", ")}...`,
+    hostname,
+  };
+}
+
+/**
+ * Gate B — Oracle Capability Check
+ * Ensures the described risk maps to a product category the oracle can actually verify.
+ *
+ * @param {string} description - Pool description text
+ * @param {string} evidenceUrl - Evidence source URL
+ * @returns {{ passed: boolean, reason: string, matchedCapability: string|null, matchedProductIds: string[] }}
+ */
+function checkOracleCapability(description, evidenceUrl) {
+  const text = `${description} ${evidenceUrl}`.toLowerCase();
+
+  let bestMatch = null;
+  let bestScore = 0;
+  let bestProductIds = [];
+
+  for (const [capName, cap] of Object.entries(ORACLE_CAPABILITIES)) {
+    let score = 0;
+    for (const kw of cap.keywords) {
+      if (text.includes(kw)) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = capName;
+      bestProductIds = cap.productIds;
+    }
+  }
+
+  // Require at least 1 keyword match — the description must be about something we can verify
+  if (bestScore === 0) {
+    return {
+      passed: false,
+      reason: `UNVERIFIABLE RISK: The oracle cannot verify this type of event. ` +
+        `Description "${description.slice(0, 80)}..." does not match any known verifiable category. ` +
+        `Supported categories: ${Object.keys(ORACLE_CAPABILITIES).join(", ")}.`,
+      matchedCapability: null,
+      matchedProductIds: [],
+    };
+  }
+
+  return {
+    passed: true,
+    reason: `Matched capability '${bestMatch}' (score: ${bestScore}).`,
+    matchedCapability: bestMatch,
+    matchedProductIds: bestProductIds,
+  };
+}
+
+/**
+ * Gate C — URL Reachability Check
+ * Performs a lightweight HEAD request to confirm the evidence URL is alive.
+ * Uses curl with a short timeout to avoid blocking.
+ *
+ * @param {string} evidenceUrl
+ * @returns {{ passed: boolean, reason: string, httpStatus: number|null }}
+ */
+function checkUrlReachability(evidenceUrl) {
+  try {
+    const result = execSync(
+      `curl -sS -o /dev/null -w "%{http_code}" --head --max-time 8 --location "${evidenceUrl}"`,
+      { encoding: "utf8", timeout: 12000 }
+    ).trim();
+
+    const status = parseInt(result, 10);
+
+    // Accept 2xx and 3xx (some APIs return 301/302 for status pages)
+    // Also accept 405 (Method Not Allowed) — means server is alive but rejects HEAD
+    if ((status >= 200 && status < 400) || status === 405) {
+      return { passed: true, reason: `URL reachable (HTTP ${status}).`, httpStatus: status };
+    }
+
+    // 403 can mean the page exists but blocks automated requests (e.g. Cloudflare)
+    // We allow it — the oracle's full fetch at resolution time uses different headers
+    if (status === 403) {
+      return { passed: true, reason: `URL exists but blocks HEAD (HTTP 403). Allowed — oracle uses full fetch at resolution.`, httpStatus: status };
+    }
+
+    return {
+      passed: false,
+      reason: `DEAD EVIDENCE URL: '${evidenceUrl}' returned HTTP ${status}. ` +
+        `The oracle needs a working evidence source to verify claims.`,
+      httpStatus: status,
+    };
+  } catch (err) {
+    return {
+      passed: false,
+      reason: `UNREACHABLE EVIDENCE URL: '${evidenceUrl}' — connection failed (${err.message.slice(0, 80)}). ` +
+        `The oracle cannot verify claims without a reachable evidence source.`,
+      httpStatus: null,
+    };
+  }
+}
+
+/**
+ * Full semantic verifiability gate — runs Gates A + B + C in sequence.
+ * Short-circuits on first failure to avoid unnecessary work.
+ *
+ * @param {object} proposal
+ * @param {string} proposal.description
+ * @param {string} proposal.evidenceSource
+ * @returns {{ passed: boolean, reason: string, gate: string, details: object }}
+ */
+function verifySemanticViability(proposal) {
+  const { description, evidenceSource } = proposal;
+
+  // Gate A: Trusted Domain
+  const domainResult = checkTrustedDomain(evidenceSource);
+  if (!domainResult.passed) {
+    console.error(`[GATE-A REJECT] ${domainResult.reason}`);
+    return { passed: false, reason: domainResult.reason, gate: "A-TrustedDomain", details: domainResult };
+  }
+
+  // Gate B: Oracle Capability
+  const capResult = checkOracleCapability(description, evidenceSource);
+  if (!capResult.passed) {
+    console.error(`[GATE-B REJECT] ${capResult.reason}`);
+    return { passed: false, reason: capResult.reason, gate: "B-OracleCapability", details: capResult };
+  }
+
+  // Gate C: URL Reachability
+  const reachResult = checkUrlReachability(evidenceSource);
+  if (!reachResult.passed) {
+    console.error(`[GATE-C REJECT] ${reachResult.reason}`);
+    return { passed: false, reason: reachResult.reason, gate: "C-UrlReachability", details: reachResult };
+  }
+
+  const summary = `Semantic gate PASSED: domain=${domainResult.hostname}, ` +
+    `capability=${capResult.matchedCapability}, url=HTTP ${reachResult.httpStatus}`;
+  console.log(`[SEMANTIC GATE] ${summary}`);
+
+  return {
+    passed: true,
+    reason: summary,
+    gate: "ALL-PASSED",
+    details: { domain: domainResult, capability: capResult, reachability: reachResult },
+  };
+}
 
 /**
  * Verifiable event categories with base failure probabilities.
@@ -90,6 +398,13 @@ function evaluateRisk(proposal, activePoolCount = 0) {
     return reject("Evidence source must be a valid public URL.");
   }
 
+  // ── NEW: Semantic Verifiability Gate (Gates A + B + C) ──
+  // Runs BEFORE any on-chain interaction. Rejects locally → zero gas spent.
+  const semanticResult = verifySemanticViability({ description, evidenceSource });
+  if (!semanticResult.passed) {
+    return reject(`[SEMANTIC GATE ${semanticResult.gate}] ${semanticResult.reason}`);
+  }
+
   // 2. Deadline between 1-90 days from now
   const now = Math.floor(Date.now() / 1000);
   const daysUntilDeadline = (deadlineTimestamp - now) / 86400;
@@ -142,10 +457,12 @@ function evaluateRisk(proposal, activePoolCount = 0) {
     approved: true,
     reason: `Pool approved. Category: ${detectedCategory || "General"}. ` +
       `Risk: ${riskLevel} (${(estimatedFailureProb * 100).toFixed(1)}% est. failure). ` +
-      `Premium: ${premiumRate} bps (min: ${minPremiumBps} bps).`,
+      `Premium: ${premiumRate} bps (min: ${minPremiumBps} bps). ` +
+      `Semantic: ${semanticResult.details.capability.matchedCapability}.`,
     riskLevel,
     estimatedFailureProb,
     category: detectedCategory,
+    semanticGate: semanticResult.details,
   };
 }
 
@@ -191,4 +508,11 @@ module.exports = {
   generatePoolProposal,
   EVENT_CATEGORIES,
   RISK_CRITERIA,
+  // Semantic Verifiability Gate (exported for testing & external agent API)
+  verifySemanticViability,
+  checkTrustedDomain,
+  checkOracleCapability,
+  checkUrlReachability,
+  TRUSTED_DOMAINS,
+  ORACLE_CAPABILITIES,
 };

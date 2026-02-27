@@ -4,12 +4,15 @@
   "description": "MutualBot — Decentralized mutual insurance protocol for AI agents on Moltbook & MoltX",
   "main": "agent/index.js",
   "scripts": {
+    "start": "node scripts/start-railway.js",
     "compile": "npx hardhat compile",
     "setup": "node scripts/setup-moltbook.js",
     "deploy": "npx hardhat run scripts/deploy.js --network baseMainnet",
     "deploy:testnet": "npx hardhat run scripts/deploy.js --network baseSepolia",
     "agent": "node agent/index.js",
     "agent:once": "SINGLE_RUN=1 node agent/index.js",
+    "oracle": "node agent/oracle-bot.js",
+    "oracle:once": "node agent/oracle-bot.js --once",
     "setup:moltx": "node scripts/setup-moltx.js",
     "agent:moltx": "node agent/index-moltx.js",
     "agent:moltx:once": "SINGLE_RUN=1 node agent/index-moltx.js",
@@ -22,14 +25,17 @@
     "deploy:fees:testnet": "npx hardhat run scripts/deploy-fee-system.js --network baseSepolia",
     "test": "npx hardhat test",
     "railway": "node scripts/start-railway.js",
+    "railway:oracle": "BOT_MODE=oracle node scripts/start-railway.js",
     "railway:moltbook": "BOT_MODE=moltbook node scripts/start-railway.js",
-    "railway:moltx": "BOT_MODE=moltx node scripts/start-railway.js"
+    "railway:moltx": "BOT_MODE=moltx node scripts/start-railway.js",
+    "railway:social": "BOT_MODE=social node scripts/start-railway.js"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
-    "ethers": "^6.13.0"
+    "ethers": "^6.13.0",
+    "express": "^4.22.1"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

@@ -167,8 +167,9 @@ function fetchGasDataFromRPC() {
       id: 1,
     });
 
-    const cmd = `curl -s --max-time 15 -X POST -H "Content-Type: application/json" -d '${payload}' "${rpcUrl}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: FETCH_TIMEOUT_MS });
+    // Pass JSON via stdin (@-) to avoid shell escaping issues
+    const cmd = `curl -s --max-time 15 -X POST -H "Content-Type: application/json" --data-binary @- "${rpcUrl}"`;
+    const out = execSync(cmd, { input: payload, encoding: "utf8", timeout: FETCH_TIMEOUT_MS });
     const data = JSON.parse(out);
 
     if (data.result) {

@@ -269,10 +269,7 @@ async function monitorPools(blockchain, moltbook, state) {
     if (result.shouldResolve) {
       console.log(`[Monitor] Resolving pool #${pool.onchainId}, claimApproved=${result.claimApproved}`);
       try {
-        // Use V3 resolve if pool is on V3, otherwise V1
-        const txHash = pool.version === "v3" && blockchain.hasV3
-          ? await blockchain.resolvePoolV3(pool.onchainId, result.claimApproved)
-          : await blockchain.resolvePool(pool.onchainId, result.claimApproved);
+        const txHash = await blockchain.resolvePoolV3(pool.onchainId, result.claimApproved);
         pool.status = "Resolved";
         pool.claimApproved = result.claimApproved;
         pool.resolutionTx = txHash;
@@ -301,9 +298,14 @@ async function monitorPools(blockchain, moltbook, state) {
 /**
  * (b) Post new pool opportunities in HIGH-TRAFFIC submolts.
  *
- * FLOW: Create pool ON-CHAIN first → then post to Moltbook with real poolId.
- * The bot acts as the insured (pays premium) and sells the collateral-provider
- * side as a yield opportunity to other agents.
+ * FLOW: Create pool ON-CHAIN first (zero-funded, gas only) → then post to
+ * Moltbook with real poolId + M2M payload so OTHER agents can fund/join.
+ *
+ * IMPORTANT — ORACLE-ONLY MODE:
+ * This bot is the Oracle. It does NOT fund premiums or inject liquidity.
+ * createPoolV3() only costs ETH gas. The insured client funds premium via
+ * Router.fundPremiumWithUSDC() — that's published in the M2M payload.
+ * If USDC balance is 0, that's expected and correct behavior.
  *
  * Strategy: Rotate between target submolts. Post detailed pool in our submolt,
  * post attention-grabbing pitch in high-traffic submolts.
@@ -353,53 +355,24 @@ async function postNewOpportunity(moltbook, blockchain, state) {
   // ── STEP 1: Create pool ON-CHAIN ──
   let onchainId = null;
   let creationTxHash = null;
-  let poolVersion = "v1";
+  const poolVersion = "v3";
 
   if (blockchain) {
     try {
-      if (blockchain.hasV3) {
-        // V3: Zero-funded pool creation (only gas), then fund premium via Router
-        console.log(`[Post] Creating V3 pool on-chain: ${product.name}, coverage=${coverageUsdc} USDC (zero-funded)`);
-        const result = await blockchain.createPoolV3({
-          description: `${product.name} verification`,
-          evidenceSource,
-          coverageAmount: coverageUsdc,
-          premiumRate: proposal.premiumRateBps,
-          deadline: deadlineTimestamp,
-        });
-        onchainId = result.poolId;
-        creationTxHash = result.txHash;
-        poolVersion = "v3";
-        console.log(`[Post] V3 Pool created! ID: ${onchainId}, tx: ${creationTxHash}`);
-
-        // Fund premium via Router
-        try {
-          await blockchain.fundPremiumV3(onchainId, premiumUsdc);
-          console.log(`[Post] V3 premium funded: ${premiumUsdc} USDC via Router`);
-        } catch (fundErr) {
-          console.error(`[Post] V3 premium funding failed (pool still usable): ${fundErr.message}`);
-        }
-      } else {
-        // V1: Legacy — premium paid during creation
-        const balance = await blockchain.getUsdcBalance();
-        const balanceNum = parseFloat(balance);
-
-        if (balanceNum < premiumUsdc) {
-          console.log(`[Post] Insufficient USDC for premium. Need ${premiumUsdc}, have ${balanceNum}. Skipping on-chain creation.`);
-        } else {
-          console.log(`[Post] Creating pool on-chain: ${product.name}, coverage=${coverageUsdc} USDC, premium=${premiumUsdc} USDC`);
-          const result = await blockchain.createPool({
-            description: `${product.name} verification`,
-            evidenceSource,
-            coverageAmount: coverageUsdc,
-            premiumRate: proposal.premiumRateBps,
-            deadline: deadlineTimestamp,
-          });
-          onchainId = result.poolId;
-          creationTxHash = result.txHash;
-          console.log(`[Post] Pool created on-chain! ID: ${onchainId}, tx: ${creationTxHash}`);
-        }
-      }
+      console.log(`[Post] Creating V3 pool on-chain: ${product.name}, coverage=${coverageUsdc} USDC (zero-funded)`);
+      const result = await blockchain.createPoolV3({
+        description: `${product.name} verification`,
+        evidenceSource,
+        coverageAmount: coverageUsdc,
+        premiumRate: proposal.premiumRateBps,
+        deadline: deadlineTimestamp,
+      });
+      onchainId = result.poolId;
+      creationTxHash = result.txHash;
+      console.log(`[Post] V3 Pool created! ID: ${onchainId}, tx: ${creationTxHash}`);
+      // NOTE: Oracle does NOT fund premium. The insured client calls
+      // Router.fundPremiumWithUSDC(poolId, amount) to activate the pool.
+      // Pool stays in "Pending" state until the client funds it.
     } catch (err) {
       console.error(`[Post] On-chain creation failed: ${err.message}`);
       // Continue — post to Moltbook anyway, will retry on-chain creation later
@@ -408,7 +381,7 @@ async function postNewOpportunity(moltbook, blockchain, state) {
     console.log("[Post] No blockchain client configured, skipping on-chain creation.");
   }
 
-  const poolStatus = onchainId !== null ? "Open" : "Proposed";
+  const poolStatus = onchainId !== null ? "Pending" : "Proposed";
   const onchainInfo = onchainId !== null
     ? `- **Pool ID (on-chain): #${onchainId}**\n- Creation tx: ${creationTxHash}\n`
     : `- Pool ID: pending on-chain deployment\n`;
@@ -421,21 +394,38 @@ async function postNewOpportunity(moltbook, blockchain, state) {
     (1 - proposal.failureProb) * proposal.premiumRateBps * 0.97
   );
 
-  // V3 uses Router as target; V1 uses MutualPool directly
-  const joinTarget = poolVersion === "v3" && routerAddress ? routerAddress : state.contractAddress;
-  const joinAction = poolVersion === "v3" && routerAddress ? "joinPoolWithUSDC" : "joinPool";
-  const joinMethod = poolVersion === "v3" && routerAddress
-    ? "joinPoolWithUSDC(uint256,uint256)"
-    : "joinPool(uint256,uint256)";
+  const joinTarget = routerAddress || process.env.V3_CONTRACT_ADDRESS;
+  const joinAction = "joinPoolWithUSDC";
+  const joinMethod = "joinPoolWithUSDC(uint256,uint256)";
 
   const m2mPayload = {
-    intent: "provide_insurance_liquidity",
+    intent: "mutual_insurance_pool",
     chainId: 8453,
-    contract_address: poolVersion === "v3" ? (process.env.V3_CONTRACT_ADDRESS || state.contractAddress) : state.contractAddress,
-    router_address: poolVersion === "v3" ? routerAddress : undefined,
+    contract_address: process.env.V3_CONTRACT_ADDRESS || state.contractAddress,
+    router_address: routerAddress,
     token: usdcAddress,
     version: poolVersion,
-    required_actions: [
+    pool_status: "Pending",
+    // ── Actions for the INSURED (client buying insurance) ──
+    // The client must fund the premium to activate the pool (Pending → Open).
+    // msg.sender of this call becomes pool.insured and receives payout on claim.
+    insured_actions: [
+      {
+        action: "approve",
+        target: usdcAddress,
+        method: "approve(address,uint256)",
+        params: { spender: joinTarget, amount: "PREMIUM_AMOUNT" },
+      },
+      {
+        action: "fundPremiumWithUSDC",
+        target: joinTarget,
+        method: "fundPremiumWithUSDC(uint256,uint256)",
+        params: { poolId: onchainId, amount: "PREMIUM_AMOUNT" },
+        note: "Caller becomes the insured. Premium in USDC (6 decimals).",
+      },
+    ],
+    // ── Actions for COLLATERAL PROVIDERS (after insured funds premium) ──
+    provider_actions: [
       {
         action: "approve",
         target: usdcAddress,
@@ -490,7 +480,17 @@ async function postNewOpportunity(moltbook, blockchain, state) {
     onchainInfo +
     `- Min collateral: 10 USDC\n\n` +
     `## Who needs this?\n${product.target.description}\n\n` +
+    `## How to Participate\n` +
+    `### As Insured (buy coverage)\n` +
+    `1. Approve USDC: \`USDC.approve("${joinTarget}", ${proposal.premiumUsdc}e6)\`\n` +
+    `2. Fund premium: \`Router.fundPremiumWithUSDC(${onchainId}, ${proposal.premiumUsdc}e6)\`\n` +
+    `3. You become the insured. If incident confirmed, you receive up to ${coverageUsdc} USDC.\n\n` +
+    `### As Collateral Provider (earn yield)\n` +
+    `1. Approve USDC: \`USDC.approve("${joinTarget}", amount)\`\n` +
+    `2. Join pool: \`Router.joinPoolWithUSDC(${onchainId}, amount)\` (min 10 USDC)\n` +
+    `3. After deadline: \`withdraw(${onchainId})\` to collect collateral + premium share.\n\n` +
     `## Safety Features\n` +
+    `- Pool requires premium funding before providers can join (Pending → Open)\n` +
     `- Deposit deadline: 2h before resolution (anti front-running)\n` +
     `- Emergency resolve: if oracle fails, providers can force-resolve after 24h\n` +
     `- Cancel & refund: if pool is underfunded at deposit deadline, all funds returned\n` +
@@ -868,7 +868,8 @@ async function handlePostActivity(moltbook, state, activity) {
 
         const product = pool.productId ? INSURANCE_PRODUCTS[pool.productId] : null;
         const productInfo = product ? `\n**Product:** ${product.icon} ${product.name}\n` : "";
-        const contractAddr = state.contractAddress || "[pending]";
+        const contractAddr = process.env.V3_CONTRACT_ADDRESS || state.contractAddress;
+        const routerAddr = process.env.ROUTER_ADDRESS || "[pending]";
 
         let replyContent;
         const usdcAddr = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
@@ -878,8 +879,9 @@ async function handlePostActivity(moltbook, state, activity) {
             intent: "provide_insurance_liquidity",
             chainId: 8453,
             contract_address: contractAddr,
+            router_address: routerAddr,
             token: usdcAddr,
-            required_actions: ["approve", "joinPool"],
+            required_actions: ["approve", "joinPoolWithUSDC"],
             pool_id: pool.onchainId,
             deposit_deadline: pool.deadline - 7200,
           };
@@ -888,12 +890,12 @@ async function handlePostActivity(moltbook, state, activity) {
             `Wallet registered: \`${walletAddress}\`\n\n` +
             `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
             `## Pool #${pool.onchainId} — How to deposit collateral\n` +
-            `**Step 1:** Approve USDC\n` +
-            `\`\`\`\nUSDC (${usdcAddr}).approve("${contractAddr}", amount)\n\`\`\`\n\n` +
-            `**Step 2:** Join pool (min 10 USDC) — deposit window closes 2h before deadline\n` +
-            `\`\`\`\nMutualPool (${contractAddr}).joinPool(${pool.onchainId}, amount)\n\`\`\`\n\n` +
+            `**Step 1:** Approve USDC for the Router\n` +
+            `\`\`\`\nUSDC (${usdcAddr}).approve("${routerAddr}", amount)\n\`\`\`\n\n` +
+            `**Step 2:** Join pool via Router (min 10 USDC) — deposit window closes 2h before deadline\n` +
+            `\`\`\`\nRouter (${routerAddr}).joinPoolWithUSDC(${pool.onchainId}, amount)\n\`\`\`\n\n` +
             `**After resolution:**\n` +
-            `\`\`\`\nMutualPool (${contractAddr}).withdraw(${pool.onchainId})\n\`\`\`\n\n` +
+            `\`\`\`\nMutualPoolV3 (${contractAddr}).withdraw(${pool.onchainId})\n\`\`\`\n\n` +
             `**Safety:**\n` +
             `- Deposit deadline: 2h before resolution (anti front-running)\n` +
             `- Emergency resolve: 24h after deadline if oracle is offline\n` +
@@ -913,8 +915,9 @@ async function handlePostActivity(moltbook, state, activity) {
           replyContent =
             `Wallet registered: \`${walletAddress}\`\n\n` +
             `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
-            `This pool is pending on-chain deployment. I'll reply with the exact contract instructions (pool ID, approve + joinPool calls) as soon as it's live on Base.\n\n` +
+            `This pool is pending on-chain deployment. I'll reply with the exact contract instructions (pool ID, approve + joinPoolWithUSDC calls) as soon as it's live on Base.\n\n` +
             `Contract: ${contractAddr}\n` +
+            `Router: ${routerAddr}\n` +
             `Deadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}\n` +
             `Evidence: ${pool.evidenceSource}`;
         }
@@ -932,9 +935,12 @@ async function handlePostActivity(moltbook, state, activity) {
 
 /**
  * (g) Retry on-chain creation for pools stuck in "Proposed" status.
- * These are pools that were posted to Moltbook but failed on-chain creation
- * (e.g., insufficient USDC, RPC error, etc.)
+ *
+ * Eje 3: Retry counter — if a pool fails 3+ times, mark as "Failed" and
+ * stop blocking the queue. Expired pools are marked immediately.
  */
+const MAX_POOL_RETRIES = 3;
+
 async function retryProposedPools(blockchain, moltbook, state) {
   if (!blockchain) return;
 
@@ -944,81 +950,61 @@ async function retryProposedPools(blockchain, moltbook, state) {
   console.log(`[Retry] ${proposedPools.length} pool(s) pending on-chain creation.`);
 
   for (const pool of proposedPools) {
-    // Check if deadline already passed — skip expired pools
+    // Initialize retry counter if not present
+    if (typeof pool.retries !== "number") pool.retries = 0;
+
+    // ── Check 1: Expired deadline → drop immediately ──
     if (Math.floor(Date.now() / 1000) >= pool.deadline) {
-      console.log(`[Retry] Pool "${pool.description}" expired. Marking as Expired.`);
+      console.log(`[Retry] Pool "${pool.description}" expired (deadline passed). Marking Expired.`);
       pool.status = "Expired";
       saveState(state);
       continue;
     }
 
+    // ── Check 2: Max retries exceeded → mark Failed ──
+    if (pool.retries >= MAX_POOL_RETRIES) {
+      console.error(`[Retry] Pool "${pool.description}" failed ${pool.retries}x. Marking FAILED — removing from retry queue.`);
+      pool.status = "Failed";
+      pool.failReason = `Exceeded ${MAX_POOL_RETRIES} on-chain creation attempts`;
+      pool.failedAt = new Date().toISOString();
+      saveState(state);
+      continue;
+    }
+
     try {
-      const balance = await blockchain.getUsdcBalance();
-      const premiumUsdc = parseFloat(pool.premiumUsdc || ((pool.coverageAmount * pool.premiumRateBps) / 10000).toFixed(2));
-
-      if (parseFloat(balance) < premiumUsdc) {
-        console.log(`[Retry] Insufficient USDC for "${pool.description}". Need ${premiumUsdc}, have ${balance}.`);
-        continue;
-      }
-
-      console.log(`[Retry] Creating "${pool.description}" on-chain...`);
-      let result;
-      if (blockchain.hasV3) {
-        // V3: Zero-funded pool creation
-        result = await blockchain.createPoolV3({
-          description: pool.description,
-          evidenceSource: pool.evidenceSource,
-          coverageAmount: pool.coverageAmount,
-          premiumRate: pool.premiumRateBps,
-          deadline: pool.deadline,
-        });
-        pool.version = "v3";
-
-        // Fund premium via Router
-        try {
-          const premium = parseFloat(pool.premiumUsdc || ((pool.coverageAmount * pool.premiumRateBps) / 10000).toFixed(2));
-          await blockchain.fundPremiumV3(result.poolId, premium);
-          console.log(`[Retry] V3 premium funded: ${premium} USDC`);
-        } catch (fundErr) {
-          console.error(`[Retry] Premium funding failed (non-blocking): ${fundErr.message}`);
-        }
-      } else {
-        result = await blockchain.createPool({
-          description: pool.description,
-          evidenceSource: pool.evidenceSource,
-          coverageAmount: pool.coverageAmount,
-          premiumRate: pool.premiumRateBps,
-          deadline: pool.deadline,
-        });
-      }
+      // Oracle only needs ETH for gas — no USDC needed (client funds premium)
+      console.log(`[Retry] Creating "${pool.description}" on-chain (V3) — attempt ${pool.retries + 1}/${MAX_POOL_RETRIES}...`);
+      const result = await blockchain.createPoolV3({
+        description: pool.description,
+        evidenceSource: pool.evidenceSource,
+        coverageAmount: pool.coverageAmount,
+        premiumRate: pool.premiumRateBps,
+        deadline: pool.deadline,
+      });
+      pool.version = "v3";
 
       pool.onchainId = result.poolId;
       pool.creationTxHash = result.txHash;
-      pool.status = "Open";
+      pool.status = "Pending";
+      pool.retries = 0; // Reset on success
       saveState(state);
       console.log(`[Retry] Pool created on-chain! ID: ${pool.onchainId}, tx: ${result.txHash}`);
 
       // Update the Moltbook post with the real pool ID
       if (pool.moltbookPostId && moltbook) {
         try {
-          const contractAddr = pool.version === "v3"
-            ? (process.env.V3_CONTRACT_ADDRESS || state.contractAddress)
-            : state.contractAddress;
+          const contractAddr = process.env.V3_CONTRACT_ADDRESS || state.contractAddress;
           const routerAddr = process.env.ROUTER_ADDRESS;
-          const joinCmd = pool.version === "v3" && routerAddr
-            ? `Router (${routerAddr}).joinPoolWithUSDC(${pool.onchainId}, amount)`
-            : `MutualPool.joinPool(${pool.onchainId}, amount)`;
-          const approveTarget = pool.version === "v3" && routerAddr ? routerAddr : contractAddr;
           const updateComment =
             `**Pool is now LIVE on-chain!**\n\n` +
             `| Parameter | Value |\n|---|---|\n` +
             `| Pool ID | **#${pool.onchainId}** |\n` +
-            `| Version | ${pool.version || "v1"} |\n` +
             `| Creation tx | ${result.txHash} |\n` +
-            `| Contract | ${contractAddr} |\n\n` +
+            `| Contract | ${contractAddr} |\n` +
+            `| Router | ${routerAddr} |\n\n` +
             `## How to join as collateral provider\n` +
-            `1. Approve USDC: \`USDC.approve("${approveTarget}", amount)\`\n` +
-            `2. Join: \`${joinCmd}\` (min 10 USDC)\n` +
+            `1. Approve USDC: \`USDC.approve("${routerAddr}", amount)\`\n` +
+            `2. Join: \`Router (${routerAddr}).joinPoolWithUSDC(${pool.onchainId}, amount)\` (min 10 USDC)\n` +
             `3. After deadline: \`withdraw(${pool.onchainId})\``;
           await moltbook.createComment(pool.moltbookPostId, updateComment);
           console.log(`[Retry] Updated Moltbook post with on-chain info.`);
@@ -1032,7 +1018,14 @@ async function retryProposedPools(blockchain, moltbook, state) {
         console.log(`[Retry] Participant ${wallet} can now joinPool(${pool.onchainId}).`);
       }
     } catch (err) {
-      console.error(`[Retry] On-chain creation failed for "${pool.description}": ${err.message}`);
+      pool.retries++;
+      pool.lastRetryError = err.message;
+      pool.lastRetryAt = new Date().toISOString();
+      saveState(state);
+      console.error(`[Retry] On-chain creation failed for "${pool.description}" (attempt ${pool.retries}/${MAX_POOL_RETRIES}): ${err.message}`);
+      if (pool.retries >= MAX_POOL_RETRIES) {
+        console.error(`[Retry] ⚠ "${pool.description}" will be marked FAILED on next cycle.`);
+      }
     }
   }
 }
@@ -1053,19 +1046,34 @@ async function runHeartbeat() {
     : null;
 
   let blockchain = null;
-  if (process.env.AGENT_PRIVATE_KEY && process.env.CONTRACT_ADDRESS) {
+  if (process.env.AGENT_PRIVATE_KEY && process.env.V3_CONTRACT_ADDRESS) {
     blockchain = new BlockchainClient({
       rpcUrl: process.env.BASE_RPC_URL || "https://mainnet.base.org",
       privateKey: process.env.AGENT_PRIVATE_KEY,
-      contractAddress: process.env.CONTRACT_ADDRESS,
       usdcAddress: process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-      v3Address: process.env.V3_CONTRACT_ADDRESS || undefined,
+      v3Address: process.env.V3_CONTRACT_ADDRESS,
       routerAddress: process.env.ROUTER_ADDRESS || undefined,
     });
   }
 
-  const useV3 = blockchain && blockchain.hasV3;
-  console.log(`[Stats] Products: ${Object.keys(INSURANCE_PRODUCTS).length} | Comments today: ${getDailyComments(state)}/${MAX_DAILY_COMMENTS} | Posts today: ${getDailyPosts(state)}/${MAX_DAILY_POSTS} | V3: ${useV3 ? "ON" : "off"}`);
+  // ── Oracle-Only Mode: USDC balance check (informational) ──
+  // The oracle only pays ETH gas for createPoolV3(). It NEVER funds premiums
+  // or injects liquidity. USDC balance = 0 is normal and expected.
+  if (blockchain) {
+    try {
+      const ethBalance = await blockchain.provider.getBalance(blockchain.agentAddress);
+      const ethFormatted = (Number(ethBalance) / 1e18).toFixed(6);
+      console.log(`[Oracle] Wallet: ${blockchain.agentAddress}`);
+      console.log(`[Oracle] ETH balance: ${ethFormatted} (for gas only — USDC not needed)`);
+      if (Number(ethBalance) === 0) {
+        console.warn("[Oracle] WARNING: 0 ETH — cannot pay gas for createPoolV3(). Fund ETH to continue.");
+      }
+    } catch (err) {
+      console.warn("[Oracle] Balance check failed:", err.message);
+    }
+  }
+
+  console.log(`[Stats] Products: ${Object.keys(INSURANCE_PRODUCTS).length} | Comments today: ${getDailyComments(state)}/${MAX_DAILY_COMMENTS} | Posts today: ${getDailyPosts(state)}/${MAX_DAILY_POSTS} | V3: ${blockchain ? "ON" : "off"}`);
 
   // Ensure setup
   if (moltbook) {
@@ -1135,9 +1143,9 @@ async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
   console.log("║          MUTUALBOT — SUPER SELLER MODE                  ║");
   console.log("╠══════════════════════════════════════════════════════════╣");
-  console.log(`║ Contract V1: ${(process.env.CONTRACT_ADDRESS || "(not deployed)").padEnd(43)}║`);
-  console.log(`║ Contract V3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(43)}║`);
-  console.log(`║ Router:      ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(43)}║`);
+  console.log(`║ MutualPoolV3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(42)}║`);
+  console.log(`║ Router:       ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(42)}║`);
+  console.log(`║ MPOOLV3:      ${(process.env.MPOOLV3_TOKEN_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Products: ${String(Object.keys(INSURANCE_PRODUCTS).length).padEnd(46)}║`);
   console.log(`║ Oracle: Dual Auth (Judge + Auditor)${" ".repeat(22)}║`);
   console.log(`║ Heartbeat: Every 10 min${" ".repeat(33)}║`);

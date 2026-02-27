@@ -1,52 +1,72 @@
 /**
- * Railway Combined Runner — runs both MoltBook + MoltX bots in one service.
+ * Railway Production Runner — Lumina Oracle + MoltBook + MoltX in one service.
+ * v3.0 — Express health check + Oracle V3 lifecycle + Ephemeral-safe state
  *
  * Features:
- * - HTTP health check endpoint (Railway uses PORT env var)
- * - Graceful shutdown on SIGTERM/SIGINT
+ * - Express HTTP health check (Railway uses PORT env var)
+ * - Oracle bot with blockchain state reconstruction on startup
  * - Sequential heartbeats to avoid state.json race conditions
+ * - Graceful shutdown on SIGTERM/SIGINT
  * - Auto-restart on uncaught errors (logs and continues)
  *
  * Usage:
- *   npm run railway          (both bots)
- *   npm run railway:moltbook (MoltBook only)
- *   npm run railway:moltx    (MoltX only)
+ *   npm start                (all: oracle + moltbook + moltx)
+ *   npm run railway          (same)
+ *   BOT_MODE=oracle          (oracle V3 lifecycle only)
+ *   BOT_MODE=moltbook        (MoltBook only)
+ *   BOT_MODE=moltx           (MoltX only)
+ *   BOT_MODE=social          (MoltBook + MoltX, no oracle)
  */
 require("dotenv").config();
-const http = require("http");
-const { runHeartbeat } = require("../agent/index.js");
-const { runMoltxHeartbeat } = require("../agent/index-moltx.js");
+const express = require("express");
+
+// ── Bot imports (lazy — only loaded if their mode is active) ──
+let runHeartbeat, runMoltxHeartbeat;
+let initOracleBot, runOracleHeartbeat, getOracleStatus;
 
 // ── Config ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-const BOT_MODE = process.env.BOT_MODE || "both"; // "both" | "moltbook" | "moltx"
+const BOT_MODE = process.env.BOT_MODE || "all"; // "all" | "oracle" | "moltbook" | "moltx" | "social" | "both"
+
+const shouldRunOracle = ["all", "oracle"].includes(BOT_MODE);
+const shouldRunMoltbook = ["all", "both", "social", "moltbook"].includes(BOT_MODE);
+const shouldRunMoltx = ["all", "both", "social", "moltx"].includes(BOT_MODE);
 
 let heartbeatTimer = null;
 let isShuttingDown = false;
 let lastHeartbeat = null;
 let heartbeatCount = 0;
 let lastError = null;
+let startedAt = Date.now();
 
-// ── Health Check Server ─────────────────────────────────────
-const server = http.createServer((req, res) => {
-  if (req.url === "/health" || req.url === "/") {
-    const uptime = process.uptime();
-    const status = {
-      status: "ok",
-      mode: BOT_MODE,
-      uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
-      heartbeats: heartbeatCount,
-      lastHeartbeat,
-      lastError,
-      memory: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
-    };
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(status, null, 2));
-  } else {
-    res.writeHead(404);
-    res.end("Not found");
-  }
+// ── Express Health Check Server ──────────────────────────────
+const app = express();
+
+app.get("/", (req, res) => {
+  res.json({ status: "Lumina Oracle Alive" });
+});
+
+app.get("/health", (req, res) => {
+  const uptime = process.uptime();
+  const oracleStatus = getOracleStatus ? getOracleStatus() : { initialized: false };
+
+  res.json({
+    status: "ok",
+    service: "Lumina Oracle",
+    mode: BOT_MODE,
+    uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
+    heartbeats: heartbeatCount,
+    lastHeartbeat,
+    lastError,
+    memory: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
+    oracle: oracleStatus,
+    bots: {
+      oracle: shouldRunOracle,
+      moltbook: shouldRunMoltbook,
+      moltx: shouldRunMoltx,
+    },
+  });
 });
 
 // ── Heartbeat Cycle ─────────────────────────────────────────
@@ -59,13 +79,22 @@ async function runCycle() {
   console.log(`${"═".repeat(60)}`);
 
   try {
-    if (BOT_MODE === "both" || BOT_MODE === "moltbook") {
+    // ── Oracle V3 Lifecycle ──
+    if (shouldRunOracle && runOracleHeartbeat) {
+      console.log("\n[Railway] ▸ Running Oracle V3 heartbeat...");
+      await runOracleHeartbeat();
+      console.log("[Railway] ✓ Oracle V3 heartbeat complete");
+    }
+
+    // ── MoltBook bot ──
+    if (shouldRunMoltbook && runHeartbeat) {
       console.log("\n[Railway] ▸ Running MoltBook heartbeat...");
       await runHeartbeat();
       console.log("[Railway] ✓ MoltBook heartbeat complete");
     }
 
-    if (BOT_MODE === "both" || BOT_MODE === "moltx") {
+    // ── MoltX bot ──
+    if (shouldRunMoltx && runMoltxHeartbeat) {
       console.log("\n[Railway] ▸ Running MoltX heartbeat...");
       await runMoltxHeartbeat();
       console.log("[Railway] ✓ MoltX heartbeat complete");
@@ -76,7 +105,7 @@ async function runCycle() {
     lastError = null;
 
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    console.log(`\n[Railway] Cycle #${heartbeatCount} done in ${elapsed}s. Next in 10 min.`);
+    console.log(`\n[Railway] Cycle #${heartbeatCount} done in ${elapsed}s. Next in ${HEARTBEAT_INTERVAL_MS / 60000} min.`);
   } catch (err) {
     lastError = `${err.message} (${new Date().toISOString()})`;
     console.error(`[Railway] Heartbeat error:`, err.message);
@@ -96,11 +125,15 @@ function shutdown(signal) {
     heartbeatTimer = null;
   }
 
-  server.close(() => {
-    console.log("[Railway] HTTP server closed.");
-    console.log(`[Railway] Total heartbeats completed: ${heartbeatCount}`);
-    process.exit(0);
-  });
+  // Give in-flight requests 5s to complete
+  const server = app._server;
+  if (server) {
+    server.close(() => {
+      console.log("[Railway] HTTP server closed.");
+      console.log(`[Railway] Total heartbeats completed: ${heartbeatCount}`);
+      process.exit(0);
+    });
+  }
 
   // Force exit after 10s if server doesn't close
   setTimeout(() => {
@@ -115,23 +148,67 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 // ── Start ───────────────────────────────────────────────────
 async function start() {
   console.log("╔══════════════════════════════════════════════════════════╗");
-  console.log("║         MUTUALBOT — RAILWAY 24/7 RUNNER                 ║");
+  console.log("║       LUMINA ORACLE — RAILWAY 24/7 PRODUCTION          ║");
   console.log("╠══════════════════════════════════════════════════════════╣");
   console.log(`║ Mode: ${BOT_MODE.padEnd(51)}║`);
+  console.log(`║ Oracle V3: ${(shouldRunOracle ? "ENABLED" : "disabled").padEnd(46)}║`);
+  console.log(`║ MoltBook:  ${(shouldRunMoltbook ? "ENABLED" : "disabled").padEnd(46)}║`);
+  console.log(`║ MoltX:     ${(shouldRunMoltx ? "ENABLED" : "disabled").padEnd(46)}║`);
   console.log(`║ Health: http://0.0.0.0:${String(PORT).padEnd(35)}║`);
-  console.log(`║ Heartbeat: Every 10 min${" ".repeat(33)}║`);
+  console.log(`║ Heartbeat: Every ${HEARTBEAT_INTERVAL_MS / 60000} min${" ".repeat(36)}║`);
   console.log("╚══════════════════════════════════════════════════════════╝");
   console.log();
 
-  // Start health check server
-  server.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Railway] Health check listening on port ${PORT}`);
+  // ── Step 1: Start Express health check immediately ──
+  // Railway needs a port binding ASAP or it kills the container.
+  app._server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Railway] Express health check listening on port ${PORT}`);
   });
 
-  // Run first cycle immediately
+  // ── Step 2: Load bot modules based on mode ──
+  if (shouldRunMoltbook) {
+    try {
+      ({ runHeartbeat } = require("../agent/index.js"));
+      console.log("[Railway] MoltBook module loaded.");
+    } catch (err) {
+      console.error("[Railway] Failed to load MoltBook module:", err.message);
+    }
+  }
+
+  if (shouldRunMoltx) {
+    try {
+      ({ runMoltxHeartbeat } = require("../agent/index-moltx.js"));
+      console.log("[Railway] MoltX module loaded.");
+    } catch (err) {
+      console.error("[Railway] Failed to load MoltX module:", err.message);
+    }
+  }
+
+  // ── Step 3: Initialize Oracle Bot (blockchain sync) ──
+  // This is the critical step for ephemeral resilience:
+  // syncFromChain() reads MutualPoolV3.nextPoolId() and reconstructs
+  // pool state from on-chain data, so a fresh container starts correctly.
+  if (shouldRunOracle) {
+    try {
+      const oracle = require("../agent/oracle-bot.js");
+      initOracleBot = oracle.initOracleBot;
+      runOracleHeartbeat = oracle.runOracleHeartbeat;
+      getOracleStatus = oracle.getOracleStatus;
+
+      console.log("\n[Railway] Initializing Oracle V3 + blockchain state sync...");
+      await initOracleBot();
+      console.log("[Railway] Oracle V3 initialized and synced from chain.");
+    } catch (err) {
+      console.error("[Railway] Oracle init failed:", err.message);
+      console.error("[Railway] Oracle heartbeats will be skipped until restart.");
+      // Don't crash — social bots can still run
+    }
+  }
+
+  // ── Step 4: Run first cycle immediately ──
   await runCycle();
 
-  // Schedule recurring cycles
+  // ── Step 5: Schedule recurring cycles ──
   heartbeatTimer = setInterval(() => {
     runCycle().catch((err) => {
       console.error("[Railway] Unhandled cycle error:", err);
