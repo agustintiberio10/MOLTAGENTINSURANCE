@@ -67,13 +67,14 @@
       "premiumRateBps": 2600,
       "premiumUsdc": "5.72",
       "deadline": 1772430028,
-      "status": "Proposed",
+      "status": "Expired",
       "version": "v3",
       "participants": [],
       "createdAt": "2026-02-27T05:40:30.512Z",
       "retries": 1,
       "lastRetryError": "no runners?!",
-      "lastRetryAt": "2026-02-27T05:40:32.235Z"
+      "lastRetryAt": "2026-02-27T05:40:32.235Z",
+      "failReason": "Bot no longer creates pools on-chain — done manually by owner"
     },
     {
       "onchainId": null,
@@ -87,10 +88,11 @@
       "premiumRateBps": 1950,
       "premiumUsdc": "39.00",
       "deadline": 1772777735,
-      "status": "Proposed",
+      "status": "Expired",
       "version": "v3",
       "participants": [],
-      "createdAt": "2026-02-27T06:15:37.569Z"
+      "createdAt": "2026-02-27T06:15:37.569Z",
+      "failReason": "Bot no longer creates pools on-chain — done manually by owner"
     },
     {
       "onchainId": 6,

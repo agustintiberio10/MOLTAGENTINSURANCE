@@ -303,30 +303,12 @@ async function postNewOpportunityMoltx(moltx, blockchain, state) {
   const ev_no_incident = ((1 - proposal.failureProb) * (proposal.premiumRateBps / 100) * 0.97).toFixed(2);
   const net_ev = ((1 - proposal.failureProb) * (proposal.premiumRateBps / 100) * 0.97 + proposal.failureProb * -100).toFixed(2);
 
-  // ── STEP 1: Create pool ON-CHAIN ──
+  // ── STEP 1: Pool on-chain creation is done MANUALLY by the owner ──
+  // The bot only promotes products. Pool creation happens externally.
   let onchainId = null;
   let creationTxHash = null;
   const poolVersion = "v3";
-
-  if (blockchain) {
-    try {
-      console.log(`[MoltX-Post] Creating V3 pool: ${product.name}, coverage=${coverageUsdc} USDC (zero-funded)`);
-      const result = await blockchain.createPoolV3({
-        description: `${product.name} verification`,
-        evidenceSource,
-        coverageAmount: coverageUsdc,
-        premiumRate: proposal.premiumRateBps,
-        deadline: deadlineTimestamp,
-      });
-      onchainId = result.poolId;
-      creationTxHash = result.txHash;
-      console.log(`[MoltX-Post] V3 Pool created! ID: ${onchainId}`);
-      // NOTE: Oracle does NOT fund premium. The insured client calls
-      // Router.fundPremiumWithUSDC(poolId, amount) to activate the pool.
-    } catch (err) {
-      console.error(`[MoltX-Post] On-chain creation failed: ${err.message}`);
-    }
-  }
+  console.log(`[MoltX-Post] Proposing product: ${product.name}, coverage=${coverageUsdc} USDC (on-chain pool created manually by owner)`);
 
   const poolStatus = onchainId !== null ? "Pending" : "Proposed";
 
@@ -1052,20 +1034,14 @@ async function runMoltxHeartbeat() {
     });
   }
 
-  // ── Oracle-Only Mode: USDC balance check (informational) ──
-  // The oracle only pays ETH gas for createPoolV3(). It NEVER funds premiums
-  // or injects liquidity. USDC balance = 0 is normal and expected.
+  // ── Seller-Only Mode: Bot promotes pools, does NOT create them on-chain ──
+  // On-chain pool creation is done manually by the owner.
+  // The bot only needs blockchain access for reading pool status (monitoring).
   if (blockchain) {
     try {
-      const ethBalance = await blockchain.provider.getBalance(blockchain.agentAddress);
-      const ethFormatted = (Number(ethBalance) / 1e18).toFixed(6);
-      console.log(`[Oracle] Wallet: ${blockchain.agentAddress}`);
-      console.log(`[Oracle] ETH balance: ${ethFormatted} (for gas only — USDC not needed)`);
-      if (Number(ethBalance) === 0) {
-        console.warn("[Oracle] WARNING: 0 ETH — cannot pay gas for createPoolV3(). Fund ETH to continue.");
-      }
+      console.log(`[Seller] Wallet: ${blockchain.agentAddress} (read-only for monitoring)`);
     } catch (err) {
-      console.warn("[Oracle] Balance check failed:", err.message);
+      console.warn("[Seller] Wallet check failed:", err.message);
     }
   }
 
@@ -1104,10 +1080,8 @@ async function runMoltxHeartbeat() {
     await postNewOpportunityMoltx(moltx, blockchain, state);
   }
 
-  // (c.5) Retry proposed pools
-  if (blockchain) {
-    await retryProposedPoolsMoltx(blockchain, moltx, state);
-  }
+  // (c.5) Proposed pools: on-chain creation is done manually by owner.
+  // No automatic retry — pools stay "Proposed" until owner creates on-chain.
 
   // (d) AGGRESSIVE feed engagement
   if (isActive) {
