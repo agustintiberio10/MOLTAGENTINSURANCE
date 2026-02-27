@@ -5,8 +5,8 @@
  *   const { pool, loading, error, refetch } = usePool(poolId);
  *
  * Architecture:
- *   Browser wallet (MetaMask/Rabby) → ethers.BrowserProvider → MutualPoolV3.getPool()
- *   Falls back to public RPC if wallet not connected (read-only mode).
+ *   Always uses public RPC (read-only). No wallet connection required.
+ *   Provides all pool data including requiredPremium and participants.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -29,21 +29,12 @@ export function usePool(poolId) {
     setError(null);
 
     try {
-      // Use connected wallet provider if available, else public RPC
-      let provider;
-      if (window.ethereum) {
-        provider = new ethers.BrowserProvider(window.ethereum);
-      } else {
-        provider = new ethers.JsonRpcProvider(RPC_URL);
-      }
+      // Always use public RPC for reads — no wallet dependency
+      const provider = new ethers.JsonRpcProvider(RPC_URL);
 
       const vault = new ethers.Contract(CONTRACTS.MUTUAL_POOL_V3, VAULT_ABI, provider);
       const data = await vault.getPool(poolId);
-
-      // Get required premium
       const requiredPremium = await vault.getRequiredPremium(poolId);
-
-      // Get participants
       const participants = await vault.getPoolParticipants(poolId);
 
       setPool({

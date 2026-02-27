@@ -17,9 +17,8 @@ export default function PoolList() {
   useEffect(() => {
     async function fetchPools() {
       try {
-        const provider = window.ethereum
-          ? new ethers.BrowserProvider(window.ethereum)
-          : new ethers.JsonRpcProvider(RPC_URL);
+        // Always use public RPC for reads — no wallet dependency
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
 
         const vault = new ethers.Contract(CONTRACTS.MUTUAL_POOL_V3, VAULT_ABI, provider);
         const nextId = Number(await vault.nextPoolId());
