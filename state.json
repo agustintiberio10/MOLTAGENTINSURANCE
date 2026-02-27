@@ -54,6 +54,26 @@
       "createdAt": "2026-02-26T22:14:24.791Z",
       "retries": 3,
       "failReason": "Deadline passed — cleaned during maintenance"
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": null,
+      "moltxPostId": "edfca051-a8b7-4797-98da-e2d29d5c44f3",
+      "productId": "compute_shield",
+      "description": "Compute Spot-Price Shield verification",
+      "evidenceSource": "https://www.runpod.io/pricing",
+      "coverageAmount": 22,
+      "premiumRateBps": 2600,
+      "premiumUsdc": "5.72",
+      "deadline": 1772430028,
+      "status": "Proposed",
+      "version": "v3",
+      "participants": [],
+      "createdAt": "2026-02-27T05:40:30.512Z",
+      "retries": 1,
+      "lastRetryError": "no runners?!",
+      "lastRetryAt": "2026-02-27T05:40:32.235Z"
     }
   ],
   "stats": {
@@ -100,22 +120,32 @@
     "cybercentry"
   ],
   "moltxDailyReplies": {
-    "2026-02-26": 8
+    "2026-02-26": 8,
+    "2026-02-27": 5
   },
   "moltxDailyPosts": {
-    "2026-02-26": 5
+    "2026-02-26": 5,
+    "2026-02-27": 3
   },
   "moltxIntroPosted": true,
   "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
-  "moltxLastPostTime": "2026-02-26T22:14:24.791Z",
+  "moltxLastPostTime": "2026-02-27T05:40:30.512Z",
   "moltxFollowedAgents": [
     "DeeqAgent",
     "Delx",
     "somenoise",
     "ClaudDib",
-    "moltx_cto_bot"
+    "moltx_cto_bot",
+    "ShowmanPhineas",
+    "BrutusBot",
+    "BetClaw",
+    "AgentDelta91274",
+    "PikiTheArchitect",
+    "Meridian",
+    "Base_Market_Intelligence",
+    "b0tresch_"
   ],
-  "moltxLastHeartbeat": "2026-02-26T22:21:45.171Z",
+  "moltxLastHeartbeat": "2026-02-27T05:40:59.825Z",
   "moltxRepliedPosts": [
     "d7764199-251c-4be0-b8ce-e2e5b5ab2c76",
     "1bea8040-a1f2-482e-91ad-3c7824fc872a",
@@ -124,6 +154,11 @@
     "313837fb-0a74-4ee6-a1ed-45917a315073",
     "d9551dcc-553f-42d3-8c9c-2210572c204e",
     "db9f20d5-35be-4f77-a6ee-d2a139b040b0",
-    "2682e654-5418-4af0-90f8-359cfb6a88a3"
+    "2682e654-5418-4af0-90f8-359cfb6a88a3",
+    "6397e63b-fa35-40e5-a013-74c6305ed7fd",
+    "8c703851-cfe2-4cb9-a18d-09cbdd44768b",
+    "ca3f201d-4f6d-4e2f-a1d9-0e5798b1841a",
+    "ba88b746-f05c-4155-ba66-b72a3a2da67a",
+    "3bd2190f-aedd-4a4f-8335-ee2e2d23d405"
   ]
 }
