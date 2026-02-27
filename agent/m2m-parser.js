@@ -37,11 +37,6 @@ const ALLOWED_ACTIONS = {
     target: "usdc",
     description: "Approve USDC spending for Router contract",
   },
-  joinPool: {
-    method: "joinPool(uint256,uint256)",
-    target: "mutualpool",
-    description: "Join a mutual insurance pool as collateral provider (V1 legacy)",
-  },
   fundPremiumWithUSDC: {
     method: "fundPremiumWithUSDC(uint256,uint256)",
     target: "router",
@@ -211,12 +206,11 @@ function checkDepositWindow(deadline, currentTimestamp) {
  * Build the transaction sequence for a "provide_insurance_liquidity" M2M payload.
  *
  * V3 flow: approve(Router) → Router.joinPoolWithUSDC(poolId, amount)
- * Legacy V1 flow: approve(MutualPool) → joinPool(poolId, amount)
  *
  * @param {object} payload - Validated M2M payload
  * @param {object} options
- * @param {string} options.contractAddress - MutualPool/V3 contract address
- * @param {string} [options.routerAddress] - MutualPoolRouter address (enables V3 flow)
+ * @param {string} options.contractAddress - MutualPoolV3 contract address
+ * @param {string} options.routerAddress - MutualPoolRouter address
  * @param {number} options.amountUsdc - Amount of USDC to provide as collateral
  * @param {import('ethers').Wallet} [options.wallet] - Optional wallet for signing
  * @param {import('ethers').JsonRpcProvider} [options.provider] - Optional provider for gas estimation
@@ -224,7 +218,9 @@ function checkDepositWindow(deadline, currentTimestamp) {
  */
 function buildJoinPoolTransactions(payload, options) {
   const { contractAddress, routerAddress, amountUsdc, wallet, provider } = options;
-  const useV3 = !!routerAddress;
+  if (!routerAddress) {
+    throw new Error("Router address is required for V3 pool operations");
+  }
 
   // Validate amount bounds
   if (amountUsdc < MIN_AMOUNT_USDC || amountUsdc > MAX_AMOUNT_USDC) {
@@ -251,61 +247,43 @@ function buildJoinPoolTransactions(payload, options) {
 
   const amountWei = ethers.parseUnits(amountUsdc.toString(), USDC_DECIMALS);
   const transactions = [];
-  const approveTarget = useV3 ? routerAddress : contractAddress;
 
-  // TX 1: approve USDC for Router (V3) or MutualPool (V1)
+  // TX 1: approve USDC for Router
   const approveIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
   transactions.push({
     step: 1,
     action: "approve",
-    description: `Approve ${amountUsdc} USDC for ${useV3 ? "Router" : "MutualPool"}`,
+    description: `Approve ${amountUsdc} USDC for Router`,
     to: USDC_ADDRESS,
-    data: approveIface.encodeFunctionData("approve", [approveTarget, amountWei]),
+    data: approveIface.encodeFunctionData("approve", [routerAddress, amountWei]),
     value: "0x0",
     decoded: {
       method: "approve(address,uint256)",
-      params: { spender: approveTarget, amount: amountWei.toString() },
+      params: { spender: routerAddress, amount: amountWei.toString() },
     },
   });
 
-  if (useV3) {
-    // TX 2 (V3): Router.joinPoolWithUSDC(poolId, amount)
-    const routerIface = new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]);
-    transactions.push({
-      step: 2,
-      action: "joinPoolWithUSDC",
-      description: `Join pool #${poolId} with ${amountUsdc} USDC via Router (V3)`,
-      to: routerAddress,
-      data: routerIface.encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]),
-      value: "0x0",
-      decoded: {
-        method: "joinPoolWithUSDC(uint256,uint256)",
-        params: { poolId: poolId.toString(), amount: amountWei.toString() },
-      },
-    });
-  } else {
-    // TX 2 (V1 legacy): joinPool(poolId, amount)
-    const joinIface = new ethers.Interface(["function joinPool(uint256,uint256)"]);
-    transactions.push({
-      step: 2,
-      action: "joinPool",
-      description: `Join pool #${poolId} with ${amountUsdc} USDC collateral`,
-      to: contractAddress,
-      data: joinIface.encodeFunctionData("joinPool", [poolId, amountWei]),
-      value: "0x0",
-      decoded: {
-        method: "joinPool(uint256,uint256)",
-        params: { poolId: poolId.toString(), amount: amountWei.toString() },
-      },
-    });
-  }
+  // TX 2: Router.joinPoolWithUSDC(poolId, amount)
+  const routerIface = new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]);
+  transactions.push({
+    step: 2,
+    action: "joinPoolWithUSDC",
+    description: `Join pool #${poolId} with ${amountUsdc} USDC via Router`,
+    to: routerAddress,
+    data: routerIface.encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]),
+    value: "0x0",
+    decoded: {
+      method: "joinPoolWithUSDC(uint256,uint256)",
+      params: { poolId: poolId.toString(), amount: amountWei.toString() },
+    },
+  });
 
   return {
     transactions,
     depositWindow,
     riskAnalysis: payload.risk_analysis || null,
     poolParams: payload.pool_params || null,
-    version: useV3 ? "v3" : "v1",
+    version: "v3",
   };
 }
 

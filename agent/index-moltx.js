@@ -212,9 +212,7 @@ async function monitorPoolsMoltx(blockchain, moltx, state) {
     if (result.shouldResolve) {
       console.log(`[MoltX-Monitor] Resolving pool #${pool.onchainId}, claimApproved=${result.claimApproved}`);
       try {
-        const txHash = pool.version === "v3" && blockchain.hasV3
-          ? await blockchain.resolvePoolV3(pool.onchainId, result.claimApproved)
-          : await blockchain.resolvePool(pool.onchainId, result.claimApproved);
+        const txHash = await blockchain.resolvePoolV3(pool.onchainId, result.claimApproved);
         pool.status = "Resolved";
         pool.claimApproved = result.claimApproved;
         pool.resolutionTx = txHash;
@@ -303,50 +301,27 @@ async function postNewOpportunityMoltx(moltx, blockchain, state) {
   // ── STEP 1: Create pool ON-CHAIN ──
   let onchainId = null;
   let creationTxHash = null;
-  let poolVersion = "v1";
+  const poolVersion = "v3";
 
   if (blockchain) {
     try {
-      if (blockchain.hasV3) {
-        // V3: Zero-funded pool creation, then fund premium via Router
-        console.log(`[MoltX-Post] Creating V3 pool: ${product.name}, coverage=${coverageUsdc} USDC (zero-funded)`);
-        const result = await blockchain.createPoolV3({
-          description: `${product.name} verification`,
-          evidenceSource,
-          coverageAmount: coverageUsdc,
-          premiumRate: proposal.premiumRateBps,
-          deadline: deadlineTimestamp,
-        });
-        onchainId = result.poolId;
-        creationTxHash = result.txHash;
-        poolVersion = "v3";
-        console.log(`[MoltX-Post] V3 Pool created! ID: ${onchainId}`);
+      console.log(`[MoltX-Post] Creating V3 pool: ${product.name}, coverage=${coverageUsdc} USDC (zero-funded)`);
+      const result = await blockchain.createPoolV3({
+        description: `${product.name} verification`,
+        evidenceSource,
+        coverageAmount: coverageUsdc,
+        premiumRate: proposal.premiumRateBps,
+        deadline: deadlineTimestamp,
+      });
+      onchainId = result.poolId;
+      creationTxHash = result.txHash;
+      console.log(`[MoltX-Post] V3 Pool created! ID: ${onchainId}`);
 
-        try {
-          await blockchain.fundPremiumV3(onchainId, premiumUsdc);
-          console.log(`[MoltX-Post] V3 premium funded: ${premiumUsdc} USDC`);
-        } catch (fundErr) {
-          console.error(`[MoltX-Post] V3 premium funding failed: ${fundErr.message}`);
-        }
-      } else {
-        const balance = await blockchain.getUsdcBalance();
-        const balanceNum = parseFloat(balance);
-
-        if (balanceNum < premiumUsdc) {
-          console.log(`[MoltX-Post] Insufficient USDC for premium. Need ${premiumUsdc}, have ${balanceNum}. Skipping on-chain.`);
-        } else {
-          console.log(`[MoltX-Post] Creating pool on-chain: ${product.name}, coverage=${coverageUsdc} USDC`);
-          const result = await blockchain.createPool({
-            description: `${product.name} verification`,
-            evidenceSource,
-            coverageAmount: coverageUsdc,
-            premiumRate: proposal.premiumRateBps,
-            deadline: deadlineTimestamp,
-          });
-          onchainId = result.poolId;
-          creationTxHash = result.txHash;
-          console.log(`[MoltX-Post] Pool created on-chain! ID: ${onchainId}`);
-        }
+      try {
+        await blockchain.fundPremiumV3(onchainId, premiumUsdc);
+        console.log(`[MoltX-Post] V3 premium funded: ${premiumUsdc} USDC`);
+      } catch (fundErr) {
+        console.error(`[MoltX-Post] V3 premium funding failed: ${fundErr.message}`);
       }
     } catch (err) {
       console.error(`[MoltX-Post] On-chain creation failed: ${err.message}`);
@@ -363,17 +338,15 @@ async function postNewOpportunityMoltx(moltx, blockchain, state) {
     (1 - proposal.failureProb) * proposal.premiumRateBps * 0.97
   );
 
-  const joinTarget = poolVersion === "v3" && routerAddress ? routerAddress : state.contractAddress;
-  const joinAction = poolVersion === "v3" && routerAddress ? "joinPoolWithUSDC" : "joinPool";
-  const joinMethod = poolVersion === "v3" && routerAddress
-    ? "joinPoolWithUSDC(uint256,uint256)"
-    : "joinPool(uint256,uint256)";
+  const joinTarget = routerAddress || process.env.V3_CONTRACT_ADDRESS;
+  const joinAction = "joinPoolWithUSDC";
+  const joinMethod = "joinPoolWithUSDC(uint256,uint256)";
 
   const m2mPayload = {
     intent: "provide_insurance_liquidity",
     chainId: 8453,
-    contract_address: poolVersion === "v3" ? (process.env.V3_CONTRACT_ADDRESS || state.contractAddress) : state.contractAddress,
-    router_address: poolVersion === "v3" ? routerAddress : undefined,
+    contract_address: process.env.V3_CONTRACT_ADDRESS || state.contractAddress,
+    router_address: routerAddress,
     token: usdcAddress,
     version: poolVersion,
     required_actions: [
@@ -849,21 +822,21 @@ async function processResponsesMoltx(moltx, state) {
         saveState(state);
 
         // Reply with instructions (under 500 chars)
-        const contractAddr = state.contractAddress || "[pending]";
+        const routerAddr = process.env.ROUTER_ADDRESS || "[pending]";
         let replyText;
         if (pool.onchainId !== null) {
           replyText =
             `Registered: ${walletAddress}\n\n` +
             `Pool #${pool.onchainId}:\n` +
-            `1. USDC.approve("${contractAddr}", amount)\n` +
-            `2. MutualPool.joinPool(${pool.onchainId}, amount) — min 10 USDC\n` +
+            `1. USDC.approve("${routerAddr}", amount)\n` +
+            `2. Router.joinPoolWithUSDC(${pool.onchainId}, amount) — min 10 USDC\n` +
             `3. After deadline: withdraw(${pool.onchainId})\n\n` +
             `Deposit deadline: 2h before resolution. DM me for help.`;
         } else {
           replyText =
             `Registered: ${walletAddress}\n\n` +
             `Pool pending on-chain deployment. I'll reply with exact instructions once live.\n` +
-            `Contract: ${contractAddr}\nDeadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}`;
+            `Router: ${routerAddr}\nDeadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}`;
         }
 
         try {
@@ -945,33 +918,22 @@ async function retryProposedPoolsMoltx(blockchain, moltx, state) {
         continue;
       }
 
-      console.log(`[MoltX-Retry] Creating "${pool.description}" on-chain...`);
-      let result;
-      if (blockchain.hasV3) {
-        result = await blockchain.createPoolV3({
-          description: pool.description,
-          evidenceSource: pool.evidenceSource,
-          coverageAmount: pool.coverageAmount,
-          premiumRate: pool.premiumRateBps,
-          deadline: pool.deadline,
-        });
-        pool.version = "v3";
+      console.log(`[MoltX-Retry] Creating "${pool.description}" on-chain (V3)...`);
+      const result = await blockchain.createPoolV3({
+        description: pool.description,
+        evidenceSource: pool.evidenceSource,
+        coverageAmount: pool.coverageAmount,
+        premiumRate: pool.premiumRateBps,
+        deadline: pool.deadline,
+      });
+      pool.version = "v3";
 
-        try {
-          const premium = parseFloat(pool.premiumUsdc || ((pool.coverageAmount * pool.premiumRateBps) / 10000).toFixed(2));
-          await blockchain.fundPremiumV3(result.poolId, premium);
-          console.log(`[MoltX-Retry] V3 premium funded: ${premium} USDC`);
-        } catch (fundErr) {
-          console.error(`[MoltX-Retry] Premium funding failed: ${fundErr.message}`);
-        }
-      } else {
-        result = await blockchain.createPool({
-          description: pool.description,
-          evidenceSource: pool.evidenceSource,
-          coverageAmount: pool.coverageAmount,
-          premiumRate: pool.premiumRateBps,
-          deadline: pool.deadline,
-        });
+      try {
+        const premium = parseFloat(pool.premiumUsdc || ((pool.coverageAmount * pool.premiumRateBps) / 10000).toFixed(2));
+        await blockchain.fundPremiumV3(result.poolId, premium);
+        console.log(`[MoltX-Retry] V3 premium funded: ${premium} USDC`);
+      } catch (fundErr) {
+        console.error(`[MoltX-Retry] Premium funding failed: ${fundErr.message}`);
       }
 
       pool.onchainId = result.poolId;
@@ -984,14 +946,11 @@ async function retryProposedPoolsMoltx(blockchain, moltx, state) {
       if (pool.moltxPostId) {
         try {
           const routerAddr = process.env.ROUTER_ADDRESS;
-          const joinCmd = pool.version === "v3" && routerAddr
-            ? `Router.joinPoolWithUSDC(${pool.onchainId}, amount)`
-            : `joinPool(${pool.onchainId}, amount)`;
           const updateReply =
             `Pool is now LIVE on-chain!\n\n` +
-            `Pool ID: #${pool.onchainId} (${pool.version || "v1"})\nTx: ${result.txHash}\n` +
-            `Contract: ${state.contractAddress}\n\n` +
-            `Join: approve USDC → ${joinCmd}\n` +
+            `Pool ID: #${pool.onchainId}\nTx: ${result.txHash}\n` +
+            `Router: ${routerAddr}\n\n` +
+            `Join: approve USDC → Router.joinPoolWithUSDC(${pool.onchainId}, amount)\n` +
             `Min 10 USDC. Deposit closes 2h before deadline.`;
           await moltx.replyToMolt(pool.moltxPostId, updateReply);
           console.log(`[MoltX-Retry] Updated MoltX post.`);
@@ -1025,19 +984,17 @@ async function runMoltxHeartbeat() {
   const moltx = new MoltXClient(apiKey);
 
   let blockchain = null;
-  if (process.env.AGENT_PRIVATE_KEY && process.env.CONTRACT_ADDRESS) {
+  if (process.env.AGENT_PRIVATE_KEY && process.env.V3_CONTRACT_ADDRESS) {
     blockchain = new BlockchainClient({
       rpcUrl: process.env.BASE_RPC_URL || "https://mainnet.base.org",
       privateKey: process.env.AGENT_PRIVATE_KEY,
-      contractAddress: process.env.CONTRACT_ADDRESS,
       usdcAddress: process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-      v3Address: process.env.V3_CONTRACT_ADDRESS || undefined,
+      v3Address: process.env.V3_CONTRACT_ADDRESS,
       routerAddress: process.env.ROUTER_ADDRESS || undefined,
     });
   }
 
-  const useV3 = blockchain && blockchain.hasV3;
-  console.log(`[MoltX-Stats] Replies today: ${getMoltxDailyReplies(state)}/${MAX_DAILY_REPLIES} | Posts today: ${getMoltxDailyPosts(state)}/${MAX_DAILY_POSTS} | V3: ${useV3 ? "ON" : "off"}`);
+  console.log(`[MoltX-Stats] Replies today: ${getMoltxDailyReplies(state)}/${MAX_DAILY_REPLIES} | Posts today: ${getMoltxDailyPosts(state)}/${MAX_DAILY_POSTS} | V3: ${blockchain ? "ON" : "off"}`);
 
   // Check agent status
   let isActive = false;
@@ -1103,9 +1060,9 @@ async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
   console.log("║       MUTUALBOT MOLTX — SUPER SELLER MODE               ║");
   console.log("╠══════════════════════════════════════════════════════════╣");
-  console.log(`║ Contract V1: ${(process.env.CONTRACT_ADDRESS || "(not deployed)").padEnd(43)}║`);
-  console.log(`║ Contract V3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(43)}║`);
-  console.log(`║ Router:      ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(43)}║`);
+  console.log(`║ MutualPoolV3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(42)}║`);
+  console.log(`║ Router:       ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(42)}║`);
+  console.log(`║ MPOOLV3:      ${(process.env.MPOOLV3_TOKEN_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Products: ${String(Object.keys(INSURANCE_PRODUCTS).length).padEnd(46)}║`);
   console.log(`║ Oracle: Dual Auth (Judge + Auditor)${" ".repeat(22)}║`);
   console.log(`║ Heartbeat: Every 10 min${" ".repeat(33)}║`);

@@ -1,7 +1,7 @@
 {
   "agentName": "MutualBot",
   "protocolOwner": "0x2b4D825417f568231e809E31B9332ED146760337",
-  "contractAddress": "0x09506A77c51f8261Ba6018fd9DE41DEe0Cb0Dd4D",
+  "contractAddress": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
   "moltbookRegistered": true,
   "submoltCreated": true,
   "lastHeartbeat": "2026-02-26T22:49:05.776Z",
@@ -66,41 +66,6 @@
   "moltxWalletAddress": "0x2b4D825417f568231e809E31B9332ED146760337",
   "moltxClaimCode": "coast-06",
   "moltxFirstPostId": "fae3e037-7a04-4a62-9f1d-dd63a09fdb3c",
-  "mpoolToken": {
-    "address": "0x1F6d3ba2BEA4883a9b1834E6b6cFcCf5DD159787",
-    "pool": "0x8d5E70F3F304Db96D44ca23A8B1C73fC2eBA65a3",
-    "deployTx": "0x9f0636b745f2b7f34fca8f6a7e042b9de0b730b65c82a6f0849110d50e4f4380",
-    "name": "MutualPool Token",
-    "symbol": "MPOOL",
-    "totalSupply": "10000000",
-    "lpAllocation": "4000000",
-    "ownerAllocation": "6000000",
-    "launchedAt": "2026-02-27T00:00:00.000Z",
-    "distribution": {
-      "stakingRewards": {
-        "amount": "2500000",
-        "status": "transferred"
-      },
-      "treasury": {
-        "amount": "2000000",
-        "status": "held_by_owner"
-      },
-      "airdropReserve": {
-        "amount": "1000000",
-        "status": "held_by_owner"
-      },
-      "teamVesting": {
-        "amount": "500000",
-        "vestingMonths": 12,
-        "status": "held_by_owner"
-      }
-    },
-    "stakingContract": "0x6c86d5E24Bfb6D154B05d2a3cCD233548A038FD5",
-    "feeRouter": "0x82b4be13b4756c483bE9bCD73A0c24837513e627",
-    "feeSystemDeployedAt": "2026-02-27T00:00:00.000Z",
-    "v2": true,
-    "v1Address": "0xb8550B07b94149b1B362E4042CE0d02cE037174A"
-  },
   "v3": {
     "contractAddress": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
     "routerAddress": "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f",

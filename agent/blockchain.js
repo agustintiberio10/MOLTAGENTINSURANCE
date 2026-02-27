@@ -84,11 +84,15 @@ class BlockchainClient {
   constructor({ rpcUrl, privateKey, contractAddress, usdcAddress, v3Address, routerAddress }) {
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
-    this.contract = new ethers.Contract(contractAddress, MUTUAL_POOL_ABI, this.wallet);
     this.usdc = new ethers.Contract(usdcAddress, ERC20_ABI, this.wallet);
-    this.contractAddress = contractAddress;
 
-    // V3 contracts (optional — set after deploy-v3)
+    // V1 contract (legacy, optional)
+    if (contractAddress) {
+      this.contract = new ethers.Contract(contractAddress, MUTUAL_POOL_ABI, this.wallet);
+      this.contractAddress = contractAddress;
+    }
+
+    // V3 contracts (primary)
     if (v3Address) {
       this.v3 = new ethers.Contract(v3Address, MUTUAL_POOL_V3_ABI, this.wallet);
       this.v3Address = v3Address;
