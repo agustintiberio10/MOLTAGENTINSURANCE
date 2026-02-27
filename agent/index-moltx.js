@@ -91,7 +91,7 @@ const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;       // 10 minutes
 const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts
 const MAX_DAILY_REPLIES = 48;                         // 48/day (replies + quotes)
 const MAX_REPLIES_PER_HEARTBEAT = 12;                 // 12 per cycle
-const MAX_DAILY_POSTS = 10;                           // Max posts per day
+const MAX_DAILY_POSTS = 15;                           // Max posts per day (increased: each proposal = Molt + Article + Pitch)
 const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle
 const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle
 // New skill limits
@@ -568,22 +568,47 @@ async function engageFeedMoltx(moltx, state) {
 
   let engaged = 0;
 
-  // Fetch from global feed — new and hot
+  // Fetch from multiple feed sources for maximum diversity
   const feeds = [];
+
+  // Source 1: Global feed — new (latest posts)
   try {
-    const newFeed = await moltx.getGlobalFeed("new", 20);
+    const newFeed = await moltx.getGlobalFeed("new", 50);
     const newPosts = newFeed?.data?.posts || newFeed?.data || newFeed?.posts || (Array.isArray(newFeed) ? newFeed : []);
     if (Array.isArray(newPosts)) feeds.push(...newPosts);
   } catch (err) {
     console.error("[MoltX-Engage] Error fetching new feed:", err.message);
   }
 
+  // Source 2: Global feed — hot (trending posts)
   try {
-    const hotFeed = await moltx.getGlobalFeed("hot", 20);
+    const hotFeed = await moltx.getGlobalFeed("hot", 50);
     const hotPosts = hotFeed?.data?.posts || hotFeed?.data || hotFeed?.posts || (Array.isArray(hotFeed) ? hotFeed : []);
     if (Array.isArray(hotPosts)) feeds.push(...hotPosts);
   } catch (err) {
     console.error("[MoltX-Engage] Error fetching hot feed:", err.message);
+  }
+
+  // Source 3: Following feed — posts from agents we follow
+  try {
+    const followFeed = await moltx.getFollowingFeed(30);
+    const followPosts = followFeed?.data?.posts || followFeed?.data || followFeed?.posts || (Array.isArray(followFeed) ? followFeed : []);
+    if (Array.isArray(followPosts)) feeds.push(...followPosts);
+  } catch (err) {
+    // Following feed may be empty — not critical
+  }
+
+  // Source 4: Trending hashtag feed — pick a random trending tag
+  try {
+    const tags = state.moltxTrendingHashtags || [];
+    if (tags.length > 0) {
+      const tag = tags[Math.floor(Math.random() * tags.length)];
+      const tagFeed = await moltx.getFeedByHashtag(tag, 20);
+      const tagPosts = tagFeed?.data?.posts || tagFeed?.data || tagFeed?.posts || (Array.isArray(tagFeed) ? tagFeed : []);
+      if (Array.isArray(tagPosts)) feeds.push(...tagPosts);
+    }
+  } catch (err) {
+    // Hashtag feed may fail — not critical
   }
 
   // Deduplicate
@@ -665,9 +690,9 @@ async function engageFeedMoltx(moltx, state) {
     }
   }
 
-  // Keep replied list manageable
-  if (state.moltxRepliedPosts.length > 200) {
-    state.moltxRepliedPosts = state.moltxRepliedPosts.slice(-200);
+  // Keep replied list manageable — aggressive rotation to avoid engagement starvation
+  if (state.moltxRepliedPosts.length > 100) {
+    state.moltxRepliedPosts = state.moltxRepliedPosts.slice(-100);
   }
 
   saveState(state);
@@ -1758,7 +1783,7 @@ async function main() {
   console.log(`║ Heartbeat: Every 10 min${" ".repeat(33)}║`);
   console.log(`║ Skills: Likes, Chains, Quotes, Search, Articles,${" ".repeat(7)}║`);
   console.log(`║         Communities, Leaderboard, Trending${" ".repeat(14)}║`);
-  console.log(`║ Max replies/day: 48 | Max posts/day: 10${" ".repeat(16)}║`);
+  console.log(`║ Max replies/day: 48 | Max posts/day: 15${" ".repeat(16)}║`);
   console.log(`║ Max likes/cycle: 25 | Max quotes/cycle: 2${" ".repeat(14)}║`);
   console.log(`║ Platform: MoltX Social (moltx.io)${" ".repeat(23)}║`);
   console.log(`║ Pool creation: MANUAL (owner only)${" ".repeat(22)}║`);

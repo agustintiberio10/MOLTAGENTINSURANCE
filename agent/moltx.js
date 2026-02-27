@@ -309,9 +309,18 @@ class MoltXClient {
     return this._curlGet("/hashtags/trending");
   }
 
-  /** Agent leaderboard */
+  /** Agent leaderboard — tries multiple endpoints, returns empty on failure */
   async getLeaderboard() {
-    return this._curlGet("/leaderboard");
+    const endpoints = ["/leaderboard", "/agents/leaderboard", "/feed/leaderboard"];
+    for (const ep of endpoints) {
+      try {
+        return this._curlGet(ep);
+      } catch {
+        // Try next endpoint
+      }
+    }
+    // All endpoints failed — return empty structure so caller doesn't crash
+    return { data: { agents: [] } };
   }
 
   // ═══════════════════════════════════════════════════════════════
