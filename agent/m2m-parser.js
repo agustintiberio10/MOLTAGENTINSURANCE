@@ -2,16 +2,19 @@
  * M2M Payload Parser — Node.js/Ethers.js module for parsing Machine-to-Machine
  * JSON payloads from MoltX social posts and constructing on-chain transactions.
  *
+ * V3 Update: Now supports MutualPoolRouter flow and Mogra wallet payloads.
+ *
  * Workflow:
  *   1. Parse MoltX post content → extract JSON code blocks
  *   2. Validate M2M payload structure (intent, required_actions, pool_params)
  *   3. Validate depositDeadline (block.timestamp < deadline - 7200s)
- *   4. Construct approve(address,uint256) + joinPool(uint256,uint256) transactions
- *   5. Return executable transaction sequence
+ *   4. Construct approve → Router.fundPremiumWithUSDC/joinPoolWithUSDC transactions
+ *   5. Optionally build Mogra wallet/transact payloads for off-chain submission
+ *   6. Return executable transaction sequence
  *
  * Security:
  *   - Strict schema validation (no arbitrary method execution)
- *   - Allowlisted actions only: approve, joinPool, withdraw, cancelAndRefund
+ *   - Allowlisted actions only: approve, fundPremiumWithUSDC, joinPoolWithUSDC, withdraw
  *   - depositDeadline validation prevents front-running
  *   - Amount bounds checking (min 1 USDC, max 10,000 USDC)
  */
@@ -32,12 +35,22 @@ const ALLOWED_ACTIONS = {
   approve: {
     method: "approve(address,uint256)",
     target: "usdc",
-    description: "Approve USDC spending for MutualPool contract",
+    description: "Approve USDC spending for Router contract",
   },
   joinPool: {
     method: "joinPool(uint256,uint256)",
     target: "mutualpool",
-    description: "Join a mutual insurance pool as collateral provider",
+    description: "Join a mutual insurance pool as collateral provider (V1 legacy)",
+  },
+  fundPremiumWithUSDC: {
+    method: "fundPremiumWithUSDC(uint256,uint256)",
+    target: "router",
+    description: "Fund pool premium via Router (V3)",
+  },
+  joinPoolWithUSDC: {
+    method: "joinPoolWithUSDC(uint256,uint256)",
+    target: "router",
+    description: "Join pool via Router with USDC (V3)",
   },
   withdraw: {
     method: "withdraw(uint256)",
@@ -50,6 +63,9 @@ const ALLOWED_ACTIONS = {
     description: "Cancel underfunded pool and refund all participants",
   },
 };
+
+// Mogra Wallet API endpoint
+const MOGRA_API_BASE = "https://mogra.xyz/api";
 
 // ═══════════════════════════════════════════════════════════════
 // Payload Extraction from MoltX Post Content
@@ -193,18 +209,22 @@ function checkDepositWindow(deadline, currentTimestamp) {
 
 /**
  * Build the transaction sequence for a "provide_insurance_liquidity" M2M payload.
- * Constructs: approve(address, uint256) → joinPool(uint256, uint256)
+ *
+ * V3 flow: approve(Router) → Router.joinPoolWithUSDC(poolId, amount)
+ * Legacy V1 flow: approve(MutualPool) → joinPool(poolId, amount)
  *
  * @param {object} payload - Validated M2M payload
  * @param {object} options
- * @param {string} options.contractAddress - MutualPool contract address
+ * @param {string} options.contractAddress - MutualPool/V3 contract address
+ * @param {string} [options.routerAddress] - MutualPoolRouter address (enables V3 flow)
  * @param {number} options.amountUsdc - Amount of USDC to provide as collateral
  * @param {import('ethers').Wallet} [options.wallet] - Optional wallet for signing
  * @param {import('ethers').JsonRpcProvider} [options.provider] - Optional provider for gas estimation
  * @returns {{ transactions: object[], depositWindow: object, riskAnalysis: object }}
  */
 function buildJoinPoolTransactions(payload, options) {
-  const { contractAddress, amountUsdc, wallet, provider } = options;
+  const { contractAddress, routerAddress, amountUsdc, wallet, provider } = options;
+  const useV3 = !!routerAddress;
 
   // Validate amount bounds
   if (amountUsdc < MIN_AMOUNT_USDC || amountUsdc > MAX_AMOUNT_USDC) {
@@ -229,47 +249,125 @@ function buildJoinPoolTransactions(payload, options) {
     throw new Error("No pool_id found in payload");
   }
 
-  // Convert amount to USDC wei (6 decimals)
   const amountWei = ethers.parseUnits(amountUsdc.toString(), USDC_DECIMALS);
-
-  // Build transaction sequence
   const transactions = [];
+  const approveTarget = useV3 ? routerAddress : contractAddress;
 
-  // TX 1: approve(address spender, uint256 amount)
+  // TX 1: approve USDC for Router (V3) or MutualPool (V1)
   const approveIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
   transactions.push({
     step: 1,
     action: "approve",
-    description: `Approve ${amountUsdc} USDC for MutualPool contract`,
+    description: `Approve ${amountUsdc} USDC for ${useV3 ? "Router" : "MutualPool"}`,
     to: USDC_ADDRESS,
-    data: approveIface.encodeFunctionData("approve", [contractAddress, amountWei]),
+    data: approveIface.encodeFunctionData("approve", [approveTarget, amountWei]),
     value: "0x0",
     decoded: {
       method: "approve(address,uint256)",
-      params: { spender: contractAddress, amount: amountWei.toString() },
+      params: { spender: approveTarget, amount: amountWei.toString() },
     },
   });
 
-  // TX 2: joinPool(uint256 _poolId, uint256 _amount)
-  const joinIface = new ethers.Interface(["function joinPool(uint256,uint256)"]);
-  transactions.push({
-    step: 2,
-    action: "joinPool",
-    description: `Join pool #${poolId} with ${amountUsdc} USDC collateral`,
-    to: contractAddress,
-    data: joinIface.encodeFunctionData("joinPool", [poolId, amountWei]),
-    value: "0x0",
-    decoded: {
-      method: "joinPool(uint256,uint256)",
-      params: { poolId: poolId.toString(), amount: amountWei.toString() },
-    },
-  });
+  if (useV3) {
+    // TX 2 (V3): Router.joinPoolWithUSDC(poolId, amount)
+    const routerIface = new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]);
+    transactions.push({
+      step: 2,
+      action: "joinPoolWithUSDC",
+      description: `Join pool #${poolId} with ${amountUsdc} USDC via Router (V3)`,
+      to: routerAddress,
+      data: routerIface.encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]),
+      value: "0x0",
+      decoded: {
+        method: "joinPoolWithUSDC(uint256,uint256)",
+        params: { poolId: poolId.toString(), amount: amountWei.toString() },
+      },
+    });
+  } else {
+    // TX 2 (V1 legacy): joinPool(poolId, amount)
+    const joinIface = new ethers.Interface(["function joinPool(uint256,uint256)"]);
+    transactions.push({
+      step: 2,
+      action: "joinPool",
+      description: `Join pool #${poolId} with ${amountUsdc} USDC collateral`,
+      to: contractAddress,
+      data: joinIface.encodeFunctionData("joinPool", [poolId, amountWei]),
+      value: "0x0",
+      decoded: {
+        method: "joinPool(uint256,uint256)",
+        params: { poolId: poolId.toString(), amount: amountWei.toString() },
+      },
+    });
+  }
 
   return {
     transactions,
     depositWindow,
     riskAnalysis: payload.risk_analysis || null,
     poolParams: payload.pool_params || null,
+    version: useV3 ? "v3" : "v1",
+  };
+}
+
+/**
+ * Build a Mogra wallet/transact payload for off-chain submission.
+ * The Mogra API signs and submits the batch of calls atomically.
+ *
+ * @param {object} payload - Validated M2M payload
+ * @param {object} options
+ * @param {string} options.routerAddress - MutualPoolRouter address
+ * @param {number} options.amountUsdc - USDC amount
+ * @param {string} options.mograApiKey - Mogra API key
+ * @returns {object} Mogra-compatible transact payload
+ */
+function buildMograPayload(payload, options) {
+  const { routerAddress, amountUsdc, mograApiKey } = options;
+
+  if (!routerAddress) throw new Error("routerAddress required for Mogra payload");
+  if (!mograApiKey) throw new Error("mograApiKey required");
+
+  const poolId = payload.pool_params?.pool_id ?? payload.pool_id;
+  if (poolId === undefined || poolId === null) {
+    throw new Error("No pool_id found in payload");
+  }
+
+  const amountWei = ethers.parseUnits(amountUsdc.toString(), USDC_DECIMALS);
+  const approveIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
+  const routerIface = new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]);
+
+  const intent = payload.intent === "fund_pool_premium" ? "fundPremiumWithUSDC" : "joinPoolWithUSDC";
+  const routerMethod = intent === "fundPremiumWithUSDC"
+    ? new ethers.Interface(["function fundPremiumWithUSDC(uint256,uint256)"]).encodeFunctionData("fundPremiumWithUSDC", [poolId, amountWei])
+    : routerIface.encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]);
+
+  return {
+    mograPayload: {
+      network: "base",
+      calls: [
+        {
+          to: USDC_ADDRESS,
+          data: approveIface.encodeFunctionData("approve", [routerAddress, amountWei]),
+          value: "0x0",
+        },
+        {
+          to: routerAddress,
+          data: routerMethod,
+          value: "0x0",
+        },
+      ],
+    },
+    apiConfig: {
+      url: `${MOGRA_API_BASE}/wallet/transact`,
+      headers: {
+        "Authorization": `Bearer ${mograApiKey}`,
+        "Content-Type": "application/json",
+      },
+    },
+    meta: {
+      poolId,
+      amountUsdc,
+      intent,
+    },
   };
 }
 
@@ -387,15 +485,45 @@ async function executeTransactions(transactions, wallet) {
   return receipts;
 }
 
+/**
+ * Submit a Mogra wallet/transact payload via the Mogra API.
+ *
+ * @param {object} mograResult - Output from buildMograPayload()
+ * @returns {Promise<object>} Mogra API response
+ */
+async function submitMograTransaction(mograResult) {
+  const { mograPayload, apiConfig, meta } = mograResult;
+
+  console.log(`[Mogra] Submitting ${meta.intent} for pool #${meta.poolId} (${meta.amountUsdc} USDC)`);
+
+  const { execSync } = require("child_process");
+  const body = JSON.stringify(mograPayload);
+
+  const cmd = `curl -s -X POST "${apiConfig.url}" -H "Authorization: ${apiConfig.headers.Authorization}" -H "Content-Type: application/json" -d '${body.replace(/'/g, "'\\''")}'`;
+
+  try {
+    const response = execSync(cmd, { encoding: "utf8", timeout: 30000 });
+    const result = JSON.parse(response);
+    console.log(`[Mogra] Response:`, JSON.stringify(result).substring(0, 200));
+    return result;
+  } catch (err) {
+    console.error(`[Mogra] Failed:`, err.message);
+    throw err;
+  }
+}
+
 module.exports = {
   extractM2MPayloads,
   validatePayload,
   checkDepositWindow,
   buildJoinPoolTransactions,
+  buildMograPayload,
   buildWithdrawTransaction,
   processPost,
   executeTransactions,
+  submitMograTransaction,
   ALLOWED_ACTIONS,
   DEPOSIT_WINDOW_BUFFER,
   USDC_ADDRESS,
+  MOGRA_API_BASE,
 };

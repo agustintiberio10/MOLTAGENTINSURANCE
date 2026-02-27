@@ -1,11 +1,15 @@
 /**
- * Blockchain interaction module — wraps ethers.js calls to the MutualPool contract.
+ * Blockchain interaction module — wraps ethers.js calls to MutualPool V1 and V3 contracts.
+ *
+ * Supports both legacy V1 (direct) and V3 (router-gated) flows:
+ *   V1: createPool() pays premium directly
+ *   V3: createPool() is zero-funded, fundPremium/joinPool go via Router
  */
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
 
-// ABI — only the functions we need
+// ABI — V1 (legacy)
 const MUTUAL_POOL_ABI = [
   "function createPool(string _description, string _evidenceSource, uint256 _coverageAmount, uint256 _premiumRate, uint256 _deadline) external returns (uint256)",
   "function joinPool(uint256 _poolId, uint256 _amount) external",
@@ -31,6 +35,44 @@ const MUTUAL_POOL_ABI = [
   "event Withdrawn(uint256 indexed poolId, address indexed participant, uint256 amount)",
 ];
 
+// ABI — V3 (zero-funded, router-gated)
+const MUTUAL_POOL_V3_ABI = [
+  "function createPool(string _description, string _evidenceSource, uint256 _coverageAmount, uint256 _premiumRate, uint256 _deadline) external returns (uint256)",
+  "function fundPremium(uint256 _poolId, address _insured) external",
+  "function joinPool(uint256 _poolId, uint256 _amount, address _participant) external",
+  "function resolvePool(uint256 _poolId, bool _claimApproved) external",
+  "function withdraw(uint256 _poolId) external",
+  "function cancelAndRefund(uint256 _poolId) external",
+  "function emergencyResolve(uint256 _poolId) external",
+  "function getPool(uint256 _poolId) external view returns (string description, string evidenceSource, uint256 coverageAmount, uint256 premiumRate, uint256 deadline, uint256 depositDeadline, address insured, uint256 premiumPaid, uint256 totalCollateral, uint8 status, bool claimApproved, uint256 participantCount)",
+  "function getPoolParticipants(uint256 _poolId) external view returns (address[])",
+  "function getContribution(uint256 _poolId, address _participant) external view returns (uint256)",
+  "function getPoolAccounting(uint256 _poolId) external view returns (uint256 premiumAfterFee, uint256 protocolFee, uint256 totalCollateral)",
+  "function getRequiredPremium(uint256 _poolId) external view returns (uint256)",
+  "function nextPoolId() external view returns (uint256)",
+  "function oracle() external view returns (address)",
+  "function router() external view returns (address)",
+  "event PoolCreated(uint256 indexed poolId, string description, uint256 coverageAmount, uint256 premiumRate, uint256 deadline)",
+  "event PremiumFunded(uint256 indexed poolId, address indexed insured, uint256 premiumAmount)",
+  "event AgentJoined(uint256 indexed poolId, address indexed participant, uint256 amount)",
+  "event PoolActivated(uint256 indexed poolId, uint256 totalCollateral)",
+  "event PoolResolved(uint256 indexed poolId, bool claimApproved, uint256 totalCollateral, uint256 premiumAfterFee, uint256 protocolFee)",
+  "event PoolCancelled(uint256 indexed poolId, uint256 totalCollateral, uint256 premiumRefunded)",
+  "event EmergencyResolved(uint256 indexed poolId, address indexed triggeredBy)",
+  "event FeeCollected(uint256 indexed poolId, uint256 feeAmount)",
+  "event Withdrawn(uint256 indexed poolId, address indexed participant, uint256 amount)",
+];
+
+// ABI — Router
+const ROUTER_ABI = [
+  "function fundPremiumWithUSDC(uint256 poolId, uint256 amount) external",
+  "function joinPoolWithUSDC(uint256 poolId, uint256 amount) external",
+  "function fundPremiumWithMPOOL(uint256 poolId, uint256 mpoolAmount, uint256 minUsdcOut) external",
+  "function joinPoolWithMPOOL(uint256 poolId, uint256 mpoolAmount, uint256 minUsdcOut) external",
+  "function quoteMpoolToUsdc(uint256 mpoolAmount) external view returns (uint256)",
+  "function paused() external view returns (bool)",
+];
+
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
@@ -39,12 +81,22 @@ const ERC20_ABI = [
 ];
 
 class BlockchainClient {
-  constructor({ rpcUrl, privateKey, contractAddress, usdcAddress }) {
+  constructor({ rpcUrl, privateKey, contractAddress, usdcAddress, v3Address, routerAddress }) {
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
     this.contract = new ethers.Contract(contractAddress, MUTUAL_POOL_ABI, this.wallet);
     this.usdc = new ethers.Contract(usdcAddress, ERC20_ABI, this.wallet);
     this.contractAddress = contractAddress;
+
+    // V3 contracts (optional — set after deploy-v3)
+    if (v3Address) {
+      this.v3 = new ethers.Contract(v3Address, MUTUAL_POOL_V3_ABI, this.wallet);
+      this.v3Address = v3Address;
+    }
+    if (routerAddress) {
+      this.router = new ethers.Contract(routerAddress, ROUTER_ABI, this.wallet);
+      this.routerAddress = routerAddress;
+    }
   }
 
   get agentAddress() {
@@ -194,6 +246,240 @@ class BlockchainClient {
 
   async getOracle() {
     return await this.contract.oracle();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // V3 OPERATIONS (zero-funded, router-gated)
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Check if V3 contracts are configured.
+   */
+  get hasV3() {
+    return !!this.v3;
+  }
+
+  /**
+   * V3: Create pool structure (zero-funded, oracle-only, gas only).
+   * No USDC is transferred — premium is funded separately via Router.
+   */
+  async createPoolV3({ description, evidenceSource, coverageAmount, premiumRate, deadline }) {
+    if (!this.v3) throw new Error("V3 contract not configured");
+
+    const coverageWei = ethers.parseUnits(coverageAmount.toString(), 6);
+    console.log(`[V3] Creating pool: "${description}" (zero-funded)`);
+
+    const tx = await this.v3.createPool(description, evidenceSource, coverageWei, premiumRate, deadline);
+    const receipt = await tx.wait();
+
+    const event = receipt.logs
+      .map((log) => {
+        try { return this.v3.interface.parseLog(log); }
+        catch { return null; }
+      })
+      .find((e) => e && e.name === "PoolCreated");
+
+    const poolId = event ? Number(event.args.poolId) : null;
+    console.log(`[V3] Pool created with ID: ${poolId}, tx: ${tx.hash}`);
+    return { poolId, txHash: tx.hash };
+  }
+
+  /**
+   * V3: Fund premium via Router (Mode A — direct USDC).
+   * Approves Router, then calls Router.fundPremiumWithUSDC().
+   */
+  async fundPremiumV3(poolId, usdcAmount) {
+    if (!this.router) throw new Error("Router not configured");
+
+    const amountWei = ethers.parseUnits(usdcAmount.toString(), 6);
+    await this._approveFor(this.routerAddress, amountWei);
+
+    console.log(`[V3] Funding premium for pool ${poolId}: ${usdcAmount} USDC via Router`);
+    const tx = await this.router.fundPremiumWithUSDC(poolId, amountWei);
+    await tx.wait();
+    console.log(`[V3] Premium funded, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * V3: Join pool via Router (Mode A — direct USDC).
+   */
+  async joinPoolV3(poolId, usdcAmount) {
+    if (!this.router) throw new Error("Router not configured");
+
+    const amountWei = ethers.parseUnits(usdcAmount.toString(), 6);
+    await this._approveFor(this.routerAddress, amountWei);
+
+    console.log(`[V3] Joining pool ${poolId} with ${usdcAmount} USDC via Router`);
+    const tx = await this.router.joinPoolWithUSDC(poolId, amountWei);
+    await tx.wait();
+    console.log(`[V3] Joined pool ${poolId}, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * V3: Resolve pool (oracle-only, same as V1).
+   */
+  async resolvePoolV3(poolId, claimApproved) {
+    if (!this.v3) throw new Error("V3 contract not configured");
+
+    console.log(`[V3] Resolving pool ${poolId}, claimApproved=${claimApproved}`);
+    const tx = await this.v3.resolvePool(poolId, claimApproved);
+    await tx.wait();
+    console.log(`[V3] Pool ${poolId} resolved, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * V3: Withdraw (open to participants, same as V1).
+   */
+  async withdrawV3(poolId) {
+    if (!this.v3) throw new Error("V3 contract not configured");
+
+    console.log(`[V3] Withdrawing from pool ${poolId}`);
+    const tx = await this.v3.withdraw(poolId);
+    await tx.wait();
+    console.log(`[V3] Withdrawn, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * V3: Cancel and refund (same as V1).
+   */
+  async cancelAndRefundV3(poolId) {
+    if (!this.v3) throw new Error("V3 contract not configured");
+
+    console.log(`[V3] Cancelling pool ${poolId}`);
+    const tx = await this.v3.cancelAndRefund(poolId);
+    await tx.wait();
+    console.log(`[V3] Pool ${poolId} cancelled, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * V3: Emergency resolve (same as V1).
+   */
+  async emergencyResolveV3(poolId) {
+    if (!this.v3) throw new Error("V3 contract not configured");
+
+    console.log(`[V3] Emergency resolving pool ${poolId}`);
+    const tx = await this.v3.emergencyResolve(poolId);
+    await tx.wait();
+    console.log(`[V3] Pool ${poolId} emergency resolved, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * V3: Read pool data.
+   */
+  async getPoolV3(poolId) {
+    if (!this.v3) throw new Error("V3 contract not configured");
+
+    const data = await this.v3.getPool(poolId);
+    return {
+      description: data.description,
+      evidenceSource: data.evidenceSource,
+      coverageAmount: ethers.formatUnits(data.coverageAmount, 6),
+      premiumRate: Number(data.premiumRate),
+      deadline: Number(data.deadline),
+      depositDeadline: Number(data.depositDeadline),
+      insured: data.insured,
+      premiumPaid: ethers.formatUnits(data.premiumPaid, 6),
+      totalCollateral: ethers.formatUnits(data.totalCollateral, 6),
+      status: Number(data.status), // 0=Pending, 1=Open, 2=Active, 3=Resolved, 4=Cancelled
+      claimApproved: data.claimApproved,
+      participantCount: Number(data.participantCount),
+    };
+  }
+
+  async getNextPoolIdV3() {
+    if (!this.v3) throw new Error("V3 contract not configured");
+    return Number(await this.v3.nextPoolId());
+  }
+
+  async getRequiredPremiumV3(poolId) {
+    if (!this.v3) throw new Error("V3 contract not configured");
+    const amount = await this.v3.getRequiredPremium(poolId);
+    return ethers.formatUnits(amount, 6);
+  }
+
+  /**
+   * V3: Quote MPOOLV3 → USDC via Router's swap handler.
+   */
+  async quoteMpoolToUsdc(mpoolAmount) {
+    if (!this.router) throw new Error("Router not configured");
+    const amountWei = ethers.parseUnits(mpoolAmount.toString(), 18);
+    const usdcOut = await this.router.quoteMpoolToUsdc(amountWei);
+    return ethers.formatUnits(usdcOut, 6);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // MOGRA WALLET — Off-chain transaction payloads
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Build a Mogra-compatible transaction payload for wallet/transact API.
+   * Mogra signs and submits the tx on behalf of the agent.
+   *
+   * @param {string} method - "fundPremiumWithUSDC" | "joinPoolWithUSDC"
+   * @param {object} params - { poolId, amount }
+   * @returns {object} Mogra transact payload
+   */
+  buildMograPayload(method, params) {
+    if (!this.routerAddress) throw new Error("Router not configured");
+
+    const routerIface = new ethers.Interface(ROUTER_ABI);
+    let calldata, approveCalldata;
+
+    if (method === "fundPremiumWithUSDC") {
+      const amountWei = ethers.parseUnits(params.amount.toString(), 6);
+      calldata = routerIface.encodeFunctionData("fundPremiumWithUSDC", [params.poolId, amountWei]);
+      approveCalldata = new ethers.Interface(ERC20_ABI).encodeFunctionData("approve", [this.routerAddress, amountWei]);
+    } else if (method === "joinPoolWithUSDC") {
+      const amountWei = ethers.parseUnits(params.amount.toString(), 6);
+      calldata = routerIface.encodeFunctionData("joinPoolWithUSDC", [params.poolId, amountWei]);
+      approveCalldata = new ethers.Interface(ERC20_ABI).encodeFunctionData("approve", [this.routerAddress, amountWei]);
+    } else {
+      throw new Error(`Unknown method: ${method}`);
+    }
+
+    return {
+      network: "base",
+      calls: [
+        {
+          to: this.usdc.target,
+          data: approveCalldata,
+          value: "0x0",
+          description: `Approve ${params.amount} USDC for Router`,
+        },
+        {
+          to: this.routerAddress,
+          data: calldata,
+          value: "0x0",
+          description: `${method}(pool=${params.poolId}, amount=${params.amount} USDC)`,
+        },
+      ],
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // INTERNAL HELPERS
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Approve USDC spending for a specific spender address.
+   */
+  async _approveFor(spender, amountWei) {
+    const currentAllowance = await this.usdc.allowance(this.wallet.address, spender);
+    if (currentAllowance >= amountWei) {
+      console.log("[Blockchain] USDC allowance sufficient for", spender);
+      return null;
+    }
+    console.log(`[Blockchain] Approving USDC for ${spender}...`);
+    const tx = await this.usdc.approve(spender, amountWei);
+    await tx.wait();
+    console.log("[Blockchain] Approved:", tx.hash);
+    return tx;
   }
 }
 
