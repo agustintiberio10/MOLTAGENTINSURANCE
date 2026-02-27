@@ -4,10 +4,129 @@
  * Supports both legacy V1 (direct) and V3 (router-gated) flows:
  *   V1: createPool() pays premium directly
  *   V3: createPool() is zero-funded, fundPremium/joinPool go via Router
+ *
+ * Infrastructure:
+ *   - FallbackProvider: Alchemy (priority 1) → Infura (priority 2) → Public RPC (priority 3)
+ *   - Exponential backoff on CALL_EXCEPTION / 429 / network errors
+ *   - Nonce-safe TX queue for serialized writes
  */
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
+
+// ═══════════════════════════════════════════════════════════════
+// EXPONENTIAL BACKOFF HELPER (Eje 4)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Execute an async function with exponential backoff on transient errors.
+ * Retries on: CALL_EXCEPTION, NETWORK_ERROR, TIMEOUT, SERVER_ERROR, 429.
+ *
+ * @param {Function} asyncFn - Async function to execute
+ * @param {number} maxRetries - Max retry attempts (default 3)
+ * @param {number} baseDelay - Base delay in ms (default 2000)
+ * @returns {Promise<*>} Result of asyncFn
+ */
+async function executeWithBackoff(asyncFn, maxRetries = 3, baseDelay = 2000) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await asyncFn();
+    } catch (err) {
+      lastError = err;
+      const code = err.code || "";
+      const message = (err.message || "").toLowerCase();
+      const isTransient =
+        code === "CALL_EXCEPTION" ||
+        code === "NETWORK_ERROR" ||
+        code === "TIMEOUT" ||
+        code === "SERVER_ERROR" ||
+        code === "UNKNOWN_ERROR" ||
+        message.includes("429") ||
+        message.includes("rate limit") ||
+        message.includes("too many requests") ||
+        message.includes("missing revert data") ||
+        message.includes("could not coalesce") ||
+        message.includes("failed to fetch") ||
+        message.includes("econnrefused") ||
+        message.includes("econnreset") ||
+        message.includes("socket hang up");
+
+      if (!isTransient || attempt === maxRetries) {
+        throw err;
+      }
+
+      const delay = baseDelay * Math.pow(2, attempt); // 2s, 4s, 8s
+      console.log(`[Backoff] Attempt ${attempt + 1}/${maxRetries} failed (${code || err.message}). Retrying in ${delay / 1000}s...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FALLBACK PROVIDER FACTORY (Eje 2)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Build a resilient provider using ethers v6 FallbackProvider.
+ * Priority: ALCHEMY_RPC_URL (weight 2) → INFURA_RPC_URL (weight 1) → public RPC (weight 1)
+ *
+ * With Alchemy at weight 2 and quorum = ceil(totalWeight/2), Alchemy alone
+ * satisfies the quorum — Infura and public only kick in if Alchemy stalls.
+ *
+ * @param {string} primaryRpcUrl - The BASE_RPC_URL from env (public fallback)
+ * @returns {ethers.AbstractProvider}
+ */
+function buildFallbackProvider(primaryRpcUrl) {
+  const configs = [];
+
+  // Priority 1: Alchemy (premium, fast, weight 2)
+  if (process.env.ALCHEMY_RPC_URL) {
+    configs.push({
+      provider: new ethers.JsonRpcProvider(process.env.ALCHEMY_RPC_URL),
+      priority: 1,
+      stallTimeout: 2000,
+      weight: 2,
+    });
+    console.log("[Provider] Alchemy RPC configured (priority 1, weight 2)");
+  }
+
+  // Priority 2: Infura (reliable backup, weight 1)
+  if (process.env.INFURA_RPC_URL) {
+    configs.push({
+      provider: new ethers.JsonRpcProvider(process.env.INFURA_RPC_URL),
+      priority: 2,
+      stallTimeout: 3000,
+      weight: 1,
+    });
+    console.log("[Provider] Infura RPC configured (priority 2, weight 1)");
+  }
+
+  // Priority 3: Public RPC (last resort, weight 1)
+  const publicUrl = primaryRpcUrl || "https://mainnet.base.org";
+  configs.push({
+    provider: new ethers.JsonRpcProvider(publicUrl),
+    priority: 3,
+    stallTimeout: 4000,
+    weight: 1,
+  });
+  console.log(`[Provider] Public RPC configured (priority 3, weight 1): ${publicUrl}`);
+
+  // If only 1 provider, use it directly (no FallbackProvider overhead)
+  if (configs.length === 1) {
+    console.log("[Provider] Single provider mode — no fallback.");
+    return configs[0].provider;
+  }
+
+  // FallbackProvider: quorum defaults to ceil(totalWeight/2)
+  // With Alchemy(2) + Infura(1) + Public(1) = 4, quorum = 2.
+  // Alchemy alone (weight 2) satisfies quorum → primary provider.
+  const fallback = new ethers.FallbackProvider(configs);
+  const totalWeight = configs.reduce((s, c) => s + c.weight, 0);
+  console.log(`[Provider] FallbackProvider active: ${configs.length} providers, totalWeight=${totalWeight}, quorum=${Math.ceil(totalWeight / 2)}`);
+  return fallback;
+}
 
 // ABI — V1 (legacy)
 const MUTUAL_POOL_ABI = [
@@ -82,7 +201,8 @@ const ERC20_ABI = [
 
 class BlockchainClient {
   constructor({ rpcUrl, privateKey, contractAddress, usdcAddress, v3Address, routerAddress }) {
-    this.provider = new ethers.JsonRpcProvider(rpcUrl);
+    // ── Eje 2: FallbackProvider with multi-RPC resilience ──
+    this.provider = buildFallbackProvider(rpcUrl);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
     this.usdc = new ethers.Contract(usdcAddress, ERC20_ABI, this.wallet);
 
@@ -168,7 +288,9 @@ class BlockchainClient {
   // --- USDC helpers ---
 
   async getUsdcBalance(address) {
-    const balance = await this.usdc.balanceOf(address || this.wallet.address);
+    const balance = await executeWithBackoff(() =>
+      this.usdc.balanceOf(address || this.wallet.address)
+    );
     return ethers.formatUnits(balance, 6);
   }
 
@@ -322,17 +444,27 @@ class BlockchainClient {
   }
 
   /**
-   * V3: Create pool structure (zero-funded, oracle-only, gas only).
-   * No USDC is transferred — premium is funded separately via Router.
+   * V3: Create pool structure (zero-funded, oracle-only, ETH gas only).
+   *
+   * IMPORTANT — Eje 1: The Oracle is msg.sender here. It only pays ETH gas.
+   * NO USDC is touched in this phase. The insured client funds premium later
+   * via Router.fundPremiumWithUSDC(). We use a fixed gasLimit to SKIP ethers
+   * gas estimation, which prevents the RPC from simulating the contract
+   * (the on-chain createPool may internally read USDC state, triggering
+   * CALL_EXCEPTION on rate-limited public RPCs).
    */
   async createPoolV3({ description, evidenceSource, coverageAmount, premiumRate, deadline }) {
     if (!this.v3) throw new Error("V3 contract not configured");
 
     const coverageWei = ethers.parseUnits(coverageAmount.toString(), 6);
-    console.log(`[V3] Creating pool: "${description}" (zero-funded)`);
+    console.log(`[V3] Creating pool: "${description}" (zero-funded, gasLimit=500k)`);
 
+    // Fixed gasLimit skips eth_estimateGas → no internal USDC.balanceOf() simulation
     const { tx, receipt } = await this._enqueueTx(({ nonce }) =>
-      this.v3.createPool(description, evidenceSource, coverageWei, premiumRate, deadline, { nonce })
+      this.v3.createPool(description, evidenceSource, coverageWei, premiumRate, deadline, {
+        nonce,
+        gasLimit: 500_000n,
+      })
     );
 
     const event = receipt.logs
@@ -439,12 +571,12 @@ class BlockchainClient {
   }
 
   /**
-   * V3: Read pool data.
+   * V3: Read pool data (wrapped with exponential backoff).
    */
   async getPoolV3(poolId) {
     if (!this.v3) throw new Error("V3 contract not configured");
 
-    const data = await this.v3.getPool(poolId);
+    const data = await executeWithBackoff(() => this.v3.getPool(poolId));
     return {
       description: data.description,
       evidenceSource: data.evidenceSource,
@@ -463,12 +595,12 @@ class BlockchainClient {
 
   async getNextPoolIdV3() {
     if (!this.v3) throw new Error("V3 contract not configured");
-    return Number(await this.v3.nextPoolId());
+    return Number(await executeWithBackoff(() => this.v3.nextPoolId()));
   }
 
   async getRequiredPremiumV3(poolId) {
     if (!this.v3) throw new Error("V3 contract not configured");
-    const amount = await this.v3.getRequiredPremium(poolId);
+    const amount = await executeWithBackoff(() => this.v3.getRequiredPremium(poolId));
     return ethers.formatUnits(amount, 6);
   }
 
@@ -554,3 +686,4 @@ class BlockchainClient {
 }
 
 module.exports = BlockchainClient;
+module.exports.executeWithBackoff = executeWithBackoff;

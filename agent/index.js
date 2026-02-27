@@ -930,9 +930,12 @@ async function handlePostActivity(moltbook, state, activity) {
 
 /**
  * (g) Retry on-chain creation for pools stuck in "Proposed" status.
- * These are pools that were posted to Moltbook but failed on-chain creation
- * (e.g., insufficient USDC, RPC error, etc.)
+ *
+ * Eje 3: Retry counter — if a pool fails 3+ times, mark as "Failed" and
+ * stop blocking the queue. Expired pools are marked immediately.
  */
+const MAX_POOL_RETRIES = 3;
+
 async function retryProposedPools(blockchain, moltbook, state) {
   if (!blockchain) return;
 
@@ -942,17 +945,30 @@ async function retryProposedPools(blockchain, moltbook, state) {
   console.log(`[Retry] ${proposedPools.length} pool(s) pending on-chain creation.`);
 
   for (const pool of proposedPools) {
-    // Check if deadline already passed — skip expired pools
+    // Initialize retry counter if not present
+    if (typeof pool.retries !== "number") pool.retries = 0;
+
+    // ── Check 1: Expired deadline → drop immediately ──
     if (Math.floor(Date.now() / 1000) >= pool.deadline) {
-      console.log(`[Retry] Pool "${pool.description}" expired. Marking as Expired.`);
+      console.log(`[Retry] Pool "${pool.description}" expired (deadline passed). Marking Expired.`);
       pool.status = "Expired";
+      saveState(state);
+      continue;
+    }
+
+    // ── Check 2: Max retries exceeded → mark Failed ──
+    if (pool.retries >= MAX_POOL_RETRIES) {
+      console.error(`[Retry] Pool "${pool.description}" failed ${pool.retries}x. Marking FAILED — removing from retry queue.`);
+      pool.status = "Failed";
+      pool.failReason = `Exceeded ${MAX_POOL_RETRIES} on-chain creation attempts`;
+      pool.failedAt = new Date().toISOString();
       saveState(state);
       continue;
     }
 
     try {
       // Oracle only needs ETH for gas — no USDC needed (client funds premium)
-      console.log(`[Retry] Creating "${pool.description}" on-chain (V3)...`);
+      console.log(`[Retry] Creating "${pool.description}" on-chain (V3) — attempt ${pool.retries + 1}/${MAX_POOL_RETRIES}...`);
       const result = await blockchain.createPoolV3({
         description: pool.description,
         evidenceSource: pool.evidenceSource,
@@ -961,11 +977,11 @@ async function retryProposedPools(blockchain, moltbook, state) {
         deadline: pool.deadline,
       });
       pool.version = "v3";
-      // NOTE: Oracle does NOT fund premium. Client calls fundPremiumWithUSDC.
 
       pool.onchainId = result.poolId;
       pool.creationTxHash = result.txHash;
       pool.status = "Pending";
+      pool.retries = 0; // Reset on success
       saveState(state);
       console.log(`[Retry] Pool created on-chain! ID: ${pool.onchainId}, tx: ${result.txHash}`);
 
@@ -997,7 +1013,14 @@ async function retryProposedPools(blockchain, moltbook, state) {
         console.log(`[Retry] Participant ${wallet} can now joinPool(${pool.onchainId}).`);
       }
     } catch (err) {
-      console.error(`[Retry] On-chain creation failed for "${pool.description}": ${err.message}`);
+      pool.retries++;
+      pool.lastRetryError = err.message;
+      pool.lastRetryAt = new Date().toISOString();
+      saveState(state);
+      console.error(`[Retry] On-chain creation failed for "${pool.description}" (attempt ${pool.retries}/${MAX_POOL_RETRIES}): ${err.message}`);
+      if (pool.retries >= MAX_POOL_RETRIES) {
+        console.error(`[Retry] ⚠ "${pool.description}" will be marked FAILED on next cycle.`);
+      }
     }
   }
 }

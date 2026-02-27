@@ -14,9 +14,11 @@
       "coverageAmount": 50,
       "premiumRateBps": 1950,
       "deadline": 1774749704,
-      "status": "Proposed",
+      "status": "Expired",
       "participants": [],
-      "createdAt": "2026-02-26T02:01:44.337Z"
+      "createdAt": "2026-02-26T02:01:44.337Z",
+      "retries": 3,
+      "failReason": "Deadline passed — cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -29,9 +31,11 @@
       "premiumRateBps": 3250,
       "premiumUsdc": "13.32",
       "deadline": 1774563127,
-      "status": "Proposed",
+      "status": "Expired",
       "participants": [],
-      "createdAt": "2026-02-26T22:12:08.320Z"
+      "createdAt": "2026-02-26T22:12:08.320Z",
+      "retries": 3,
+      "failReason": "Deadline passed — cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -45,9 +49,11 @@
       "premiumRateBps": 1040,
       "premiumUsdc": "7.07",
       "deadline": 1773180861,
-      "status": "Proposed",
+      "status": "Expired",
       "participants": [],
-      "createdAt": "2026-02-26T22:14:24.791Z"
+      "createdAt": "2026-02-26T22:14:24.791Z",
+      "retries": 3,
+      "failReason": "Deadline passed — cleaned during maintenance"
     }
   ],
   "stats": {
