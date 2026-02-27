@@ -79,7 +79,7 @@
     "distribution": {
       "stakingRewards": {
         "amount": "2500000",
-        "status": "pending_transfer"
+        "status": "transferred"
       },
       "treasury": {
         "amount": "2000000",
