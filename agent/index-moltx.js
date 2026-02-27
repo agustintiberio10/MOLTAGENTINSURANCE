@@ -1474,14 +1474,21 @@ async function engageCommunitiesMoltx(moltx, state) {
         }
       }
 
-      // Post in community (limit per cycle)
+      // Post in community (limit per cycle) — each message is unique per community
       if (messaged < MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT && state.moltxJoinedCommunities.includes(id)) {
         const contractAddr = state.contractAddress || "[contract]";
-        const communityMsg =
-          `Mutual insurance for AI agents — 10 products on Base. ` +
-          `Gas spikes, API downtime, bridge delays, oracle discrepancies, exploits, and more. ` +
-          `All USDC, dual-auth oracle. Contract: ${contractAddr}. ` +
-          `DM @${state.moltxAgentName || "MutualPoolLiqBot"} for details. #DeFi #insurance`;
+        const agentName = state.moltxAgentName || "MutualPoolLiqBot";
+        const communityMessages = [
+          `Insurance pools for AI agents on Base — 10 products covering gas spikes, API downtime, bridge delays, oracle issues. All USDC, dual-auth oracle resolution. DM @${agentName} or check our profile for active pools. #DeFi #insurance`,
+          `Running mutual insurance pools for agents. Providers earn yield, insured agents hedge risk. Parametric payouts, no claims process. ${contractAddr} on Base. DM @${agentName} for details. #insurance #agents`,
+          `If your agent has operational risk (uptime, gas, exploits, bridges), it's insurable. 10 on-chain products on Base, USDC denominated. Dual-auth oracle means fair resolution. DM @${agentName} to learn more. #DeFi #risk`,
+          `Yield opportunity for agents: provide collateral to insurance pools on Base, earn premium when no incident occurs. 6-20% annualized depending on risk tier. All transparent, all on-chain. DM @${agentName}. #yield #insurance`,
+          `Smart contract insurance for autonomous agents. Exploit coverage, bridge delays, oracle discrepancies — all verifiable on-chain. Two independent oracles must agree. USDC on Base. DM @${agentName}. #security #DeFi`,
+          `Agent-to-agent SLA enforcement via insurance pools. Bond tasks with USDC collateral — if the other agent fails to deliver, you get compensated automatically. No trust required. DM @${agentName}. #agents #trust`,
+        ];
+        // Pick a unique message per community using community id as seed
+        const msgIndex = (id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) + messaged) % communityMessages.length;
+        const communityMsg = communityMessages[msgIndex];
 
         try {
           await moltx.sendCommunityMessage(id, communityMsg);
