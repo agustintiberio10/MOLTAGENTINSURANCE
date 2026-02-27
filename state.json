@@ -4,96 +4,8 @@
   "contractAddress": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-02-26T22:49:05.776Z",
+  "lastHeartbeat": "2026-02-27T23:27:17.019Z",
   "pools": [
-    {
-      "onchainId": null,
-      "moltbookPostId": "b5e25d8d-1d55-4391-8b7a-64dc62e93731",
-      "description": "Open Source Delivery verification",
-      "evidenceSource": "https://github.com/vercel/next.js/releases",
-      "coverageAmount": 50,
-      "premiumRateBps": 1950,
-      "deadline": 1774749704,
-      "status": "Expired",
-      "participants": [],
-      "createdAt": "2026-02-26T02:01:44.337Z",
-      "retries": 3,
-      "failReason": "Deadline passed \u2014 cleaned during maintenance"
-    },
-    {
-      "onchainId": null,
-      "creationTxHash": null,
-      "moltbookPostId": "9fc9b854-cbb2-439b-b6cd-25c8d455d58a",
-      "productId": "yield_drop",
-      "description": "Yield Drop Protection verification",
-      "evidenceSource": "https://defillama.com/",
-      "coverageAmount": 41,
-      "premiumRateBps": 3250,
-      "premiumUsdc": "13.32",
-      "deadline": 1774563127,
-      "status": "Expired",
-      "participants": [],
-      "createdAt": "2026-02-26T22:12:08.320Z",
-      "retries": 3,
-      "failReason": "Deadline passed \u2014 cleaned during maintenance"
-    },
-    {
-      "onchainId": null,
-      "creationTxHash": null,
-      "moltbookPostId": null,
-      "moltxPostId": null,
-      "productId": "oracle_discrepancy",
-      "description": "Oracle Discrepancy Cover verification",
-      "evidenceSource": "https://data.chain.link/",
-      "coverageAmount": 68,
-      "premiumRateBps": 1040,
-      "premiumUsdc": "7.07",
-      "deadline": 1773180861,
-      "status": "Expired",
-      "participants": [],
-      "createdAt": "2026-02-26T22:14:24.791Z",
-      "retries": 3,
-      "failReason": "Deadline passed \u2014 cleaned during maintenance"
-    },
-    {
-      "onchainId": null,
-      "creationTxHash": null,
-      "moltbookPostId": null,
-      "moltxPostId": "edfca051-a8b7-4797-98da-e2d29d5c44f3",
-      "productId": "compute_shield",
-      "description": "Compute Spot-Price Shield verification",
-      "evidenceSource": "https://www.runpod.io/pricing",
-      "coverageAmount": 22,
-      "premiumRateBps": 2600,
-      "premiumUsdc": "5.72",
-      "deadline": 1772430028,
-      "status": "Expired",
-      "version": "v3",
-      "participants": [],
-      "createdAt": "2026-02-27T05:40:30.512Z",
-      "retries": 1,
-      "lastRetryError": "no runners?!",
-      "lastRetryAt": "2026-02-27T05:40:32.235Z",
-      "failReason": "Bot no longer creates pools on-chain \u2014 done manually by owner"
-    },
-    {
-      "onchainId": null,
-      "creationTxHash": null,
-      "moltbookPostId": null,
-      "moltxPostId": "7f79e67a-2d3a-4344-91b6-a8b70fc21d17",
-      "productId": "gas_spike",
-      "description": "Gas Spike Shield verification",
-      "evidenceSource": "https://etherscan.io/gastracker",
-      "coverageAmount": 200,
-      "premiumRateBps": 1950,
-      "premiumUsdc": "39.00",
-      "deadline": 1772777735,
-      "status": "Expired",
-      "version": "v3",
-      "participants": [],
-      "createdAt": "2026-02-27T06:15:37.569Z",
-      "failReason": "Bot no longer creates pools on-chain \u2014 done manually by owner"
-    },
     {
       "onchainId": 6,
       "creationTxHash": "0xf083e32c7192b82c1964783de01ebd19abbe5f402049742b37a3cd79abd4907b",
@@ -156,7 +68,7 @@
     "totalParticipants": 0
   },
   "dailyComments": {
-    "2026-02-26": 13
+    "2026-02-27": 0
   },
   "lastPostTime": "2026-02-26T22:12:08.320Z",
   "moltxRegistered": true,
@@ -172,32 +84,20 @@
     "deployedAt": "2026-02-27T00:00:00.000Z"
   },
   "dailyPosts": {
-    "2026-02-26": 3
+    "2026-02-27": 0
   },
   "subscribedSubmolts": true,
   "introPosted": true,
-  "commentedPosts": [
-    "2f0d48f3-2b5d-4853-a4ea-8f53348e897c",
-    "8740e042-080c-4000-92df-cabba562c220",
-    "c00ff00a-f859-403f-aff2-28fb89db6270",
-    "45409435-afb9-4b91-8f58-cc185c3126a1",
-    "25d62812-8861-488f-a9b5-0f9b3db539dc",
-    "18ae9c8f-9eea-453f-9d6e-b91723e2615e",
-    "4ec7299b-a981-42be-acbd-5d5f19cd29fc",
-    "9978419c-6805-44f2-a63e-22aa8bd5f488",
-    "2db6ffe6-829e-4326-89bc-b8202d16de8d",
-    "1f8ba46d-b7da-4082-b663-a220cbb23c1d",
-    "691291d5-3460-4217-948c-d37f86ba6b7f"
-  ],
+  "commentedPosts": [],
   "followedAgents": [
-    "cybercentry"
+    "cybercentry",
+    "50ninety",
+    "circuit_sage"
   ],
   "moltxDailyReplies": {
-    "2026-02-26": 8,
     "2026-02-27": 6
   },
   "moltxDailyPosts": {
-    "2026-02-26": 5,
     "2026-02-27": 0
   },
   "moltxIntroPosted": true,
@@ -329,5 +229,7 @@
   "moltxPublishedArticles": [
     "compute_shield"
   ],
-  "moltxPoolCycleCounter": 2
+  "moltxPoolCycleCounter": 2,
+  "chainedComments": [],
+  "_contentHashes": []
 }
