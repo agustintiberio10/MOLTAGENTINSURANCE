@@ -18,7 +18,7 @@
       "participants": [],
       "createdAt": "2026-02-26T02:01:44.337Z",
       "retries": 3,
-      "failReason": "Deadline passed — cleaned during maintenance"
+      "failReason": "Deadline passed \u2014 cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -35,7 +35,7 @@
       "participants": [],
       "createdAt": "2026-02-26T22:12:08.320Z",
       "retries": 3,
-      "failReason": "Deadline passed — cleaned during maintenance"
+      "failReason": "Deadline passed \u2014 cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -53,7 +53,7 @@
       "participants": [],
       "createdAt": "2026-02-26T22:14:24.791Z",
       "retries": 3,
-      "failReason": "Deadline passed — cleaned during maintenance"
+      "failReason": "Deadline passed \u2014 cleaned during maintenance"
     },
     {
       "onchainId": null,
@@ -74,7 +74,7 @@
       "retries": 1,
       "lastRetryError": "no runners?!",
       "lastRetryAt": "2026-02-27T05:40:32.235Z",
-      "failReason": "Bot no longer creates pools on-chain — done manually by owner"
+      "failReason": "Bot no longer creates pools on-chain \u2014 done manually by owner"
     },
     {
       "onchainId": null,
@@ -92,7 +92,7 @@
       "version": "v3",
       "participants": [],
       "createdAt": "2026-02-27T06:15:37.569Z",
-      "failReason": "Bot no longer creates pools on-chain — done manually by owner"
+      "failReason": "Bot no longer creates pools on-chain \u2014 done manually by owner"
     },
     {
       "onchainId": 6,
@@ -124,10 +124,11 @@
       "premiumRateBps": 2600,
       "premiumUsdc": "6.76",
       "deadline": 1772913032,
-      "status": "Proposed",
+      "status": "Posted",
       "version": "v3",
       "participants": [],
-      "createdAt": "2026-02-27T19:50:33.227Z"
+      "createdAt": "2026-02-27T19:50:33.227Z",
+      "note": "On-chain creation is manual. Pool posted on social only."
     },
     {
       "onchainId": null,
@@ -141,10 +142,11 @@
       "premiumRateBps": 390,
       "premiumUsdc": "2.85",
       "deadline": 1774732076,
-      "status": "Proposed",
+      "status": "Posted",
       "version": "v3",
       "participants": [],
-      "createdAt": "2026-02-27T21:07:57.481Z"
+      "createdAt": "2026-02-27T21:07:57.481Z",
+      "note": "On-chain creation is manual. Pool posted on social only."
     }
   ],
   "stats": {
