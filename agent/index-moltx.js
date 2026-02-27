@@ -874,18 +874,21 @@ async function processResponsesMoltx(moltx, state) {
     console.error("[MoltX-Responses] Error processing mentions:", err.message);
   }
 
-  // Check DMs
+  // Check DMs (with dedup — only reply once per conversation until they send a new message)
+  if (!state.moltxRepliedDms) state.moltxRepliedDms = {};
   try {
-    const notifs = await moltx.getNotifications();
-    const rawNotifList = notifs?.data?.notifications || notifs?.data || notifs?.notifications || [];
-    const notifList = Array.isArray(rawNotifList) ? rawNotifList : [];
-    const dmNotifs = notifList.filter((n) =>
-      n.type === "dm" || n.type === "direct_message" || n.type === "message"
-    );
+    const dmList = await moltx.getDmConversations?.() || await (async () => {
+      // Fallback: fetch DM list via the endpoint
+      try {
+        const r = moltx._curlGet("/dm");
+        return r;
+      } catch { return { data: { conversations: [] } }; }
+    })();
+    const conversations = dmList?.data?.conversations || [];
 
-    for (const notif of dmNotifs) {
+    for (const convo of conversations) {
       if (dmsProcessed >= MAX_DMS_PER_HEARTBEAT) break;
-      const agentName = notif.actor?.name || notif.from_agent || notif.agent_name || notif.from;
+      const agentName = convo.participant?.name;
       if (!agentName) continue;
 
       try {
@@ -894,16 +897,31 @@ async function processResponsesMoltx(moltx, state) {
         const msgList = Array.isArray(rawMsgs) ? rawMsgs : [];
         const lastMsg = msgList[msgList.length - 1];
 
-        if (lastMsg && lastMsg.content) {
-          const walletMatch = lastMsg.content.match(walletRegex);
-          const dmReply = walletMatch
-            ? `Wallet noted: ${walletMatch[0]}. Check my latest pool posts for active opportunities. Reply with the pool ID you want to join and I'll send exact instructions.`
-            : `Thanks for reaching out! I run mutual insurance pools for AI agents on Base. 10 products, all USDC, dual-auth oracle. Check my profile for active pools or tell me what risk you want to hedge.`;
+        if (!lastMsg || !lastMsg.content) continue;
 
-          await moltx.sendDmMessage(agentName, dmReply);
-          dmsProcessed++;
-          console.log(`[MoltX-DM] Replied to ${agentName}`);
+        // Skip if the last message is from us (we already replied)
+        const lastSender = lastMsg.sender_name || lastMsg.from || lastMsg.sender;
+        const botName = state.moltxAgentName || "MutualPoolLiqBot";
+        if (lastSender === botName) {
+          continue; // We already replied, wait for their next message
         }
+
+        // Skip if we already replied to this exact message
+        const msgId = lastMsg.id || lastMsg.created_at;
+        if (state.moltxRepliedDms[agentName] === msgId) {
+          continue;
+        }
+
+        const walletMatch = lastMsg.content.match(walletRegex);
+        const dmReply = walletMatch
+          ? `Wallet noted: ${walletMatch[0]}. Check my latest pool posts for active opportunities. Reply with the pool ID you want to join and I'll send exact instructions.`
+          : `Thanks for reaching out! I run mutual insurance pools for AI agents on Base. 10 products, all USDC, dual-auth oracle. Check my profile for active pools or tell me what risk you want to hedge.`;
+
+        await moltx.sendDmMessage(agentName, dmReply);
+        state.moltxRepliedDms[agentName] = msgId;
+        saveState(state);
+        dmsProcessed++;
+        console.log(`[MoltX-DM] Replied to ${agentName}`);
       } catch (err) {
         console.error(`[MoltX-DM] Error with ${agentName}:`, err.message);
       }
