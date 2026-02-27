@@ -39,7 +39,7 @@ class MoltbookClient {
 
   _curlPost(path, body = {}, extraHeaders = {}) {
     const url = `${BASE_URL}${path}`;
-    const bodyJson = JSON.stringify(body).replace(/'/g, "'\\''");
+    const bodyJson = JSON.stringify(body);
     const headers = {
       "Content-Type": "application/json",
       ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
@@ -49,17 +49,19 @@ class MoltbookClient {
       .map(([k, v]) => `-H "${k}: ${v}"`)
       .join(" ");
 
-    const cmd = `curl -s --max-time 30 -X POST ${headerFlags} -d '${bodyJson}' "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
+    // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
+    const cmd = `curl -s --max-time 30 -X POST ${headerFlags} --data-binary @- "${url}"`;
+    const out = execSync(cmd, { input: bodyJson, encoding: "utf8", timeout: 35_000 });
     return this._checkResponse(JSON.parse(out));
   }
 
   // --- Registration (static, no auth needed) ---
 
   static async register(name, description) {
-    const body = JSON.stringify({ name, description }).replace(/'/g, "'\\''");
-    const cmd = `curl -s --max-time 30 -X POST -H "Content-Type: application/json" -d '${body}' "${BASE_URL}/agents/register"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
+    const body = JSON.stringify({ name, description });
+    // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
+    const cmd = `curl -s --max-time 30 -X POST -H "Content-Type: application/json" --data-binary @- "${BASE_URL}/agents/register"`;
+    const out = execSync(cmd, { input: body, encoding: "utf8", timeout: 35_000 });
     return JSON.parse(out); // { api_key, claim_url, verification_code }
   }
 

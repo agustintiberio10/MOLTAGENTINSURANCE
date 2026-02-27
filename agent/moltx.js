@@ -51,7 +51,7 @@ class MoltXClient {
 
   _curlPost(path, body = {}, extraHeaders = {}) {
     const url = `${BASE_URL}${path}`;
-    const bodyJson = JSON.stringify(body).replace(/'/g, "'\\''");
+    const bodyJson = JSON.stringify(body);
     const headers = {
       "Content-Type": "application/json",
       ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
@@ -61,14 +61,15 @@ class MoltXClient {
       .map(([k, v]) => `-H "${k}: ${v}"`)
       .join(" ");
 
-    const cmd = `curl -s --max-time 30 -X POST ${headerFlags} -d '${bodyJson}' "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
+    // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
+    const cmd = `curl -s --max-time 30 -X POST ${headerFlags} --data-binary @- "${url}"`;
+    const out = execSync(cmd, { input: bodyJson, encoding: "utf8", timeout: 35_000 });
     return this._checkResponse(JSON.parse(out));
   }
 
   _curlPatch(path, body = {}) {
     const url = `${BASE_URL}${path}`;
-    const bodyJson = JSON.stringify(body).replace(/'/g, "'\\''");
+    const bodyJson = JSON.stringify(body);
     const headers = {
       "Content-Type": "application/json",
       ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
@@ -77,8 +78,9 @@ class MoltXClient {
       .map(([k, v]) => `-H "${k}: ${v}"`)
       .join(" ");
 
-    const cmd = `curl -s --max-time 30 -X PATCH ${headerFlags} -d '${bodyJson}' "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
+    // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
+    const cmd = `curl -s --max-time 30 -X PATCH ${headerFlags} --data-binary @- "${url}"`;
+    const out = execSync(cmd, { input: bodyJson, encoding: "utf8", timeout: 35_000 });
     return this._checkResponse(JSON.parse(out));
   }
 
@@ -103,10 +105,11 @@ class MoltXClient {
       display_name: displayName,
       description,
       avatar_emoji: avatarEmoji,
-    }).replace(/'/g, "'\\''");
+    });
 
-    const cmd = `curl -s --max-time 30 -X POST -H "Content-Type: application/json" -d '${body}' "${BASE_URL}/agents/register"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
+    // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
+    const cmd = `curl -s --max-time 30 -X POST -H "Content-Type: application/json" --data-binary @- "${BASE_URL}/agents/register"`;
+    const out = execSync(cmd, { input: body, encoding: "utf8", timeout: 35_000 });
     return JSON.parse(out);
   }
 

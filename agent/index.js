@@ -298,9 +298,14 @@ async function monitorPools(blockchain, moltbook, state) {
 /**
  * (b) Post new pool opportunities in HIGH-TRAFFIC submolts.
  *
- * FLOW: Create pool ON-CHAIN first → then post to Moltbook with real poolId.
- * The bot acts as the insured (pays premium) and sells the collateral-provider
- * side as a yield opportunity to other agents.
+ * FLOW: Create pool ON-CHAIN first (zero-funded, gas only) → then post to
+ * Moltbook with real poolId + M2M payload so OTHER agents can fund/join.
+ *
+ * IMPORTANT — ORACLE-ONLY MODE:
+ * This bot is the Oracle. It does NOT fund premiums or inject liquidity.
+ * createPoolV3() only costs ETH gas. The insured client funds premium via
+ * Router.fundPremiumWithUSDC() — that's published in the M2M payload.
+ * If USDC balance is 0, that's expected and correct behavior.
  *
  * Strategy: Rotate between target submolts. Post detailed pool in our submolt,
  * post attention-grabbing pitch in high-traffic submolts.
@@ -1049,6 +1054,23 @@ async function runHeartbeat() {
       v3Address: process.env.V3_CONTRACT_ADDRESS,
       routerAddress: process.env.ROUTER_ADDRESS || undefined,
     });
+  }
+
+  // ── Oracle-Only Mode: USDC balance check (informational) ──
+  // The oracle only pays ETH gas for createPoolV3(). It NEVER funds premiums
+  // or injects liquidity. USDC balance = 0 is normal and expected.
+  if (blockchain) {
+    try {
+      const ethBalance = await blockchain.provider.getBalance(blockchain.agentAddress);
+      const ethFormatted = (Number(ethBalance) / 1e18).toFixed(6);
+      console.log(`[Oracle] Wallet: ${blockchain.agentAddress}`);
+      console.log(`[Oracle] ETH balance: ${ethFormatted} (for gas only — USDC not needed)`);
+      if (Number(ethBalance) === 0) {
+        console.warn("[Oracle] WARNING: 0 ETH — cannot pay gas for createPoolV3(). Fund ETH to continue.");
+      }
+    } catch (err) {
+      console.warn("[Oracle] Balance check failed:", err.message);
+    }
   }
 
   console.log(`[Stats] Products: ${Object.keys(INSURANCE_PRODUCTS).length} | Comments today: ${getDailyComments(state)}/${MAX_DAILY_COMMENTS} | Posts today: ${getDailyPosts(state)}/${MAX_DAILY_POSTS} | V3: ${blockchain ? "ON" : "off"}`);

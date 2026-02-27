@@ -252,9 +252,14 @@ async function monitorPoolsMoltx(blockchain, moltx, state) {
 /**
  * (b) Post new pool opportunities.
  *
- * FLOW: Create pool ON-CHAIN first → then post to MoltX.
+ * FLOW: Create pool ON-CHAIN first (zero-funded, gas only) → then post to MoltX
+ * with M2M payload so OTHER agents can fund/join.
  * MoltX has 500-char limit for standard posts, so we post a concise Molt
  * + a detailed article with the full M2M payload.
+ *
+ * IMPORTANT — ORACLE-ONLY MODE:
+ * This bot is the Oracle. It does NOT fund premiums or inject liquidity.
+ * createPoolV3() only costs ETH gas. USDC balance = 0 is expected.
  */
 async function postNewOpportunityMoltx(moltx, blockchain, state) {
   const activePools = state.pools.filter((p) =>
@@ -1045,6 +1050,23 @@ async function runMoltxHeartbeat() {
       v3Address: process.env.V3_CONTRACT_ADDRESS,
       routerAddress: process.env.ROUTER_ADDRESS || undefined,
     });
+  }
+
+  // ── Oracle-Only Mode: USDC balance check (informational) ──
+  // The oracle only pays ETH gas for createPoolV3(). It NEVER funds premiums
+  // or injects liquidity. USDC balance = 0 is normal and expected.
+  if (blockchain) {
+    try {
+      const ethBalance = await blockchain.provider.getBalance(blockchain.agentAddress);
+      const ethFormatted = (Number(ethBalance) / 1e18).toFixed(6);
+      console.log(`[Oracle] Wallet: ${blockchain.agentAddress}`);
+      console.log(`[Oracle] ETH balance: ${ethFormatted} (for gas only — USDC not needed)`);
+      if (Number(ethBalance) === 0) {
+        console.warn("[Oracle] WARNING: 0 ETH — cannot pay gas for createPoolV3(). Fund ETH to continue.");
+      }
+    } catch (err) {
+      console.warn("[Oracle] Balance check failed:", err.message);
+    }
   }
 
   console.log(`[MoltX-Stats] Replies today: ${getMoltxDailyReplies(state)}/${MAX_DAILY_REPLIES} | Posts today: ${getMoltxDailyPosts(state)}/${MAX_DAILY_POSTS} | V3: ${blockchain ? "ON" : "off"}`);

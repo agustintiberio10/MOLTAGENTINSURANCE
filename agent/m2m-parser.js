@@ -632,10 +632,11 @@ async function submitMograTransaction(mograResult) {
   const { execSync } = require("child_process");
   const body = JSON.stringify(mograPayload);
 
-  const cmd = `curl -s -X POST "${apiConfig.url}" -H "Authorization: ${apiConfig.headers.Authorization}" -H "Content-Type: application/json" -d '${body.replace(/'/g, "'\\''")}'`;
+  // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
+  const cmd = `curl -s -X POST "${apiConfig.url}" -H "Authorization: ${apiConfig.headers.Authorization}" -H "Content-Type: application/json" --data-binary @-`;
 
   try {
-    const response = execSync(cmd, { encoding: "utf8", timeout: 30000 });
+    const response = execSync(cmd, { input: body, encoding: "utf8", timeout: 30000 });
     const result = JSON.parse(response);
     console.log(`[Mogra] Response:`, JSON.stringify(result).substring(0, 200));
     return result;
