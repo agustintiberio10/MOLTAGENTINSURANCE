@@ -126,7 +126,7 @@ const _rpcCache = new Map();
 
 async function getPoolCached(blockchain, pool) {
   const id = typeof pool === "object" ? pool.onchainId : pool;
-  const contract = typeof pool === "object" ? pool.contract || "v3" : "v3";
+  const contract = typeof pool === "object" ? (pool.contract || pool.version || "v3") : "v3";
   const key = `${contract}_pool_${id}`;
   const cached = _rpcCache.get(key);
 
@@ -141,8 +141,14 @@ async function getPoolCached(blockchain, pool) {
   return data;
 }
 
-function invalidatePool(poolId) {
-  _rpcCache.delete(`pool_${poolId}`);
+function invalidatePool(poolId, contract) {
+  if (contract) {
+    _rpcCache.delete(`${contract}_pool_${poolId}`);
+  } else {
+    // Delete all possible variants
+    _rpcCache.delete(`v3_pool_${poolId}`);
+    _rpcCache.delete(`lumina_pool_${poolId}`);
+  }
 }
 
 function clearCache() {
@@ -167,7 +173,7 @@ const STATUS_LABELS_V3 = ["Pending", "Open", "Active", "Resolved", "Cancelled"];
 const STATUS_LABELS_LUMINA = ["Open", "Active", "Resolved", "Cancelled"];
 
 // ── Semantic helpers: abstract away numeric status differences ──
-function isLumina(pool) { return pool.contract === "lumina"; }
+function isLumina(pool) { return (pool.contract || pool.version) === "lumina"; }
 
 function statusLabel(pool) {
   const labels = isLumina(pool) ? STATUS_LABELS_LUMINA : STATUS_LABELS_V3;
@@ -249,6 +255,36 @@ function saveState(state) {
     fs.writeFileSync(CONFIG.STATE_FILE, JSON.stringify(state, null, 2), "utf8");
   } catch (err) {
     console.error("[State] Failed to save state:", err.message);
+  }
+}
+
+/**
+ * Sync resolution stats back to the main state.json used by social bots.
+ * Keeps stats.totalPoolsResolved / totalClaimsPaid / totalFeesCollected in sync.
+ */
+function syncStatsToMainState(pool, claimApproved, accounting) {
+  const mainStatePath = path.join(__dirname, "..", "state.json");
+  try {
+    if (!fs.existsSync(mainStatePath)) return;
+    const main = JSON.parse(fs.readFileSync(mainStatePath, "utf8"));
+    if (!main.stats) main.stats = { totalPoolsResolved: 0, totalClaimsPaid: 0, totalFeesCollected: 0, totalParticipants: 0 };
+
+    main.stats.totalPoolsResolved = (main.stats.totalPoolsResolved || 0) + 1;
+    if (claimApproved) main.stats.totalClaimsPaid = (main.stats.totalClaimsPaid || 0) + 1;
+    if (accounting?.protocolFee) main.stats.totalFeesCollected = (main.stats.totalFeesCollected || 0) + accounting.protocolFee;
+    if (accounting?.providerCount) main.stats.totalParticipants = (main.stats.totalParticipants || 0) + accounting.providerCount;
+
+    // Also update the pool status in main state if it exists
+    const mainPool = main.pools?.find((p) => p.onchainId === pool.onchainId);
+    if (mainPool) {
+      mainPool.status = claimApproved ? "Resolved-Claim" : "Resolved-NoClaim";
+      mainPool.resolutionTxHash = pool.resolutionTxHash;
+    }
+
+    fs.writeFileSync(mainStatePath, JSON.stringify(main, null, 2), "utf8");
+    console.log("[State] Synced resolution stats to main state.json");
+  } catch (err) {
+    console.warn("[State] Failed to sync to main state.json:", err.message);
   }
 }
 
@@ -531,7 +567,7 @@ async function monitorTransitions(blockchain, moltx, state) {
         `[Monitor] Pool #${pool.onchainId} (${pool.contract}): ${prevLabel} → ${newLabel}`
       );
 
-      invalidatePool(pool.onchainId);
+      invalidatePool(pool.onchainId, pool.contract);
 
       // ── V3 only: Pending → Open: Premium was funded ──
       if (!isLumina(pool) && prevStatus === PoolStatusV3.PENDING && newStatus === PoolStatusV3.OPEN) {
@@ -644,7 +680,7 @@ async function checkCancellations(blockchain, state) {
           ? await blockchain.cancelAndRefundLumina(pool.onchainId)
           : await blockchain.cancelAndRefundV3(pool.onchainId);
         pool.status = cancelledStatus(pool);
-        invalidatePool(pool.onchainId);
+        invalidatePool(pool.onchainId, pool.contract);
         console.log(`[Cancel] Pool #${pool.onchainId} cancelled, tx: ${txHash}`);
 
         saveState(state);
@@ -713,7 +749,7 @@ async function resolveReadyPools(blockchain, moltx, state) {
       pool.resolutionTxHash = txHash;
       pool.dualAuthResult = dualAuth;
       pool.claimApproved = claimApproved;
-      invalidatePool(pool.onchainId);
+      invalidatePool(pool.onchainId, pool.contract);
 
       console.log(`[Resolve] Pool #${pool.onchainId} resolved on-chain, tx: ${txHash}`);
 
@@ -745,6 +781,9 @@ async function resolveReadyPools(blockchain, moltx, state) {
 
       // ── Step 4: Publish Phase 4 MoltX post ──
       await publishPhase4(moltx, pool, claimApproved, dualAuth, accounting);
+
+      // ── Step 5: Sync stats to main state.json (for social bots & health) ──
+      syncStatsToMainState(pool, claimApproved, accounting);
 
       saveState(state);
     } catch (err) {
