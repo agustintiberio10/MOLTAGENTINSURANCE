@@ -1,31 +1,35 @@
 #!/usr/bin/env node
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * ORACLE BOT — MutualPool V3 Lifecycle Engine
+ * ORACLE BOT — Dual-Mode Lifecycle Engine (V3 legacy + MutualLumina)
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * El bot oráculo es el único actor con permiso on-chain para:
- *   1. createPool()   — Crear pools (zero-funded, solo paga gas)
+ *   1. createPool()   — Crear pools
  *   2. resolvePool()  — Resolver pools con veredicto dual-auth
  *
- * TODO el ciclo de vida pasa por este script:
+ * DUAL-MODE:
+ *   USE_LUMINA=true  → Nuevos pools van a MutualLumina (1 TX, oracle paga premium)
+ *   USE_LUMINA=false → Nuevos pools van a MutualPoolV3 (legacy, zero-funded)
+ *   Pools V3 existentes siempre se monitorean independientemente del flag.
  *
- *   HEARTBEAT (cada 5 minutos):
+ * HEARTBEAT (cada 5 minutos):
  *
  *   ┌─────────────────────────────────────────────────────────────┐
  *   │ 1. CREAR POOLS                                              │
  *   │    → Evalúa riesgo (risk.js)                                │
- *   │    → createPoolV3() on-chain (gas only)                     │
- *   │    → Publica Phase 1 Molt (seek insured)                   │
+ *   │    → Lumina: createAndFund() (1 TX, oracle paga premium)    │
+ *   │    → V3:    createPoolV3() (zero-funded, gas only)          │
+ *   │    → Publica Phase 1 Molt (seek insured/collateral)        │
  *   │                                                              │
  *   │ 2. MONITOREAR TRANSICIONES                                  │
- *   │    → Pending → Open (premium funded) → Phase 3 Molt         │
+ *   │    → V3: Pending → Open (premium funded) → Phase 3 Molt    │
  *   │    → Open → Active (collateral filled)                      │
  *   │    → Deadline pasado + underfunded → cancelAndRefund         │
  *   │                                                              │
  *   │ 3. RESOLVER POOLS                                           │
  *   │    → Deadline alcanzado + Active → dual-auth oracle          │
- *   │    → resolvePoolV3(poolId, claimApproved)                   │
+ *   │    → resolvePool(poolId, claimApproved) on-chain            │
  *   │    → Publica Phase 4 Molt (resolution + withdraw)           │
  *   │    → Emergency resolve si deadline + 24h sin resolución     │
  *   │                                                              │
@@ -37,6 +41,7 @@
  *   └─────────────────────────────────────────────────────────────┘
  *
  * ESTADO: Persistido en agent/oracle-state.json
+ *   Cada pool tiene pool.contract = "v3" | "lumina" para dispatch.
  *
  * USO:
  *   node agent/oracle-bot.js                    # Loop infinito (producción)
@@ -96,7 +101,7 @@ const CONFIG = {
   // For public Base RPC (mainnet.base.org) this prevents 429 responses.
   RPC_STAGGER_MS: 200,
 
-  // Cache getPoolV3() results for 60s within a heartbeat cycle.
+  // Cache getPool results for 60s within a heartbeat cycle.
   // Prevents redundant reads (monitorTransitions + checkCancellations
   // + resolveReadyPools can all read the same pool).
   RPC_CACHE_TTL_MS: 60_000,
@@ -119,15 +124,19 @@ const CONFIG = {
 
 const _rpcCache = new Map();
 
-async function getPoolCached(blockchain, poolId) {
-  const key = `pool_${poolId}`;
+async function getPoolCached(blockchain, pool) {
+  const id = typeof pool === "object" ? pool.onchainId : pool;
+  const contract = typeof pool === "object" ? pool.contract || "v3" : "v3";
+  const key = `${contract}_pool_${id}`;
   const cached = _rpcCache.get(key);
 
   if (cached && Date.now() - cached.ts < CONFIG.RPC_CACHE_TTL_MS) {
     return cached.data;
   }
 
-  const data = await blockchain.getPoolV3(poolId);
+  const data = contract === "lumina"
+    ? await blockchain.getPoolLumina(id)
+    : await blockchain.getPoolV3(id);
   _rpcCache.set(key, { data, ts: Date.now() });
   return data;
 }
@@ -148,16 +157,70 @@ function stagger() {
   return new Promise((resolve) => setTimeout(resolve, CONFIG.RPC_STAGGER_MS));
 }
 
-// ── Pool status enum (matches Solidity) ──
-const PoolStatus = {
-  PENDING: 0,
-  OPEN: 1,
-  ACTIVE: 2,
-  RESOLVED: 3,
-  CANCELLED: 4,
-};
+// ── Pool status enums (V3 and Lumina have different numeric values) ──
+// V3:     0=Pending, 1=Open, 2=Active, 3=Resolved, 4=Cancelled
+// Lumina: 0=Open, 1=Active, 2=Resolved, 3=Cancelled (no Pending)
+const PoolStatusV3 = { PENDING: 0, OPEN: 1, ACTIVE: 2, RESOLVED: 3, CANCELLED: 4 };
+const PoolStatusLumina = { OPEN: 0, ACTIVE: 1, RESOLVED: 2, CANCELLED: 3 };
 
-const STATUS_LABELS = ["Pending", "Open", "Active", "Resolved", "Cancelled"];
+const STATUS_LABELS_V3 = ["Pending", "Open", "Active", "Resolved", "Cancelled"];
+const STATUS_LABELS_LUMINA = ["Open", "Active", "Resolved", "Cancelled"];
+
+// ── Semantic helpers: abstract away numeric status differences ──
+function isLumina(pool) { return pool.contract === "lumina"; }
+
+function statusLabel(pool) {
+  const labels = isLumina(pool) ? STATUS_LABELS_LUMINA : STATUS_LABELS_V3;
+  return labels[pool.status] || "Unknown";
+}
+
+function isPoolLive(pool) {
+  if (isLumina(pool)) {
+    return [PoolStatusLumina.OPEN, PoolStatusLumina.ACTIVE].includes(pool.status);
+  }
+  return [PoolStatusV3.PENDING, PoolStatusV3.OPEN, PoolStatusV3.ACTIVE].includes(pool.status);
+}
+
+function isPoolActive(pool) {
+  return isLumina(pool)
+    ? pool.status === PoolStatusLumina.ACTIVE
+    : pool.status === PoolStatusV3.ACTIVE;
+}
+
+function isPoolResolved(pool) {
+  return isLumina(pool)
+    ? pool.status === PoolStatusLumina.RESOLVED
+    : pool.status === PoolStatusV3.RESOLVED;
+}
+
+function isPoolCancelled(pool) {
+  return isLumina(pool)
+    ? pool.status === PoolStatusLumina.CANCELLED
+    : pool.status === PoolStatusV3.CANCELLED;
+}
+
+function isPoolOpen(pool) {
+  return isLumina(pool)
+    ? pool.status === PoolStatusLumina.OPEN
+    : pool.status === PoolStatusV3.OPEN;
+}
+
+function isPoolPending(pool) {
+  if (isLumina(pool)) return false;
+  return pool.status === PoolStatusV3.PENDING;
+}
+
+function isPoolPendingOrOpen(pool) {
+  return isPoolPending(pool) || isPoolOpen(pool);
+}
+
+function resolvedStatus(pool) {
+  return isLumina(pool) ? PoolStatusLumina.RESOLVED : PoolStatusV3.RESOLVED;
+}
+
+function cancelledStatus(pool) {
+  return isLumina(pool) ? PoolStatusLumina.CANCELLED : PoolStatusV3.CANCELLED;
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // STATE MANAGEMENT
@@ -193,13 +256,14 @@ function saveState(state) {
 // INITIALIZATION
 // ═══════════════════════════════════════════════════════════════════════
 
+// ── Global migration flag ──
+const USE_LUMINA = process.env.USE_LUMINA === "true";
+
 function initClients() {
   const requiredEnvVars = [
     "AGENT_PRIVATE_KEY",
     "BASE_RPC_URL",
     "USDC_ADDRESS",
-    "V3_CONTRACT_ADDRESS",
-    "ROUTER_ADDRESS",
     "MOLTX_API_KEY",
   ];
 
@@ -211,19 +275,32 @@ function initClients() {
     }
   }
 
+  // Validate the active contract is configured
+  if (USE_LUMINA && !process.env.LUMINA_CONTRACT_ADDRESS) {
+    console.error("[Init] USE_LUMINA=true but LUMINA_CONTRACT_ADDRESS is missing.");
+    process.exit(1);
+  }
+  if (!USE_LUMINA && !process.env.V3_CONTRACT_ADDRESS) {
+    console.error("[Init] USE_LUMINA=false but V3_CONTRACT_ADDRESS is missing.");
+    process.exit(1);
+  }
+
   const blockchain = new BlockchainClient({
     rpcUrl: process.env.BASE_RPC_URL,
     privateKey: process.env.AGENT_PRIVATE_KEY,
     usdcAddress: process.env.USDC_ADDRESS,
     v3Address: process.env.V3_CONTRACT_ADDRESS,
     routerAddress: process.env.ROUTER_ADDRESS,
+    luminaAddress: process.env.LUMINA_CONTRACT_ADDRESS,
   });
 
   const moltx = new MoltXClient(process.env.MOLTX_API_KEY);
 
   console.log("[Init] Oracle address:", blockchain.agentAddress);
-  console.log("[Init] V3 Contract:", process.env.V3_CONTRACT_ADDRESS);
-  console.log("[Init] Router:", process.env.ROUTER_ADDRESS);
+  console.log("[Init] Mode:", USE_LUMINA ? "LUMINA (new pools)" : "V3 LEGACY (new pools)");
+  if (blockchain.hasLumina) console.log("[Init] Lumina Contract:", process.env.LUMINA_CONTRACT_ADDRESS);
+  if (blockchain.hasV3) console.log("[Init] V3 Contract:", process.env.V3_CONTRACT_ADDRESS);
+  if (blockchain.hasV3) console.log("[Init] Router:", process.env.ROUTER_ADDRESS);
   console.log("[Init] RPC:", process.env.BASE_RPC_URL);
 
   // ── Rate-limit warnings ──
@@ -252,12 +329,13 @@ function initClients() {
  * Decide si crear un pool nuevo y ejecutar la creación on-chain.
  *
  * Flujo:
- *   1. Cuenta pools activos (Pending + Open + Active)
+ *   1. Cuenta pools activos (live = Open + Active, or Pending for V3)
  *   2. Si hay capacidad → selecciona producto aleatorio
  *   3. Evalúa riesgo → genera propuesta
- *   4. createPoolV3() on-chain (gas only, zero-funded)
+ *   4. Lumina: createAndFundLumina() — 1 TX, oracle paga premium
+ *      V3:    createPoolV3() — zero-funded, gas only
  *   5. Publica Phase 1 MoltX post con M2M payload
- *   6. Guarda en state
+ *   6. Guarda en state con contract tag
  */
 async function maybeCreatePool(blockchain, moltx, state) {
   // Guard: respect rate limit between creations
@@ -267,9 +345,7 @@ async function maybeCreatePool(blockchain, moltx, state) {
   }
 
   // Guard: count active pools
-  const activePools = state.pools.filter((p) =>
-    [PoolStatus.PENDING, PoolStatus.OPEN, PoolStatus.ACTIVE].includes(p.status)
-  );
+  const activePools = state.pools.filter(isPoolLive);
   if (activePools.length >= CONFIG.MAX_ACTIVE_POOLS) {
     console.log(`[Create] ${activePools.length}/${CONFIG.MAX_ACTIVE_POOLS} active pools. Skipping.`);
     return;
@@ -325,19 +401,32 @@ async function maybeCreatePool(blockchain, moltx, state) {
   const premiumUsdc = parseFloat(proposal.premiumUsdc);
   const premiumRateBps = proposal.premiumRateBps;
 
-  // ── ON-CHAIN: createPoolV3() ──
+  // ── ON-CHAIN: create pool (Lumina or V3) ──
   let poolId, txHash;
   try {
-    const result = await blockchain.createPoolV3({
-      description,
-      evidenceSource,
-      coverageAmount: coverageUsdc,
-      premiumRate: premiumRateBps,
-      deadline: deadlineUnix,
-    });
-    poolId = result.poolId;
-    txHash = result.txHash;
-    console.log(`[Create] Pool #${poolId} created on-chain, tx: ${txHash}`);
+    if (USE_LUMINA) {
+      const result = await blockchain.createAndFundLumina({
+        description,
+        evidenceSource,
+        coverageAmount: coverageUsdc,
+        premiumRate: premiumRateBps,
+        deadline: deadlineUnix,
+      });
+      poolId = result.poolId;
+      txHash = result.txHash;
+      console.log(`[Create] Lumina pool #${poolId} created+funded, tx: ${txHash}`);
+    } else {
+      const result = await blockchain.createPoolV3({
+        description,
+        evidenceSource,
+        coverageAmount: coverageUsdc,
+        premiumRate: premiumRateBps,
+        deadline: deadlineUnix,
+      });
+      poolId = result.poolId;
+      txHash = result.txHash;
+      console.log(`[Create] V3 pool #${poolId} created on-chain, tx: ${txHash}`);
+    }
   } catch (err) {
     console.error("[Create] On-chain createPool failed:", err.message);
     return;
@@ -382,8 +471,11 @@ async function maybeCreatePool(blockchain, moltx, state) {
   }
 
   // ── Save to state ──
+  const poolContract = USE_LUMINA ? "lumina" : "v3";
+  const initialStatus = USE_LUMINA ? PoolStatusLumina.OPEN : PoolStatusV3.PENDING;
   state.pools.push({
     onchainId: poolId,
+    contract: poolContract,
     productId: product.id,
     description,
     evidenceSource,
@@ -393,7 +485,7 @@ async function maybeCreatePool(blockchain, moltx, state) {
     deadline: deadlineUnix,
     depositDeadline: deadlineUnix - CONFIG.DEPOSIT_WINDOW_BUFFER,
     eventProbability: product.baseFailureProb,
-    status: PoolStatus.PENDING,
+    status: initialStatus,
     createdAt: Math.floor(Date.now() / 1000),
     txHash,
     phase1MoltId,
@@ -413,18 +505,17 @@ async function maybeCreatePool(blockchain, moltx, state) {
  * Lee el estado on-chain de cada pool tracked y detecta transiciones.
  *
  * Transiciones manejadas:
- *   Pending(0) → Open(1):     Premium fue pagado → publicar Phase 3
- *   Open(1) → Active(2):      Colateral completo → log
- *   Open/Pending → cancelled:  Underfunded + past deadline → cancelar
+ *   V3: Pending(0) → Open(1):  Premium fue pagado → publicar Phase 3
+ *   Open → Active:              Colateral completo → log
+ *   Open/Pending → cancelled:   Underfunded + past deadline → cancelar
+ *   Lumina: Open(0) → Active(1): Collateral filled → log
  */
 async function monitorTransitions(blockchain, moltx, state) {
-  const trackablePools = state.pools.filter((p) =>
-    [PoolStatus.PENDING, PoolStatus.OPEN, PoolStatus.ACTIVE].includes(p.status)
-  );
+  const trackablePools = state.pools.filter(isPoolLive);
 
   for (const pool of trackablePools) {
     try {
-      const onchainData = await getPoolCached(blockchain, pool.onchainId);
+      const onchainData = await getPoolCached(blockchain, pool);
       const prevStatus = pool.status;
       const newStatus = onchainData.status;
 
@@ -433,36 +524,41 @@ async function monitorTransitions(blockchain, moltx, state) {
         continue;
       }
 
+      const prevLabel = statusLabel(pool);
+      pool.status = newStatus;
+      const newLabel = statusLabel(pool);
       console.log(
-        `[Monitor] Pool #${pool.onchainId}: ${STATUS_LABELS[prevStatus]} → ${STATUS_LABELS[newStatus]}`
+        `[Monitor] Pool #${pool.onchainId} (${pool.contract}): ${prevLabel} → ${newLabel}`
       );
 
-      pool.status = newStatus;
-      invalidatePool(pool.onchainId); // Status changed, invalidate cache
+      invalidatePool(pool.onchainId);
 
-      // ── Pending → Open: Premium was funded ──
-      if (prevStatus === PoolStatus.PENDING && newStatus === PoolStatus.OPEN) {
+      // ── V3 only: Pending → Open: Premium was funded ──
+      if (!isLumina(pool) && prevStatus === PoolStatusV3.PENDING && newStatus === PoolStatusV3.OPEN) {
         console.log(`[Monitor] Pool #${pool.onchainId} premium funded by ${onchainData.insured}`);
         await publishPhase3(blockchain, moltx, pool, onchainData);
       }
 
+      // ── Lumina: Open pools get Phase 3 published immediately after creation ──
+      // (handled in maybeCreatePool — Lumina pools start Open with premium already paid)
+
       // ── Open → Active: Collateral filled ──
-      if (prevStatus === PoolStatus.OPEN && newStatus === PoolStatus.ACTIVE) {
+      if (isPoolActive(pool)) {
         console.log(
           `[Monitor] Pool #${pool.onchainId} fully funded: ${onchainData.totalCollateral} USDC`
         );
       }
 
       // ── Already resolved or cancelled on-chain ──
-      if (newStatus === PoolStatus.RESOLVED || newStatus === PoolStatus.CANCELLED) {
-        console.log(`[Monitor] Pool #${pool.onchainId} already ${STATUS_LABELS[newStatus]} on-chain.`);
+      if (isPoolResolved(pool) || isPoolCancelled(pool)) {
+        console.log(`[Monitor] Pool #${pool.onchainId} already ${newLabel} on-chain.`);
       }
 
       saveState(state);
     } catch (err) {
       console.error(`[Monitor] Error reading pool #${pool.onchainId}:`, err.message);
     }
-    await stagger(); // Rate-limit protection between reads
+    await stagger();
   }
 
   // ── Check for underfunded pools past deposit deadline → cancel ──
@@ -474,13 +570,15 @@ async function monitorTransitions(blockchain, moltx, state) {
  */
 async function publishPhase3(blockchain, moltx, pool, onchainData) {
   try {
-    // Try to get MPOOLV3/USDC rate for option_b
+    // Try to get MPOOLV3/USDC rate for option_b (V3 Router only)
     let mpoolToUsdcRate = null;
-    try {
-      const quote = await blockchain.quoteMpoolToUsdc("1");
-      mpoolToUsdcRate = parseFloat(quote);
-    } catch {
-      // Rate not available — option_b_mpoolv3 will be omitted
+    if (!isLumina(pool) && blockchain.hasV3) {
+      try {
+        const quote = await blockchain.quoteMpoolToUsdc("1");
+        mpoolToUsdcRate = parseFloat(quote);
+      } catch {
+        // Rate not available — option_b_mpoolv3 will be omitted
+      }
     }
 
     const moltContent = generatePhase3Molt({
@@ -531,29 +629,28 @@ async function checkCancellations(blockchain, state) {
   const now = Math.floor(Date.now() / 1000);
 
   const cancellable = state.pools.filter(
-    (p) =>
-      (p.status === PoolStatus.PENDING || p.status === PoolStatus.OPEN) &&
-      now > p.depositDeadline
+    (p) => isPoolPendingOrOpen(p) && now > p.depositDeadline
   );
 
   for (const pool of cancellable) {
     try {
-      const onchainData = await getPoolCached(blockchain, pool.onchainId);
+      const onchainData = await getPoolCached(blockchain, pool);
 
       // Only cancel if underfunded (totalCollateral < coverageAmount)
       if (parseFloat(onchainData.totalCollateral) < parseFloat(onchainData.coverageAmount)) {
-        console.log(`[Cancel] Pool #${pool.onchainId} underfunded past deposit deadline. Cancelling...`);
+        console.log(`[Cancel] Pool #${pool.onchainId} (${pool.contract}) underfunded past deposit deadline. Cancelling...`);
 
-        const txHash = await blockchain.cancelAndRefundV3(pool.onchainId);
-        pool.status = PoolStatus.CANCELLED;
+        const txHash = isLumina(pool)
+          ? await blockchain.cancelAndRefundLumina(pool.onchainId)
+          : await blockchain.cancelAndRefundV3(pool.onchainId);
+        pool.status = cancelledStatus(pool);
         invalidatePool(pool.onchainId);
         console.log(`[Cancel] Pool #${pool.onchainId} cancelled, tx: ${txHash}`);
 
         saveState(state);
       }
     } catch (err) {
-      // May fail if pool is already cancelled/resolved or not in a cancellable state
-      if (!err.message.includes("V3:")) {
+      if (!err.message.includes("V3:") && !err.message.includes("Lumina")) {
         console.error(`[Cancel] Error cancelling pool #${pool.onchainId}:`, err.message);
       }
     }
@@ -584,7 +681,7 @@ async function resolveReadyPools(blockchain, moltx, state) {
   const now = Math.floor(Date.now() / 1000);
 
   const readyToResolve = state.pools.filter(
-    (p) => p.status === PoolStatus.ACTIVE && now >= p.deadline
+    (p) => isPoolActive(p) && now >= p.deadline
   );
 
   for (const pool of readyToResolve) {
@@ -609,8 +706,10 @@ async function resolveReadyPools(blockchain, moltx, state) {
       console.log(`[Resolve] Evidence: ${evidence.slice(0, 200)}...`);
 
       // ── Step 2: On-chain resolution ──
-      const txHash = await blockchain.resolvePoolV3(pool.onchainId, claimApproved);
-      pool.status = PoolStatus.RESOLVED;
+      const txHash = isLumina(pool)
+        ? await blockchain.resolvePoolLumina(pool.onchainId, claimApproved)
+        : await blockchain.resolvePoolV3(pool.onchainId, claimApproved);
+      pool.status = resolvedStatus(pool);
       pool.resolutionTxHash = txHash;
       pool.dualAuthResult = dualAuth;
       pool.claimApproved = claimApproved;
@@ -621,14 +720,25 @@ async function resolveReadyPools(blockchain, moltx, state) {
       // ── Step 3: Get accounting data ──
       let accounting = null;
       try {
-        const onchainData = await blockchain.getPoolV3(pool.onchainId);
-        const acctData = await blockchain.v3.getPoolAccounting(pool.onchainId);
-        accounting = {
-          totalCollateral: parseFloat(require("ethers").formatUnits(acctData.totalCollateral, 6)),
-          premiumAfterFee: parseFloat(require("ethers").formatUnits(acctData.premiumAfterFee, 6)),
-          protocolFee: parseFloat(require("ethers").formatUnits(acctData.protocolFee, 6)),
-          providerCount: onchainData.participantCount,
-        };
+        if (isLumina(pool)) {
+          const onchainData = await blockchain.getPoolLumina(pool.onchainId);
+          const acctData = await blockchain.getPoolAccountingLumina(pool.onchainId);
+          accounting = {
+            totalCollateral: parseFloat(acctData.totalCollateral),
+            netAmount: parseFloat(acctData.netAmount),
+            protocolFee: parseFloat(acctData.protocolFee),
+            providerCount: onchainData.participantCount,
+          };
+        } else {
+          const onchainData = await blockchain.getPoolV3(pool.onchainId);
+          const acctData = await blockchain.v3.getPoolAccounting(pool.onchainId);
+          accounting = {
+            totalCollateral: parseFloat(require("ethers").formatUnits(acctData.totalCollateral, 6)),
+            premiumAfterFee: parseFloat(require("ethers").formatUnits(acctData.premiumAfterFee, 6)),
+            protocolFee: parseFloat(require("ethers").formatUnits(acctData.protocolFee, 6)),
+            providerCount: onchainData.participantCount,
+          };
+        }
       } catch (err) {
         console.warn("[Resolve] Failed to fetch accounting:", err.message);
       }
@@ -692,16 +802,18 @@ async function checkEmergencyResolutions(blockchain, moltx, state) {
 
   const emergencyPools = state.pools.filter(
     (p) =>
-      p.status === PoolStatus.ACTIVE &&
+      isPoolActive(p) &&
       now >= p.deadline + CONFIG.EMERGENCY_RESOLVE_DELAY
   );
 
   for (const pool of emergencyPools) {
-    console.log(`[Emergency] Pool #${pool.onchainId} past deadline + 24h. Triggering emergency resolve.`);
+    console.log(`[Emergency] Pool #${pool.onchainId} (${pool.contract}) past deadline + 24h. Triggering emergency resolve.`);
 
     try {
-      const txHash = await blockchain.emergencyResolveV3(pool.onchainId);
-      pool.status = PoolStatus.RESOLVED;
+      const txHash = isLumina(pool)
+        ? await blockchain.emergencyResolveLumina(pool.onchainId)
+        : await blockchain.emergencyResolveV3(pool.onchainId);
+      pool.status = resolvedStatus(pool);
       pool.claimApproved = false;
       pool.resolutionTxHash = txHash;
       pool.emergencyResolved = true;
@@ -773,7 +885,7 @@ async function engageFeed(blockchain, moltx, state) {
         const matchingPool = state.pools.find(
           (p) =>
             p.productId === topOpp.product.id &&
-            [PoolStatus.PENDING, PoolStatus.OPEN].includes(p.status)
+            isPoolPendingOrOpen(p)
         );
 
         try {
@@ -792,7 +904,7 @@ async function engageFeed(blockchain, moltx, state) {
             // Generic pitch
             const pitch = generatePitch(topOpp.product.id, {
               coverageAmount: topOpp.product.suggestedCoverageRange[0],
-              contractAddress: process.env.V3_CONTRACT_ADDRESS,
+              contractAddress: process.env.LUMINA_CONTRACT_ADDRESS || process.env.V3_CONTRACT_ADDRESS,
             });
             replyContent = `@${authorName} ${pitch}`.slice(0, 500);
           }
@@ -866,7 +978,7 @@ async function respondToMentions(moltx, state) {
           const tracked = state.pools.find((p) => p.onchainId === qPoolId);
           if (tracked) {
             reply =
-              `@${authorName} Pool #${qPoolId}: ${STATUS_LABELS[tracked.status]}\n` +
+              `@${authorName} Pool #${qPoolId}: ${statusLabel(tracked)}\n` +
               `Coverage: ${tracked.coverageAmount} USDC\n` +
               `Deadline: ${new Date(tracked.deadline * 1000).toISOString().slice(0, 10)}\n\n` +
               `https://mutualpool.finance/pool/${qPoolId}`;
@@ -882,7 +994,7 @@ async function respondToMentions(moltx, state) {
           `\n\nTodos verificables on-chain con oráculo dual-auth.`;
       } else if (content.includes("help") || content.includes("ayuda")) {
         reply =
-          `@${authorName} Soy el oráculo de MutualPool V3.\n\n` +
+          `@${authorName} Soy el oráculo de MutualLumina.\n\n` +
           `Creo pools de seguros para agentes AI en Base.\n` +
           `Preguntame sobre pools activos, productos, o EV.\n\n` +
           `dApp: https://mutualpool.finance`;
@@ -910,70 +1022,134 @@ async function respondToMentions(moltx, state) {
 
 /**
  * Al inicio, sincroniza el state local con lo que hay on-chain.
- * Recorre nextPoolId y agrega pools que el state no tiene.
+ * Recorre nextPoolId en AMBOS contratos (V3 + Lumina) y agrega pools que el state no tiene.
  */
 async function syncFromChain(blockchain, state) {
-  try {
-    const nextId = await blockchain.getNextPoolIdV3();
-    console.log(`[Sync] On-chain nextPoolId: ${nextId}`);
+  // ── Sync V3 pools (legacy) ──
+  if (blockchain.hasV3) {
+    try {
+      const nextId = await blockchain.getNextPoolIdV3();
+      console.log(`[Sync] V3 on-chain nextPoolId: ${nextId}`);
 
-    const trackedIds = new Set(state.pools.map((p) => p.onchainId));
+      const trackedV3Ids = new Set(
+        state.pools.filter((p) => (p.contract || "v3") === "v3").map((p) => p.onchainId)
+      );
 
-    for (let i = 0; i < nextId; i++) {
-      if (trackedIds.has(i)) {
-        // Update status of existing tracked pools
-        try {
-          const onchainData = await blockchain.getPoolV3(i);
-          const pool = state.pools.find((p) => p.onchainId === i);
-          if (pool && pool.status !== onchainData.status) {
-            console.log(
-              `[Sync] Pool #${i}: ${STATUS_LABELS[pool.status]} → ${STATUS_LABELS[onchainData.status]}`
-            );
-            pool.status = onchainData.status;
+      for (let i = 0; i < nextId; i++) {
+        if (trackedV3Ids.has(i)) {
+          try {
+            const onchainData = await blockchain.getPoolV3(i);
+            const pool = state.pools.find((p) => p.onchainId === i && (p.contract || "v3") === "v3");
+            if (pool) {
+              if (!pool.contract) pool.contract = "v3"; // Tag legacy pools
+              if (pool.status !== onchainData.status) {
+                console.log(`[Sync] V3 Pool #${i}: ${statusLabel(pool)} → ${STATUS_LABELS_V3[onchainData.status]}`);
+                pool.status = onchainData.status;
+              }
+            }
+          } catch {
+            // Skip read errors
           }
-        } catch {
-          // Skip read errors
+          await stagger();
+          continue;
+        }
+
+        try {
+          const data = await blockchain.getPoolV3(i);
+          console.log(`[Sync] Recovered V3 pool #${i}: ${STATUS_LABELS_V3[data.status]} — "${data.description.slice(0, 50)}..."`);
+
+          state.pools.push({
+            onchainId: i,
+            contract: "v3",
+            productId: "unknown",
+            description: data.description,
+            evidenceSource: data.evidenceSource,
+            coverageAmount: parseFloat(data.coverageAmount),
+            premiumUsdc: parseFloat(data.premiumPaid),
+            premiumRateBps: data.premiumRate,
+            deadline: data.deadline,
+            depositDeadline: data.depositDeadline,
+            eventProbability: 0.1,
+            status: data.status,
+            createdAt: 0,
+            txHash: null,
+            phase1MoltId: null,
+            phase3MoltId: null,
+            phase4MoltId: null,
+          });
+        } catch (err) {
+          console.warn(`[Sync] Failed to read V3 pool #${i}:`, err.message);
         }
         await stagger();
-        continue;
       }
-
-      // Recover untracked pool
-      try {
-        const data = await blockchain.getPoolV3(i);
-        console.log(
-          `[Sync] Recovered pool #${i}: ${STATUS_LABELS[data.status]} — "${data.description.slice(0, 50)}..."`
-        );
-
-        state.pools.push({
-          onchainId: i,
-          productId: "unknown",
-          description: data.description,
-          evidenceSource: data.evidenceSource,
-          coverageAmount: parseFloat(data.coverageAmount),
-          premiumUsdc: parseFloat(data.premiumPaid),
-          premiumRateBps: data.premiumRate,
-          deadline: data.deadline,
-          depositDeadline: data.depositDeadline,
-          eventProbability: 0.1,
-          status: data.status,
-          createdAt: 0,
-          txHash: null,
-          phase1MoltId: null,
-          phase3MoltId: null,
-          phase4MoltId: null,
-        });
-      } catch (err) {
-        console.warn(`[Sync] Failed to read pool #${i}:`, err.message);
-      }
-      await stagger();
+    } catch (err) {
+      console.error("[Sync] V3 chain sync failed:", err.message);
     }
-
-    saveState(state);
-    console.log(`[Sync] State synced. Tracking ${state.pools.length} pools.`);
-  } catch (err) {
-    console.error("[Sync] Chain sync failed:", err.message);
   }
+
+  // ── Sync Lumina pools ──
+  if (blockchain.hasLumina) {
+    try {
+      const nextId = await blockchain.getNextPoolIdLumina();
+      console.log(`[Sync] Lumina on-chain nextPoolId: ${nextId}`);
+
+      const trackedLuminaIds = new Set(
+        state.pools.filter((p) => p.contract === "lumina").map((p) => p.onchainId)
+      );
+
+      for (let i = 0; i < nextId; i++) {
+        if (trackedLuminaIds.has(i)) {
+          try {
+            const onchainData = await blockchain.getPoolLumina(i);
+            const pool = state.pools.find((p) => p.onchainId === i && p.contract === "lumina");
+            if (pool && pool.status !== onchainData.status) {
+              console.log(`[Sync] Lumina Pool #${i}: ${statusLabel(pool)} → ${STATUS_LABELS_LUMINA[onchainData.status]}`);
+              pool.status = onchainData.status;
+            }
+          } catch {
+            // Skip read errors
+          }
+          await stagger();
+          continue;
+        }
+
+        try {
+          const data = await blockchain.getPoolLumina(i);
+          console.log(`[Sync] Recovered Lumina pool #${i}: ${STATUS_LABELS_LUMINA[data.status]} — "${data.description.slice(0, 50)}..."`);
+
+          state.pools.push({
+            onchainId: i,
+            contract: "lumina",
+            productId: "unknown",
+            description: data.description,
+            evidenceSource: data.evidenceSource,
+            coverageAmount: parseFloat(data.coverageAmount),
+            premiumUsdc: parseFloat(data.premiumPaid),
+            premiumRateBps: data.premiumRate,
+            deadline: data.deadline,
+            depositDeadline: data.depositDeadline,
+            eventProbability: 0.1,
+            status: data.status,
+            createdAt: 0,
+            txHash: null,
+            phase1MoltId: null,
+            phase3MoltId: null,
+            phase4MoltId: null,
+          });
+        } catch (err) {
+          console.warn(`[Sync] Failed to read Lumina pool #${i}:`, err.message);
+        }
+        await stagger();
+      }
+    } catch (err) {
+      console.error("[Sync] Lumina chain sync failed:", err.message);
+    }
+  }
+
+  saveState(state);
+  const v3Count = state.pools.filter((p) => (p.contract || "v3") === "v3").length;
+  const luminaCount = state.pools.filter((p) => p.contract === "lumina").length;
+  console.log(`[Sync] State synced. Tracking ${state.pools.length} pools (V3: ${v3Count}, Lumina: ${luminaCount}).`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1040,13 +1216,15 @@ async function heartbeat(blockchain, moltx, state) {
   await respondToMentions(moltx, state);
 
   // ── Summary ──
-  const pending = state.pools.filter((p) => p.status === PoolStatus.PENDING).length;
-  const open = state.pools.filter((p) => p.status === PoolStatus.OPEN).length;
-  const active = state.pools.filter((p) => p.status === PoolStatus.ACTIVE).length;
-  const resolved = state.pools.filter((p) => p.status === PoolStatus.RESOLVED).length;
+  const pending = state.pools.filter(isPoolPending).length;
+  const open = state.pools.filter(isPoolOpen).length;
+  const active = state.pools.filter(isPoolActive).length;
+  const resolved = state.pools.filter(isPoolResolved).length;
+  const v3Count = state.pools.filter((p) => (p.contract || "v3") === "v3").length;
+  const luminaCount = state.pools.filter((p) => p.contract === "lumina").length;
 
   console.log(
-    `\n[Summary] Pending: ${pending} | Open: ${open} | Active: ${active} | Resolved: ${resolved}`
+    `\n[Summary] Pending: ${pending} | Open: ${open} | Active: ${active} | Resolved: ${resolved} | V3: ${v3Count} | Lumina: ${luminaCount}`
   );
 
   saveState(state);
@@ -1097,7 +1275,8 @@ let _oracleState = null;
  */
 async function initOracleBot() {
   console.log("═══════════════════════════════════════════════════════════");
-  console.log("  ORACLE BOT — MutualPool V3 Lifecycle Engine");
+  console.log("  ORACLE BOT — Dual-Mode Lifecycle Engine");
+  console.log(`  Mode: ${USE_LUMINA ? "LUMINA (new pools)" : "V3 LEGACY (new pools)"}`);
   console.log("  Chain: Base Mainnet (8453)");
   console.log("  Oracle: Dual-Auth (Judge + Auditor)");
   console.log("═══════════════════════════════════════════════════════════\n");
@@ -1105,11 +1284,13 @@ async function initOracleBot() {
   const { blockchain, moltx } = initClients();
   const state = loadState();
 
-  // ── Verify oracle role ──
+  // ── Verify oracle role on the active contract ──
   try {
-    const onchainOracle = await blockchain.v3.oracle();
+    const activeContract = USE_LUMINA ? blockchain.lumina : blockchain.v3;
+    const contractLabel = USE_LUMINA ? "Lumina" : "V3";
+    const onchainOracle = await activeContract.oracle();
     const isOracle = onchainOracle.toLowerCase() === blockchain.agentAddress.toLowerCase();
-    console.log(`[Init] On-chain oracle: ${onchainOracle}`);
+    console.log(`[Init] ${contractLabel} on-chain oracle: ${onchainOracle}`);
     console.log(`[Init] This wallet is oracle: ${isOracle ? "YES" : "NO"}`);
 
     if (!isOracle) {
@@ -1125,7 +1306,7 @@ async function initOracleBot() {
 
   // ── Sync from chain (STATE RESILIENCE) ──
   // Critical for Railway: ephemeral disk means state.json may be empty.
-  // syncFromChain reconstructs pool state from MutualPoolV3 contract.
+  // syncFromChain reconstructs pool state from BOTH V3 and Lumina contracts.
   console.log("\n[Init] Syncing state from blockchain (ephemeral-safe)...");
   await syncFromChain(blockchain, state);
 
@@ -1155,15 +1336,18 @@ function getOracleStatus() {
   const pools = _oracleState.pools || [];
   return {
     initialized: true,
+    mode: USE_LUMINA ? "lumina" : "v3",
     cycleCount: _oracleState.cycleCount || 0,
     lastHeartbeat: _oracleState.lastHeartbeat || 0,
     pools: {
       total: pools.length,
-      pending: pools.filter((p) => p.status === PoolStatus.PENDING).length,
-      open: pools.filter((p) => p.status === PoolStatus.OPEN).length,
-      active: pools.filter((p) => p.status === PoolStatus.ACTIVE).length,
-      resolved: pools.filter((p) => p.status === PoolStatus.RESOLVED).length,
-      cancelled: pools.filter((p) => p.status === PoolStatus.CANCELLED).length,
+      v3: pools.filter((p) => (p.contract || "v3") === "v3").length,
+      lumina: pools.filter((p) => p.contract === "lumina").length,
+      pending: pools.filter(isPoolPending).length,
+      open: pools.filter(isPoolOpen).length,
+      active: pools.filter(isPoolActive).length,
+      resolved: pools.filter(isPoolResolved).length,
+      cancelled: pools.filter(isPoolCancelled).length,
     },
   };
 }
