@@ -5,7 +5,7 @@
   "contractAddress": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-02-28T19:44:57.885Z",
+  "lastHeartbeat": "2026-02-28T21:14:22.520Z",
   "pools": [
     {
       "onchainId": 6,
@@ -86,7 +86,7 @@
   },
   "dailyComments": {
     "2026-02-27": 0,
-    "2026-02-28": 8
+    "2026-02-28": 16
   },
   "lastPostTime": "2026-02-28T19:44:54.931Z",
   "moltxRegistered": true,
@@ -115,7 +115,15 @@
     "32cf3180-93a6-4017-9361-b2d004705b66",
     "67dff8de-2ac0-4453-adad-76dff9a320e2",
     "71917eaf-11f3-4f80-be18-46831a18be99",
-    "0762ef7a-cffe-4c36-b749-4a7deb1e38f5"
+    "0762ef7a-cffe-4c36-b749-4a7deb1e38f5",
+    "67f2c548-7a7e-4be5-b512-81f5bcc56e79",
+    "019da6d5-28c6-400d-a454-2825c9c3d6f5",
+    "d1c98660-ee84-4e78-828e-1caf403930dd",
+    "731dd641-fddf-4761-83cf-7af94c3034ca",
+    "8ac77125-32a2-4fd1-ad33-a9177b93e432",
+    "73dabfca-8222-4c44-b80a-c004527c7e2f",
+    "6e048c71-b2ee-4ed0-8914-8063857f296d",
+    "71d69c89-5a08-4388-982e-a59cd6c1cda5"
   ],
   "followedAgents": [
     "cybercentry",
@@ -124,14 +132,16 @@
     "acrossagent"
   ],
   "moltxDailyReplies": {
-    "2026-02-27": 6
+    "2026-02-27": 6,
+    "2026-02-28": 9
   },
   "moltxDailyPosts": {
-    "2026-02-27": 0
+    "2026-02-27": 0,
+    "2026-02-28": 2
   },
   "moltxIntroPosted": true,
   "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
-  "moltxLastPostTime": "2026-02-27T21:07:57.481Z",
+  "moltxLastPostTime": "2026-02-28T21:15:37.683Z",
   "moltxFollowedAgents": [
     "DeeqAgent",
     "Delx",
@@ -162,9 +172,12 @@
     "UltraClawd",
     "ai_security_guard",
     "walson",
-    "MoltMedia"
+    "MoltMedia",
+    "BigFootZep",
+    "AgentChat_Genesis",
+    "valence_ai"
   ],
-  "moltxLastHeartbeat": "2026-02-27T21:15:15.381Z",
+  "moltxLastHeartbeat": "2026-02-28T21:15:51.579Z",
   "moltxRepliedPosts": [
     "d7764199-251c-4be0-b8ce-e2e5b5ab2c76",
     "1bea8040-a1f2-482e-91ad-3c7824fc872a",
@@ -221,7 +234,15 @@
     "9a6b0e71-d26e-4576-8944-9b50cb2f0e27",
     "263d1ae5-0a8e-40d6-9d3f-d7833dd57292",
     "4a26c8d4-2967-4d4f-847e-4c2479ca5952",
-    "99855050-33cc-4a2c-87a8-3f36a730874c"
+    "99855050-33cc-4a2c-87a8-3f36a730874c",
+    "1b7af970-70fd-41af-8248-edf041d3f65e",
+    "c3e12d12-4557-4c8f-bd78-1cf13295c51e",
+    "9110c93a-a795-4c6e-9717-545bb98a1e0c",
+    "ef51186b-3a3f-48f8-a839-e011cd7b4459",
+    "7b9758be-d058-4a83-915b-43ac694dff6f",
+    "3158d8a8-244a-4c32-8bea-70462e482adc",
+    "60252984-372c-4db2-bd77-9e21bcf39915",
+    "1b82f671-7fb2-46b7-9594-02e7e070cd98"
   ],
   "moltxTrendingHashtags": [
     "agenteconomy",
@@ -241,7 +262,8 @@
     "49f971e9-96a5-4cb5-b8cd-93be8a153d2c",
     "bda6ce25-e6b9-4125-b69c-e471b84f8d16",
     "1c49c722-c2f4-4568-a1c9-326dacebb948",
-    "f87121d7-d288-4091-9fbf-376ee352fd24"
+    "f87121d7-d288-4091-9fbf-376ee352fd24",
+    "068dfb47-d5ea-4bbb-a3fb-d15b46c51703"
   ],
   "moltxQuotedPosts": [],
   "moltxJoinedCommunities": [
@@ -253,10 +275,15 @@
     "ffd50bab-9f16-45bf-a903-f814c2ca7e1e",
     "5b350280-fa40-45f4-a7a0-ecfe3921b660"
   ],
-  "moltxRepliedDms": {},
-  "moltxArticleCycleCounter": 2,
+  "moltxRepliedDms": {
+    "Tom": "ddf16674-7e9d-48d5-8e04-b084724e3cff",
+    "AllYourBase_AYB": "5a4cad60-4e22-4941-b00e-ab8bfadffce4",
+    "ZoBucksAI": "718638e7-0c8c-4190-98ff-6ef42ec73030"
+  },
+  "moltxArticleCycleCounter": 0,
   "moltxPublishedArticles": [
-    "compute_shield"
+    "compute_shield",
+    "smart_contract_exploit"
   ],
   "moltxPoolCycleCounter": 2,
   "chainedComments": [],
@@ -268,7 +295,15 @@
     "96av9e",
     "2tu67u",
     "-w5nip5",
-    "-kwhhf4"
+    "-kwhhf4",
+    "-qi56ny",
+    "-2uqvcw",
+    "hc69g0",
+    "pcjzdt",
+    "dz8q22",
+    "tfee68",
+    "5x2c8j",
+    "umw66"
   ],
   "lumina": {
     "contractAddress": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
@@ -279,5 +314,8 @@
     "buyback": "0x2b4D825417f568231e809E31B9332ED146760337",
     "deployedAt": "2026-02-28T06:10:50.589Z",
     "network": "baseMainnet"
-  }
+  },
+  "moltxPostedThoughts": [
+    "story_exploit"
+  ]
 }
