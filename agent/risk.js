@@ -857,6 +857,61 @@ function buildEvidenceSource(category, description, parsed) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// EVENT CATEGORIES (derived from DATA_SOURCES)
+// ═══════════════════════════════════════════════════════════════
+
+const EVENT_CATEGORIES = Object.keys(DATA_SOURCES);
+
+// ═══════════════════════════════════════════════════════════════
+// POOL PROPOSAL GENERATOR
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Generate a pool proposal for a given insurance product.
+ *
+ * Uses the product's baseFailureProb and the premium calculation pipeline
+ * to produce all pricing parameters needed for pool creation.
+ *
+ * @param {string} productId - Product key from INSURANCE_PRODUCTS
+ * @param {number} coverageUsdc - Coverage amount in USDC
+ * @param {number} daysUntilDeadline - Days until pool deadline
+ * @returns {object|null} Proposal object or null if product not found
+ */
+function generatePoolProposal(productId, coverageUsdc, daysUntilDeadline) {
+  const { getProduct } = require("./products.js");
+  const product = getProduct(productId);
+  if (!product) {
+    console.warn(`[Risk] Unknown product: ${productId}`);
+    return null;
+  }
+
+  const failureProb = product.baseFailureProb;
+  const { premiumRateBps, premiumRatePercent } = calculatePremiumRate(failureProb);
+  const premiumUsdc = ((coverageUsdc * premiumRateBps) / RISK_CONFIG.BPS_DENOMINATOR).toFixed(2);
+
+  // Risk level classification
+  let riskLevel;
+  if (failureProb >= 0.20) riskLevel = "HIGH";
+  else if (failureProb >= 0.10) riskLevel = "MEDIUM";
+  else riskLevel = "LOW";
+
+  // Expected return for collateral providers (net of 3% protocol fee)
+  const expectedReturnPct = ((1 - failureProb) * (premiumRateBps / 100) * 0.97).toFixed(2);
+
+  return {
+    productId,
+    coverageUsdc,
+    daysUntilDeadline,
+    failureProb,
+    premiumRateBps,
+    premiumRatePercent: parseFloat(premiumRatePercent),
+    premiumUsdc,
+    riskLevel,
+    expectedReturnPct,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SEMANTIC VERIFIABILITY GATE (kept for backward compatibility)
 // ═══════════════════════════════════════════════════════════════
 
@@ -881,6 +936,7 @@ function verifySemanticViability(proposal) {
 
 module.exports = {
   evaluateRisk,
+  generatePoolProposal,
   validateParametricEvent,
   calculateHistoricalProbability,
   calculatePremiumRate,
@@ -891,6 +947,7 @@ module.exports = {
   securityCheck,
   detectCategory,
   verifySemanticViability,
+  EVENT_CATEGORIES,
   RISK_CONFIG,
   DATA_SOURCES,
 };
