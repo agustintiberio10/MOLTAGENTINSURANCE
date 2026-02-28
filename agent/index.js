@@ -403,29 +403,58 @@ async function monitorPools(blockchain, moltbook, state) {
 }
 
 /**
- * (b) Post new pool opportunities in HIGH-TRAFFIC submolts.
+ * Load oracle-bot's state to find real on-chain pools.
+ * Oracle-bot creates pools on-chain and tracks them in oracle-state.json.
+ */
+function loadOracleState() {
+  const oracleStatePath = path.join(__dirname, "oracle-state.json");
+  try {
+    if (fs.existsSync(oracleStatePath)) {
+      return JSON.parse(fs.readFileSync(oracleStatePath, "utf8"));
+    }
+  } catch (err) {
+    console.warn("[Post] Failed to load oracle-state.json:", err.message);
+  }
+  return null;
+}
+
+/**
+ * Find oracle-created pools that haven't been posted to Moltbook yet.
+ * Cross-references oracle-state.json pools with main state.json pools.
+ */
+function findUnpostedOraclePools(oracleState, mainState) {
+  if (!oracleState?.pools?.length) return [];
+
+  // Pool IDs already posted to Moltbook
+  const postedOnchainIds = new Set(
+    (mainState.pools || [])
+      .filter((p) => p.moltbookPostId && p.onchainId !== null)
+      .map((p) => `${p.contract || p.version}_${p.onchainId}`)
+  );
+
+  // Find oracle pools that are Open or Active (live on-chain) and not yet on Moltbook
+  return oracleState.pools.filter((p) => {
+    if (p.onchainId === null || p.onchainId === undefined) return false;
+    const key = `${p.contract}_${p.onchainId}`;
+    if (postedOnchainIds.has(key)) return false;
+    // Only promote live pools (Open=0 for Lumina, Pending=0/Open=1 for V3)
+    const isLive = p.contract === "lumina"
+      ? (p.status === 0 || p.status === 1) // Open or Active
+      : (p.status === 0 || p.status === 1 || p.status === 2); // Pending, Open, or Active
+    return isLive;
+  });
+}
+
+/**
+ * (b) Post new pool opportunities to Moltbook.
  *
- * FLOW: Create pool ON-CHAIN first (zero-funded, gas only) → then post to
- * Moltbook with real poolId + M2M payload so OTHER agents can fund/join.
+ * PRIORITY: Real on-chain pools from oracle-bot (with actual pool IDs and
+ * working M2M payloads). Falls back to product proposals if no oracle pools.
  *
- * IMPORTANT — ORACLE-ONLY MODE:
- * This bot is the Oracle. It does NOT fund premiums or inject liquidity.
- * createPoolV3() only costs ETH gas. The insured client funds premium via
- * Router.fundPremiumWithUSDC() — that's published in the M2M payload.
- * If USDC balance is 0, that's expected and correct behavior.
- *
- * Strategy: Rotate between target submolts. Post detailed pool in our submolt,
- * post attention-grabbing pitch in high-traffic submolts.
+ * Strategy: Post detailed pool listing in m/mutual-insurance with full
+ * risk analysis, EV breakdown, and executable M2M payloads.
  */
 async function postNewOpportunity(moltbook, blockchain, state) {
-  const activePools = state.pools.filter((p) =>
-    p.status === "Active" || p.status === "Open" || p.status === "Proposed"
-  );
-  if (activePools.length >= 15) {
-    console.log("[Post] Max active pools reached (15), skipping.");
-    return;
-  }
-
   if (getDailyPosts(state) >= MAX_DAILY_POSTS) {
     console.log("[Post] Daily post limit reached, skipping.");
     return;
@@ -439,7 +468,182 @@ async function postNewOpportunity(moltbook, blockchain, state) {
     return;
   }
 
-  // Pick random product
+  // ── PRIORITY: Try to post a REAL on-chain pool from oracle-bot ──
+  const oracleState = loadOracleState();
+  const unposted = findUnpostedOraclePools(oracleState, state);
+
+  if (unposted.length > 0) {
+    const pool = unposted[0]; // Post the oldest unposted pool
+    await postOnchainPool(moltbook, state, pool);
+    return;
+  }
+
+  // ── FALLBACK: Generate a product proposal (no on-chain pool yet) ──
+  await postProductProposal(moltbook, blockchain, state);
+}
+
+/**
+ * Post a REAL on-chain pool to Moltbook with actual pool ID and M2M payload.
+ * These posts have maximum engagement because agents can execute immediately.
+ */
+async function postOnchainPool(moltbook, state, pool) {
+  const product = INSURANCE_PRODUCTS[pool.productId] || null;
+  const productName = product?.name || pool.productId || "Insurance Pool";
+  const productIcon = product?.icon || "🛡️";
+  const productDisplayName = product?.displayName || pool.description || "";
+  const productTarget = product?.target?.description || "AI agents operating on-chain";
+
+  const isLumina = pool.contract === "lumina";
+  const onchainId = pool.onchainId;
+  const coverageUsdc = pool.coverageAmount;
+  const premiumUsdc = pool.premiumUsdc || 0;
+  const premiumRateBps = pool.premiumRateBps || 0;
+  const deadlineUnix = pool.deadline;
+  const evidenceSource = pool.evidenceSource;
+  const eventProb = pool.eventProbability || (product?.baseFailureProb || 0.1);
+  const failureProbPct = (eventProb * 100).toFixed(1);
+  const txHash = pool.txHash || null;
+
+  const deadlineDateStr = new Date(deadlineUnix * 1000).toISOString().split("T")[0];
+  const daysLeft = Math.max(0, Math.ceil((deadlineUnix - Date.now() / 1000) / 86400));
+  const depositDeadlineTs = deadlineUnix - 7200;
+  const expectedYieldBps = Math.round((1 - eventProb) * premiumRateBps * 0.97);
+  const net_ev = ((1 - eventProb) * (premiumRateBps / 100) * 0.97 + eventProb * -100).toFixed(2);
+
+  const usdcAddress = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+  const contractAddr = isLumina
+    ? (process.env.LUMINA_CONTRACT_ADDRESS || state.contractAddress)
+    : (process.env.V3_CONTRACT_ADDRESS || state.contractAddress);
+  const routerAddr = isLumina ? null : (process.env.ROUTER_ADDRESS || null);
+  const joinTarget = isLumina ? contractAddr : (routerAddr || contractAddr);
+  const joinAction = isLumina ? "joinPool" : "joinPoolWithUSDC";
+  const joinLabel = isLumina ? "MutualLumina" : "Router";
+  const contractLabel = isLumina ? "MutualLumina" : "MutualPoolV3";
+
+  const collateralWei = (Math.min(coverageUsdc, 100) * 1_000_000).toString();
+
+  // ── Build M2M payload with REAL pool ID ──
+  const m2mPayload = {
+    intent: "mutual_insurance_pool",
+    chainId: 8453,
+    contract_address: contractAddr,
+    router_address: routerAddr,
+    token: usdcAddress,
+    version: pool.contract,
+    pool_id: onchainId,
+    pool_status: isLumina ? "Open" : "Pending",
+    provider_actions: [
+      {
+        action: "approve",
+        target: usdcAddress,
+        method: "approve(address,uint256)",
+        params: { spender: joinTarget, amount: "COLLATERAL_AMOUNT" },
+      },
+      {
+        action: joinAction,
+        target: joinTarget,
+        method: `${joinAction}(uint256,uint256)`,
+        params: { poolId: onchainId, amount: "COLLATERAL_AMOUNT" },
+      },
+    ],
+    pool_params: {
+      coverage_amount_usdc: coverageUsdc,
+      premium_rate_bps: premiumRateBps,
+      premium_usdc: parseFloat(premiumUsdc),
+      deadline: deadlineUnix,
+      deposit_deadline: depositDeadlineTs,
+      min_contribution_usdc: 10,
+      evidence_source: evidenceSource,
+      product_id: pool.productId,
+    },
+    risk_analysis: {
+      failure_probability: eventProb,
+      expected_yield_bps: expectedYieldBps,
+      net_ev_per_100_usdc: parseFloat(net_ev),
+    },
+    oracle: { type: "dual_auth", resolution: "deterministic", anti_injection: true },
+    mogra_execution_payload: {
+      description: `Join pool #${onchainId} on ${contractLabel}`,
+      network: "base",
+      calls: [
+        { step: 1, action: "approve", to: usdcAddress, description: `Approve USDC for ${joinLabel}` },
+        { step: 2, action: joinAction, to: joinTarget, description: `${joinLabel}.${joinAction}(${onchainId}, amount)` },
+      ],
+    },
+    human_dapp_url: `https://mutualpool.finance/pool/${onchainId}?action=provide_collateral`,
+  };
+
+  // ── Build detailed Moltbook post ──
+  const detailedContent =
+    `${productIcon} **${productName}** — ${productDisplayName}\n\n` +
+    `## POOL #${onchainId} — LIVE ON BASE\n\n` +
+    `## Risk Analysis\n` +
+    `P(incident) = ${failureProbPct}% based on historical data. ` +
+    `Expected yield for providers: ${expectedYieldBps} bps (${(expectedYieldBps / 100).toFixed(2)}%) after 3% protocol fee. ` +
+    `Net EV = ${net_ev} USDC per 100 USDC collateral.\n\n` +
+    `## Pool Parameters\n` +
+    `- **Pool ID: #${onchainId}** (on-chain, verified)\n` +
+    `- Coverage: ${coverageUsdc} USDC\n` +
+    `- Premium: ${(premiumRateBps / 100).toFixed(1)}% (${premiumUsdc} USDC)\n` +
+    `- Deadline: ${deadlineDateStr} (${daysLeft} days)\n` +
+    `- Deposit window closes: 2h before deadline\n` +
+    `- Evidence: ${evidenceSource}\n` +
+    `- Contract: ${contractAddr} (${contractLabel})\n` +
+    (txHash ? `- Creation tx: ${txHash}\n` : ``) +
+    `- Min collateral: 10 USDC\n\n` +
+    `## Who needs this?\n${productTarget}\n\n` +
+    `## How to Participate\n` +
+    `### As Collateral Provider (earn yield)\n` +
+    `1. Approve USDC: \`USDC.approve("${joinTarget}", amount)\`\n` +
+    `2. Join pool: \`${joinLabel}.${joinAction}(${onchainId}, amount)\` (min 10 USDC)\n` +
+    `3. After deadline: \`${contractLabel}.withdraw(${onchainId})\` to collect collateral + premium share.\n\n` +
+    `## Safety Features\n` +
+    `- Deposit deadline: 2h before resolution (anti front-running)\n` +
+    `- Emergency resolve: if oracle fails, providers can force-resolve after 24h\n` +
+    `- Cancel & refund: if pool is underfunded at deposit deadline, all funds returned\n` +
+    `- Dual-auth oracle: two independent analyses must agree\n\n` +
+    `**dApp:** https://mutualpool.finance/pool/${onchainId}\n\n` +
+    `## M2M Execution Payload\n` +
+    `\`\`\`json\n${JSON.stringify(m2mPayload, null, 2)}\n\`\`\``;
+
+  const title = `${productIcon} POOL #${onchainId}: ${productName} — ${coverageUsdc} USDC coverage, ${(expectedYieldBps / 100).toFixed(1)}% yield, ${daysLeft}d`;
+
+  try {
+    const postResult = await moltbook.createPost(OWN_SUBMOLT, title, detailedContent);
+    const postId = postResult?.post?.id || null;
+
+    // Track in main state so we don't double-post
+    state.pools.push({
+      onchainId,
+      contract: pool.contract,
+      creationTxHash: txHash,
+      moltbookPostId: postId,
+      productId: pool.productId,
+      description: pool.description,
+      evidenceSource,
+      coverageAmount: coverageUsdc,
+      premiumRateBps,
+      premiumUsdc,
+      deadline: deadlineUnix,
+      status: "Open",
+      version: pool.contract,
+      participants: [],
+      createdAt: new Date().toISOString(),
+    });
+    state.lastPostTime = new Date().toISOString();
+    incrementDailyPosts(state);
+    saveState(state);
+    console.log(`[Post] ON-CHAIN pool #${onchainId} posted to m/${OWN_SUBMOLT}: ${productName}, ${coverageUsdc} USDC`);
+  } catch (err) {
+    console.error("[Post] Failed to post on-chain pool:", err.message);
+    checkSuspension(err.message);
+  }
+}
+
+/**
+ * Fallback: post a product proposal when no oracle pools are available.
+ */
+async function postProductProposal(moltbook, blockchain, state) {
   const product = getRandomProduct();
   const coverageUsdc = product.suggestedCoverageRange[0] +
     Math.floor(Math.random() * (product.suggestedCoverageRange[1] - product.suggestedCoverageRange[0]));
@@ -455,108 +659,20 @@ async function postNewOpportunity(moltbook, blockchain, state) {
   const evidenceSource = product.evidenceSources[0];
   const failureProbPct = (proposal.failureProb * 100).toFixed(1);
   const premiumUsdc = parseFloat(proposal.premiumUsdc);
-
-  const ev_no_incident = ((1 - proposal.failureProb) * (proposal.premiumRateBps / 100) * 0.97).toFixed(2);
+  const expectedYieldBps = Math.round((1 - proposal.failureProb) * proposal.premiumRateBps * 0.97);
   const net_ev = ((1 - proposal.failureProb) * (proposal.premiumRateBps / 100) * 0.97 + proposal.failureProb * -100).toFixed(2);
-
-  // ── STEP 1: Pool on-chain creation is done MANUALLY by the owner ──
-  // The bot only promotes products. Pool creation happens externally.
-  let onchainId = null;
-  let creationTxHash = null;
   const poolVersion = USE_LUMINA ? "lumina" : "v3";
-  console.log(`[Post] Proposing product: ${product.name}, coverage=${coverageUsdc} USDC (on-chain pool created manually by owner)`);
 
-  const poolStatus = onchainId !== null ? "Pending" : "Proposed";
-  const onchainInfo = onchainId !== null
-    ? `- **Pool ID (on-chain): #${onchainId}**\n- Creation tx: ${creationTxHash}\n`
-    : `- Pool ID: pending on-chain deployment\n`;
-
-  // ── STEP 2: Build M2M JSON payload for autonomous agents ──
   const usdcAddress = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-  const routerAddress = process.env.ROUTER_ADDRESS || null;
-  const luminaAddress = process.env.LUMINA_CONTRACT_ADDRESS || null;
-  const depositDeadlineTs = deadlineTimestamp - (2 * 60 * 60); // 2h before deadline
-  const expectedYieldBps = Math.round(
-    (1 - proposal.failureProb) * proposal.premiumRateBps * 0.97
-  );
-
-  // Lumina: joinPool direct (no Router). V3: joinPoolWithUSDC via Router.
-  const joinTarget = USE_LUMINA
-    ? luminaAddress
-    : (routerAddress || process.env.V3_CONTRACT_ADDRESS);
+  const contractAddr = USE_LUMINA
+    ? (process.env.LUMINA_CONTRACT_ADDRESS || state.contractAddress)
+    : (process.env.V3_CONTRACT_ADDRESS || state.contractAddress);
+  const joinTarget = USE_LUMINA ? contractAddr : (process.env.ROUTER_ADDRESS || contractAddr);
   const joinAction = USE_LUMINA ? "joinPool" : "joinPoolWithUSDC";
-  const joinMethod = USE_LUMINA ? "joinPool(uint256,uint256)" : "joinPoolWithUSDC(uint256,uint256)";
+  const joinLabel = USE_LUMINA ? "MutualLumina" : "Router";
 
-  const m2mPayload = {
-    intent: "mutual_insurance_pool",
-    chainId: 8453,
-    contract_address: USE_LUMINA
-      ? (luminaAddress || state.contractAddress)
-      : (process.env.V3_CONTRACT_ADDRESS || state.contractAddress),
-    router_address: USE_LUMINA ? null : routerAddress,
-    token: usdcAddress,
-    version: poolVersion,
-    pool_status: "Pending",
-    // ── Actions for the INSURED (client buying insurance) ──
-    // Lumina: premium paid at createAndFund (oracle creates pool + pays premium).
-    // V3: client funds premium via Router.fundPremiumWithUSDC.
-    insured_actions: USE_LUMINA
-      ? [{ note: "Lumina pools: premium is paid at creation via createAndFund(). No separate fundPremium step." }]
-      : [
-          {
-            action: "approve",
-            target: usdcAddress,
-            method: "approve(address,uint256)",
-            params: { spender: joinTarget, amount: "PREMIUM_AMOUNT" },
-          },
-          {
-            action: "fundPremiumWithUSDC",
-            target: joinTarget,
-            method: "fundPremiumWithUSDC(uint256,uint256)",
-            params: { poolId: onchainId, amount: "PREMIUM_AMOUNT" },
-            note: "Caller becomes the insured. Premium in USDC (6 decimals).",
-          },
-        ],
-    // ── Actions for COLLATERAL PROVIDERS ──
-    provider_actions: [
-      {
-        action: "approve",
-        target: usdcAddress,
-        method: "approve(address,uint256)",
-        params: { spender: joinTarget, amount: "COLLATERAL_AMOUNT" },
-      },
-      {
-        action: joinAction,
-        target: joinTarget,
-        method: joinMethod,
-        params: { poolId: onchainId, amount: "COLLATERAL_AMOUNT" },
-      },
-    ],
-    pool_id: onchainId,
-    pool_params: {
-      coverage_amount_usdc: coverageUsdc,
-      premium_rate_bps: proposal.premiumRateBps,
-      premium_usdc: parseFloat(proposal.premiumUsdc),
-      deadline: deadlineTimestamp,
-      deposit_deadline: depositDeadlineTs,
-      min_contribution_usdc: 10,
-      evidence_source: evidenceSource,
-      product_id: product.id,
-    },
-    risk_analysis: {
-      failure_probability: proposal.failureProb,
-      risk_level: proposal.riskLevel,
-      expected_yield_bps: expectedYieldBps,
-      net_ev_per_100_usdc: parseFloat(net_ev),
-    },
-    oracle: {
-      type: "dual_auth",
-      resolution: "deterministic",
-      anti_injection: true,
-    },
-  };
+  console.log(`[Post] Proposing product: ${product.name}, coverage=${coverageUsdc} USDC (pending on-chain deployment)`);
 
-  // ── STEP 3: Post detailed pool to our submolt ──
   const detailedContent =
     `${product.icon} **${product.name}** — ${product.displayName}\n\n` +
     `## Risk Analysis\n` +
@@ -569,40 +685,30 @@ async function postNewOpportunity(moltbook, blockchain, state) {
     `- Deadline: ${deadlineDateStr} (${daysUntilDeadline} days)\n` +
     `- Deposit window closes: 2h before deadline\n` +
     `- Evidence: ${evidenceSource}\n` +
-    `- Contract: ${state.contractAddress}\n` +
-    onchainInfo +
+    `- Contract: ${contractAddr}\n` +
+    `- Pool ID: deploying on-chain soon\n` +
     `- Min collateral: 10 USDC\n\n` +
     `## Who needs this?\n${product.target.description}\n\n` +
     `## How to Participate\n` +
-    `### As Insured (buy coverage)\n` +
-    (USE_LUMINA
-      ? `Premium is funded at pool creation via \`createAndFund()\`. No separate step needed.\n\n`
-      : `1. Approve USDC: \`USDC.approve("${joinTarget}", ${proposal.premiumUsdc}e6)\`\n` +
-        `2. Fund premium: \`Router.fundPremiumWithUSDC(${onchainId}, ${proposal.premiumUsdc}e6)\`\n` +
-        `3. You become the insured. If incident confirmed, you receive up to ${coverageUsdc} USDC.\n\n`) +
     `### As Collateral Provider (earn yield)\n` +
     `1. Approve USDC: \`USDC.approve("${joinTarget}", amount)\`\n` +
-    `2. Join pool: \`${USE_LUMINA ? "Lumina" : "Router"}.${joinAction}(${onchainId}, amount)\` (min 10 USDC)\n` +
-    `3. After deadline: \`withdraw(${onchainId})\` to collect collateral + premium share.\n\n` +
+    `2. Join pool: \`${joinLabel}.${joinAction}(poolId, amount)\` (min 10 USDC)\n` +
+    `3. After deadline: \`withdraw(poolId)\` to collect collateral + premium share.\n\n` +
     `## Safety Features\n` +
-    `- Pool requires premium funding before providers can join (Pending → Open)\n` +
     `- Deposit deadline: 2h before resolution (anti front-running)\n` +
     `- Emergency resolve: if oracle fails, providers can force-resolve after 24h\n` +
     `- Cancel & refund: if pool is underfunded at deposit deadline, all funds returned\n` +
     `- Dual-auth oracle: two independent analyses must agree\n\n` +
-    `## M2M Execution Payload\n` +
-    `\`\`\`json\n${JSON.stringify(m2mPayload, null, 2)}\n\`\`\``;
+    `Reply with your wallet address to get notified when this pool goes live.`;
 
   try {
-    const detailedTitle = onchainId !== null
-      ? `${product.icon} POOL #${onchainId}: ${product.name} — ${coverageUsdc} USDC, ${proposal.expectedReturnPct}% yield, ${daysUntilDeadline}d`
-      : `${product.icon} ${product.name}: ${coverageUsdc} USDC, ${proposal.expectedReturnPct}% yield, ${daysUntilDeadline}d`;
+    const detailedTitle = `${product.icon} ${product.name}: ${coverageUsdc} USDC, ${proposal.expectedReturnPct}% yield, ${daysUntilDeadline}d`;
     const postResult = await moltbook.createPost(OWN_SUBMOLT, detailedTitle, detailedContent);
     const postId = postResult?.post?.id || null;
 
     state.pools.push({
-      onchainId,
-      creationTxHash,
+      onchainId: null,
+      creationTxHash: null,
       moltbookPostId: postId,
       productId: product.id,
       description: `${product.name} verification`,
@@ -611,7 +717,7 @@ async function postNewOpportunity(moltbook, blockchain, state) {
       premiumRateBps: proposal.premiumRateBps,
       premiumUsdc: proposal.premiumUsdc,
       deadline: deadlineTimestamp,
-      status: poolStatus,
+      status: "Proposed",
       version: poolVersion,
       participants: [],
       createdAt: new Date().toISOString(),
@@ -619,14 +725,11 @@ async function postNewOpportunity(moltbook, blockchain, state) {
     state.lastPostTime = new Date().toISOString();
     incrementDailyPosts(state);
     saveState(state);
-    console.log(`[Post] Pool posted to m/${OWN_SUBMOLT}: ${product.name}, ${coverageUsdc} USDC, onchainId=${onchainId}`);
+    console.log(`[Post] Product proposal posted to m/${OWN_SUBMOLT}: ${product.name}, ${coverageUsdc} USDC`);
   } catch (err) {
-    console.error("[Post] Failed to post to own submolt:", err.message);
+    console.error("[Post] Failed to post proposal:", err.message);
     checkSuspension(err.message);
   }
-
-  // NOTE: Dual-posting removed — posting same pool to 2 submolts caused a ban.
-  // Now we only post to OWN_SUBMOLT. Cross-posting is done via comments in target submolts instead.
 }
 
 /**
