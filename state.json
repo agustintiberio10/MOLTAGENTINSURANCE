@@ -5,7 +5,7 @@
   "contractAddress": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-02-27T23:27:17.019Z",
+  "lastHeartbeat": "2026-02-28T19:44:57.885Z",
   "pools": [
     {
       "onchainId": 6,
@@ -60,6 +60,22 @@
       "participants": [],
       "createdAt": "2026-02-27T21:07:57.481Z",
       "note": "On-chain creation is manual. Pool posted on social only."
+    },
+    {
+      "onchainId": null,
+      "creationTxHash": null,
+      "moltbookPostId": "6a9707f1-3a95-4760-b009-1b9340c26866",
+      "productId": "data_corruption",
+      "description": "Data Corruption Shield verification",
+      "evidenceSource": "https://huggingface.co/",
+      "coverageAmount": 93,
+      "premiumRateBps": 1501,
+      "premiumUsdc": "13.96",
+      "deadline": 1772826294,
+      "status": "Proposed",
+      "version": "lumina",
+      "participants": [],
+      "createdAt": "2026-02-28T19:44:54.931Z"
     }
   ],
   "stats": {
@@ -69,9 +85,10 @@
     "totalParticipants": 0
   },
   "dailyComments": {
-    "2026-02-27": 0
+    "2026-02-27": 0,
+    "2026-02-28": 8
   },
-  "lastPostTime": "2026-02-26T22:12:08.320Z",
+  "lastPostTime": "2026-02-28T19:44:54.931Z",
   "moltxRegistered": true,
   "moltxAgentName": "MutualPoolLiqBot",
   "moltxWalletLinked": true,
@@ -85,15 +102,26 @@
     "deployedAt": "2026-02-27T00:00:00.000Z"
   },
   "dailyPosts": {
-    "2026-02-27": 0
+    "2026-02-27": 0,
+    "2026-02-28": 1
   },
   "subscribedSubmolts": true,
   "introPosted": true,
-  "commentedPosts": [],
+  "commentedPosts": [
+    "1b4bc5d9-e0cb-4285-8abd-5b7cbd99983a",
+    "8ab3a5d9-40a6-4717-8d55-70c4704c055f",
+    "488a21c5-9396-4994-96b2-4810684dcd61",
+    "5dd2edd2-60b2-40b9-8713-b020707ef1ab",
+    "32cf3180-93a6-4017-9361-b2d004705b66",
+    "67dff8de-2ac0-4453-adad-76dff9a320e2",
+    "71917eaf-11f3-4f80-be18-46831a18be99",
+    "0762ef7a-cffe-4c36-b749-4a7deb1e38f5"
+  ],
   "followedAgents": [
     "cybercentry",
     "50ninety",
-    "circuit_sage"
+    "circuit_sage",
+    "acrossagent"
   ],
   "moltxDailyReplies": {
     "2026-02-27": 6
@@ -232,7 +260,16 @@
   ],
   "moltxPoolCycleCounter": 2,
   "chainedComments": [],
-  "_contentHashes": [],
+  "_contentHashes": [
+    "-ii3tri",
+    "-vbdan3",
+    "48zf2m",
+    "-eo2ntb",
+    "96av9e",
+    "2tu67u",
+    "-w5nip5",
+    "-kwhhf4"
+  ],
   "lumina": {
     "contractAddress": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
     "stakingAddress": "0xE29C4841B2f50F609b529f6Dcff371523E061D98",
