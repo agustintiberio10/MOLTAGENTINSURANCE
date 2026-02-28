@@ -79,6 +79,12 @@ const { generateResolutionMolt, generateOpportunityMolt } = require("./example-m
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════
 
+// ── Behavioral pause flag ──────────────────────────────────────
+// When true, the oracle bot will NOT create new pools on-chain.
+// All pool creation code remains intact — this only skips the call.
+// Monitoring, resolution, and social engagement continue normally.
+const POOL_CREATION_PAUSED = true;
+
 const CONFIG = {
   // Timing
   HEARTBEAT_INTERVAL_MS: 5 * 60 * 1000, // 5 minutes
@@ -1252,8 +1258,12 @@ async function heartbeat(blockchain, moltx, state) {
   await resolveReadyPools(blockchain, moltx, state);
 
   // ── Step 3: Maybe create a new pool ──
-  console.log("\n[3/4] Pool creation check...");
-  await maybeCreatePool(blockchain, moltx, state);
+  if (POOL_CREATION_PAUSED) {
+    console.log("\n[3/4] Pool creation PAUSED (behavioral flag). Skipping.");
+  } else {
+    console.log("\n[3/4] Pool creation check...");
+    await maybeCreatePool(blockchain, moltx, state);
+  }
 
   // ── Step 4: Social engagement ──
   console.log("\n[4/4] Social engagement...");

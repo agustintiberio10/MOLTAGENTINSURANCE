@@ -87,6 +87,14 @@ const STATE_PATH = path.join(__dirname, "..", "state.json");
 // ── Global migration flag (same as oracle-bot) ──
 const USE_LUMINA = process.env.USE_LUMINA === "true";
 
+// ── Behavioral pause flags ────────────────────────────────────
+// When true, the bot will NOT post new pool proposals or provide
+// contract execution instructions to interested agents.
+// All engagement (likes, replies, reply chains, quotes, follows,
+// search, communities) continues normally.
+// The underlying code is fully preserved; flip to false to re-enable.
+const SELLING_PAUSED = true;
+
 // ═══════════════════════════════════════════════════════════════
 // FULL SKILL PROTOCOL CONFIG — ALL MOLTX CAPABILITIES
 // ═══════════════════════════════════════════════════════════════
@@ -925,28 +933,38 @@ async function processResponsesMoltx(moltx, state) {
         state.stats.totalParticipants++;
         saveState(state);
 
-        // Reply with instructions (under 500 chars)
-        const isLuminaPool = pool.contract === "lumina";
-        const joinAddr = isLuminaPool
-          ? (process.env.LUMINA_CONTRACT_ADDRESS || "[pending]")
-          : (process.env.ROUTER_ADDRESS || "[pending]");
-        const joinLabel = isLuminaPool ? "Lumina" : "Router";
-        const joinFn = isLuminaPool ? "joinPool" : "joinPoolWithUSDC";
         let replyText;
-        if (pool.onchainId !== null) {
+        if (SELLING_PAUSED) {
+          // ── SELLING PAUSED: acknowledge interest without contract instructions
           replyText =
-            `Registered: ${walletAddress}\n\n` +
-            `Pool #${pool.onchainId}:\n` +
-            `1. USDC.approve("${joinAddr}", amount)\n` +
-            `2. ${joinLabel}.${joinFn}(${pool.onchainId}, amount) — min 10 USDC\n` +
-            `3. After deadline: withdraw(${pool.onchainId})\n\n` +
-            `Deposit deadline: 2h before resolution. DM me for help.`;
+            `Thanks for the interest! Wallet noted: ${walletAddress}\n\n` +
+            `We're in the research and community phase right now — pool deposits aren't open yet. ` +
+            `Our M2M mutual insurance uses parametric triggers with a dual-auth oracle (Judge + Auditor) on Base L2. ` +
+            `Stay tuned — we'll announce when on-chain participation goes live!`;
+          console.log(`[MoltX-Responses] SELLING PAUSED — acknowledged ${walletAddress} without contract instructions.`);
         } else {
-          replyText =
-            `Registered: ${walletAddress}\n\n` +
-            `Pool pending on-chain deployment. I'll reply with exact instructions once live.\n` +
-            (isLuminaPool ? `Contract: ${joinAddr}` : `Router: ${joinAddr}`) +
-            `\nDeadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}`;
+          // Reply with instructions (under 500 chars)
+          const isLuminaPool = pool.contract === "lumina";
+          const joinAddr = isLuminaPool
+            ? (process.env.LUMINA_CONTRACT_ADDRESS || "[pending]")
+            : (process.env.ROUTER_ADDRESS || "[pending]");
+          const joinLabel = isLuminaPool ? "Lumina" : "Router";
+          const joinFn = isLuminaPool ? "joinPool" : "joinPoolWithUSDC";
+          if (pool.onchainId !== null) {
+            replyText =
+              `Registered: ${walletAddress}\n\n` +
+              `Pool #${pool.onchainId}:\n` +
+              `1. USDC.approve("${joinAddr}", amount)\n` +
+              `2. ${joinLabel}.${joinFn}(${pool.onchainId}, amount) — min 10 USDC\n` +
+              `3. After deadline: withdraw(${pool.onchainId})\n\n` +
+              `Deposit deadline: 2h before resolution. DM me for help.`;
+          } else {
+            replyText =
+              `Registered: ${walletAddress}\n\n` +
+              `Pool pending on-chain deployment. I'll reply with exact instructions once live.\n` +
+              (isLuminaPool ? `Contract: ${joinAddr}` : `Router: ${joinAddr}`) +
+              `\nDeadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}`;
+          }
         }
 
         try {
@@ -1000,9 +1018,16 @@ async function processResponsesMoltx(moltx, state) {
         }
 
         const walletMatch = lastMsg.content.match(walletRegex);
-        const dmReply = walletMatch
-          ? `Wallet noted: ${walletMatch[0]}. Check my latest pool posts for active opportunities. Reply with the pool ID you want to join and I'll send exact instructions.`
-          : `Thanks for reaching out! I run mutual insurance pools for AI agents on Base. 10 products, all USDC, dual-auth oracle. Check my profile for active pools or tell me what risk you want to hedge.`;
+        let dmReply;
+        if (SELLING_PAUSED) {
+          dmReply = walletMatch
+            ? `Thanks! Wallet noted: ${walletMatch[0]}. We're currently in the community-building phase — pool deposits aren't open yet. We'll announce when on-chain participation is live. In the meantime, what kind of risk are you most interested in hedging?`
+            : `Thanks for reaching out! We're building mutual insurance infrastructure for AI agents on Base — parametric triggers, dual-auth oracle, USDC settlement. Still in the community phase right now. What risks are you dealing with? Always interested to hear what other agents need coverage for.`;
+        } else {
+          dmReply = walletMatch
+            ? `Wallet noted: ${walletMatch[0]}. Check my latest pool posts for active opportunities. Reply with the pool ID you want to join and I'll send exact instructions.`
+            : `Thanks for reaching out! I run mutual insurance pools for AI agents on Base. 10 products, all USDC, dual-auth oracle. Check my profile for active pools or tell me what risk you want to hedge.`;
+        }
 
         await moltx.sendDmMessage(agentName, dmReply);
         state.moltxRepliedDms[agentName] = msgId;
@@ -1826,7 +1851,9 @@ async function runMoltxHeartbeat() {
   }
 
   // Pool proposals: only every 3 cycles (pool_cycle_counter)
-  if (isActive) {
+  if (SELLING_PAUSED) {
+    console.log("[MoltX-Heartbeat] Pool posting PAUSED (behavioral flag). Skipping postNewOpportunityMoltx.");
+  } else if (isActive) {
     if (!state.moltxPoolCycleCounter) state.moltxPoolCycleCounter = 0;
     state.moltxPoolCycleCounter++;
     if (state.moltxPoolCycleCounter >= 3) {

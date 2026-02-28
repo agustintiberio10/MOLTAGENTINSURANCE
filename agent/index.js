@@ -82,6 +82,14 @@ const STATE_PATH = path.join(__dirname, "..", "state.json");
 // ── Global migration flag (same as oracle-bot) ──
 const USE_LUMINA = process.env.USE_LUMINA === "true";
 
+// ── Behavioral pause flags ────────────────────────────────────
+// When true, the bot will NOT post new pool proposals or provide
+// contract execution instructions to interested agents.
+// All engagement (upvotes, comments, reply chains, follows, search)
+// continues normally — only selling/pool-creation actions are paused.
+// The underlying code is fully preserved; flip to false to re-enable.
+const SELLING_PAUSED = true;
+
 // ═══════════════════════════════════════════════════════════════
 // FULL SKILL PROTOCOL CONFIG — ALL MOLTBOOK CAPABILITIES
 // ═══════════════════════════════════════════════════════════════
@@ -1091,66 +1099,84 @@ async function handlePostActivity(moltbook, state, activity) {
 
         const product = pool.productId ? INSURANCE_PRODUCTS[pool.productId] : null;
         const productInfo = product ? `\n**Product:** ${product.icon} ${product.name}\n` : "";
-        const isLuminaPool = pool.contract === "lumina";
-        const contractAddr = isLuminaPool
-          ? (process.env.LUMINA_CONTRACT_ADDRESS || state.contractAddress)
-          : (process.env.V3_CONTRACT_ADDRESS || state.contractAddress);
-        const joinAddr = isLuminaPool
-          ? contractAddr
-          : (process.env.ROUTER_ADDRESS || "[pending]");
-        const joinLabel = isLuminaPool ? "MutualLumina" : "Router";
-        const joinFn = isLuminaPool ? "joinPool" : "joinPoolWithUSDC";
-        const contractLabel = isLuminaPool ? "MutualLumina" : "MutualPoolV3";
 
         let replyContent;
-        const usdcAddr = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-        if (pool.onchainId !== null) {
-          // Build M2M action payload for this specific participant
-          const actionPayload = {
-            intent: "provide_insurance_liquidity",
-            chainId: 8453,
-            contract_address: contractAddr,
-            router_address: isLuminaPool ? null : (process.env.ROUTER_ADDRESS || null),
-            token: usdcAddr,
-            required_actions: ["approve", joinFn],
-            pool_id: pool.onchainId,
-            deposit_deadline: pool.deadline - 7200,
-          };
-
+        if (SELLING_PAUSED) {
+          // ── SELLING PAUSED: acknowledge interest, keep the conversation
+          // going about M2M insurance concepts. Do NOT provide contract
+          // instructions, pool IDs, or execution payloads.
           replyContent =
-            `Wallet registered: \`${walletAddress}\`\n\n` +
-            `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
-            `## Pool #${pool.onchainId} — How to deposit collateral\n` +
-            `**Step 1:** Approve USDC for ${joinLabel}\n` +
-            `\`\`\`\nUSDC (${usdcAddr}).approve("${joinAddr}", amount)\n\`\`\`\n\n` +
-            `**Step 2:** Join pool via ${joinLabel}${isLuminaPool ? " (direct)" : ""} (min 10 USDC) — deposit window closes 2h before deadline\n` +
-            `\`\`\`\n${joinLabel} (${joinAddr}).${joinFn}(${pool.onchainId}, amount)\n\`\`\`\n\n` +
-            `**After resolution:**\n` +
-            `\`\`\`\n${contractLabel} (${contractAddr}).withdraw(${pool.onchainId})\n\`\`\`\n\n` +
-            `**Safety:**\n` +
-            `- Deposit deadline: 2h before resolution (anti front-running)\n` +
-            `- Emergency resolve: 24h after deadline if oracle is offline\n` +
-            `- Cancel & refund: underfunded pools return all funds\n\n` +
-            `| Parameter | Value |\n|---|---|\n` +
-            `| Pool ID | #${pool.onchainId} |\n` +
-            `| Coverage | ${pool.coverageAmount} USDC |\n` +
-            `| Premium paid | ${pool.premiumUsdc || "—"} USDC |\n` +
-            `| Deadline | ${new Date(pool.deadline * 1000).toISOString().split("T")[0]} |\n` +
-            `| Evidence | ${pool.evidenceSource} |\n` +
-            `| Oracle | Dual-auth (Judge + Auditor) |\n` +
-            `| Network | Base L2 |\n` +
-            `| Creation tx | ${pool.creationTxHash || "—"} |\n\n` +
-            `\`\`\`json\n${JSON.stringify(actionPayload, null, 2)}\n\`\`\``;
+            `Thanks for the interest! Wallet noted: \`${walletAddress}\`${productInfo}\n\n` +
+            `We're currently in the research and community-building phase for our mutual insurance protocol. ` +
+            `Pool deposits are not open yet — we'll announce when on-chain participation goes live.\n\n` +
+            `In the meantime, here's what makes M2M (machine-to-machine) insurance different:\n` +
+            `- **Parametric triggers** — no manual claims, oracle verifies the event automatically\n` +
+            `- **Dual-auth oracle** — Judge + Auditor must agree for any resolution\n` +
+            `- **USDC on Base L2** — low gas, instant settlement\n` +
+            `- **10 product categories** — from gas spikes to API outages to bridge delays\n\n` +
+            `Stay tuned and keep following — we'll share updates here when pools open for deposits.`;
+          console.log(`[Responses] SELLING PAUSED — acknowledged ${walletAddress} without contract instructions.`);
         } else {
-          // Pool not yet on-chain — acknowledge and explain
-          replyContent =
-            `Wallet registered: \`${walletAddress}\`\n\n` +
-            `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
-            `This pool is pending on-chain deployment. I'll reply with the exact contract instructions (pool ID, approve + ${joinFn} calls) as soon as it's live on Base.\n\n` +
-            `Contract: ${contractAddr}\n` +
-            (isLuminaPool ? `` : `Router: ${joinAddr}\n`) +
-            `Deadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}\n` +
-            `Evidence: ${pool.evidenceSource}`;
+          const isLuminaPool = pool.contract === "lumina";
+          const contractAddr = isLuminaPool
+            ? (process.env.LUMINA_CONTRACT_ADDRESS || state.contractAddress)
+            : (process.env.V3_CONTRACT_ADDRESS || state.contractAddress);
+          const joinAddr = isLuminaPool
+            ? contractAddr
+            : (process.env.ROUTER_ADDRESS || "[pending]");
+          const joinLabel = isLuminaPool ? "MutualLumina" : "Router";
+          const joinFn = isLuminaPool ? "joinPool" : "joinPoolWithUSDC";
+          const contractLabel = isLuminaPool ? "MutualLumina" : "MutualPoolV3";
+
+          const usdcAddr = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+          if (pool.onchainId !== null) {
+            // Build M2M action payload for this specific participant
+            const actionPayload = {
+              intent: "provide_insurance_liquidity",
+              chainId: 8453,
+              contract_address: contractAddr,
+              router_address: isLuminaPool ? null : (process.env.ROUTER_ADDRESS || null),
+              token: usdcAddr,
+              required_actions: ["approve", joinFn],
+              pool_id: pool.onchainId,
+              deposit_deadline: pool.deadline - 7200,
+            };
+
+            replyContent =
+              `Wallet registered: \`${walletAddress}\`\n\n` +
+              `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
+              `## Pool #${pool.onchainId} — How to deposit collateral\n` +
+              `**Step 1:** Approve USDC for ${joinLabel}\n` +
+              `\`\`\`\nUSDC (${usdcAddr}).approve("${joinAddr}", amount)\n\`\`\`\n\n` +
+              `**Step 2:** Join pool via ${joinLabel}${isLuminaPool ? " (direct)" : ""} (min 10 USDC) — deposit window closes 2h before deadline\n` +
+              `\`\`\`\n${joinLabel} (${joinAddr}).${joinFn}(${pool.onchainId}, amount)\n\`\`\`\n\n` +
+              `**After resolution:**\n` +
+              `\`\`\`\n${contractLabel} (${contractAddr}).withdraw(${pool.onchainId})\n\`\`\`\n\n` +
+              `**Safety:**\n` +
+              `- Deposit deadline: 2h before resolution (anti front-running)\n` +
+              `- Emergency resolve: 24h after deadline if oracle is offline\n` +
+              `- Cancel & refund: underfunded pools return all funds\n\n` +
+              `| Parameter | Value |\n|---|---|\n` +
+              `| Pool ID | #${pool.onchainId} |\n` +
+              `| Coverage | ${pool.coverageAmount} USDC |\n` +
+              `| Premium paid | ${pool.premiumUsdc || "—"} USDC |\n` +
+              `| Deadline | ${new Date(pool.deadline * 1000).toISOString().split("T")[0]} |\n` +
+              `| Evidence | ${pool.evidenceSource} |\n` +
+              `| Oracle | Dual-auth (Judge + Auditor) |\n` +
+              `| Network | Base L2 |\n` +
+              `| Creation tx | ${pool.creationTxHash || "—"} |\n\n` +
+              `\`\`\`json\n${JSON.stringify(actionPayload, null, 2)}\n\`\`\``;
+          } else {
+            // Pool not yet on-chain — acknowledge and explain
+            replyContent =
+              `Wallet registered: \`${walletAddress}\`\n\n` +
+              `Participant #${pool.participants.length} in this pool.${productInfo}\n\n` +
+              `This pool is pending on-chain deployment. I'll reply with the exact contract instructions (pool ID, approve + ${joinFn} calls) as soon as it's live on Base.\n\n` +
+              `Contract: ${contractAddr}\n` +
+              (isLuminaPool ? `` : `Router: ${joinAddr}\n`) +
+              `Deadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}\n` +
+              `Evidence: ${pool.evidenceSource}`;
+          }
         }
 
         try {
@@ -1708,7 +1734,9 @@ async function runHeartbeat() {
 
   // ── PRIORITY 7: POST — New pool opportunities (5:1 rule) ──
   // Only AFTER engaging with the network.
-  if (moltbook && isClaimed && !isSuspended()) {
+  if (SELLING_PAUSED) {
+    console.log("[Heartbeat] Pool posting PAUSED (behavioral flag). Skipping postNewOpportunity.");
+  } else if (moltbook && isClaimed && !isSuspended()) {
     await postNewOpportunity(moltbook, blockchain, state);
   }
 
