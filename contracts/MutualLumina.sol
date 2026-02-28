@@ -304,6 +304,7 @@ contract MutualLumina is ReentrancyGuard, Ownable {
             "Lumina: deposit window closed"
         );
         require(_amount >= MIN_CONTRIBUTION, "Lumina: below minimum");
+        require(pool.totalCollateral + _amount <= pool.coverageAmount, "Lumina: exceeds coverage");
         require(msg.sender != pool.insured, "Lumina: insured cannot join");
 
         if (contributions[_poolId][msg.sender] == 0) {
@@ -384,8 +385,7 @@ contract MutualLumina is ReentrancyGuard, Ownable {
     ) external nonReentrant onlyOracle poolExists(_poolId) {
         PoolInfo storage pool = pools[_poolId];
         require(
-            pool.status == PoolStatus.Active ||
-                pool.status == PoolStatus.Open,
+            pool.status == PoolStatus.Active,
             "Lumina: not resolvable"
         );
         require(
@@ -437,8 +437,7 @@ contract MutualLumina is ReentrancyGuard, Ownable {
     ) external nonReentrant poolExists(_poolId) {
         PoolInfo storage pool = pools[_poolId];
         require(
-            pool.status == PoolStatus.Active ||
-                pool.status == PoolStatus.Open,
+            pool.status == PoolStatus.Active,
             "Lumina: not resolvable"
         );
         require(
@@ -450,7 +449,7 @@ contract MutualLumina is ReentrancyGuard, Ownable {
         pool.claimApproved = false;
 
         // Emergency = always no-claim → fee on premiumPaid only
-        uint256 fee = (pool.premiumPaid * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 fee = ((pool.premiumPaid * PROTOCOL_FEE_BPS) + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR;
 
         uint256 totalPot = pool.premiumPaid + pool.totalCollateral;
         pool.protocolFee = fee;
@@ -585,7 +584,9 @@ contract MutualLumina is ReentrancyGuard, Ownable {
             uint256 payout = (pool.netAmount * contribution) /
                 pool.totalCollateral;
 
-            usdc.safeTransfer(msg.sender, payout);
+            if (payout > 0) {
+                usdc.safeTransfer(msg.sender, payout);
+            }
             emit Withdrawn(_poolId, msg.sender, payout);
         }
     }
