@@ -231,5 +231,15 @@
   ],
   "moltxPoolCycleCounter": 2,
   "chainedComments": [],
-  "_contentHashes": []
+  "_contentHashes": [],
+  "lumina": {
+    "contractAddress": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
+    "stakingAddress": "0xE29C4841B2f50F609b529f6Dcff371523E061D98",
+    "feeRouterAddress": "0x205b14015e5f807DC12E31D188F05b17FcA304f4",
+    "oracle": "0x2b4D825417f568231e809E31B9332ED146760337",
+    "treasury": "0x2b4D825417f568231e809E31B9332ED146760337",
+    "buyback": "0x2b4D825417f568231e809E31B9332ED146760337",
+    "deployedAt": "2026-02-28T06:10:50.589Z",
+    "network": "baseMainnet"
+  }
 }

@@ -72,6 +72,8 @@ async function main() {
   await lumina.waitForDeployment();
   const luminaAddress = await lumina.getAddress();
   console.log(`  MutualLumina: ${luminaAddress}`);
+  // Wait for nonce propagation on RPC node
+  await new Promise((r) => setTimeout(r, 5000));
 
   // ── 2. Deploy MPOOLStaking ──
   console.log("\n[2/4] Deploying MPOOLStaking...");
@@ -80,6 +82,8 @@ async function main() {
   await staking.waitForDeployment();
   const stakingAddress = await staking.getAddress();
   console.log(`  MPOOLStaking: ${stakingAddress}`);
+  // Wait for nonce propagation on RPC node
+  await new Promise((r) => setTimeout(r, 5000));
 
   // ── 3. Deploy FeeRouter ──
   console.log("\n[3/4] Deploying FeeRouter...");
@@ -93,6 +97,8 @@ async function main() {
   await feeRouter.waitForDeployment();
   const feeRouterAddress = await feeRouter.getAddress();
   console.log(`  FeeRouter:    ${feeRouterAddress}`);
+  // Wait for nonce propagation on RPC node
+  await new Promise((r) => setTimeout(r, 5000));
 
   // ── 4. Link FeeRouter → MPOOLStaking ──
   console.log("\n[4/4] Linking FeeRouter to MPOOLStaking...");
