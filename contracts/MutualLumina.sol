@@ -400,7 +400,7 @@ contract MutualLumina is ReentrancyGuard, Ownable {
         uint256 feeBase = _claimApproved
             ? pool.coverageAmount
             : pool.premiumPaid;
-        uint256 fee = (feeBase * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 fee = ((feeBase * PROTOCOL_FEE_BPS) + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR;
 
         uint256 totalPot = pool.premiumPaid + pool.totalCollateral;
         pool.protocolFee = fee;
