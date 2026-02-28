@@ -381,7 +381,7 @@ async function maybeCreatePool(blockchain, moltx, state) {
   );
 
   if (!riskResult.approved) {
-    const isSemanticReject = riskResult.reason.includes("[SEMANTIC GATE");
+    const isSemanticReject = (riskResult.reason || "").includes("[SEMANTIC GATE");
     if (isSemanticReject) {
       console.error(`[Create] ⛔ SEMANTIC GATE REJECTION — Pool NOT created (zero gas spent)`);
       console.error(`[Create]   Product: ${product.id} | ${product.displayName}`);
@@ -650,7 +650,7 @@ async function checkCancellations(blockchain, state) {
         saveState(state);
       }
     } catch (err) {
-      if (!err.message.includes("V3:") && !err.message.includes("Lumina")) {
+      if (!(err.message || "").includes("V3:") && !(err.message || "").includes("Lumina")) {
         console.error(`[Cancel] Error cancelling pool #${pool.onchainId}:`, err.message);
       }
     }
