@@ -34,14 +34,22 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  *   │  withdraw() ──► funds distributed per accounting rules        │
  *   └──────────────────────────────────────────────────────────────┘
  *
- *   Fee model (applied ONLY at resolution):
- *     fee = 3% of (premiumPaid + totalCollateral)
- *     netAmount = (premiumPaid + totalCollateral) - fee
+ *   Fee model (applied ONLY at resolution, ZERO on cancellation):
  *
- *   Withdrawal accounting:
- *     NO CLAIM  → insured: 0, providers split netAmount pro-rata
- *     CLAIM     → insured: min(coverage, netAmount),
- *                 providers split remainder pro-rata
+ *     CLAIM APPROVED:
+ *       fee = 3% × coverageAmount
+ *       insured receives: coverageAmount − fee
+ *       providers split: premiumPaid + (totalCollateral − coverageAmount)
+ *
+ *     NO CLAIM:
+ *       fee = 3% × premiumPaid
+ *       insured receives: 0
+ *       providers receive: collateral + (premiumPaid − fee) pro-rata
+ *
+ *     CANCELLED:
+ *       fee = 0
+ *       insured receives: 100% premiumPaid
+ *       providers receive: 100% collateral
  */
 contract MutualLumina is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
@@ -54,7 +62,8 @@ contract MutualLumina is ReentrancyGuard, Ownable {
     address public constant PROTOCOL_OWNER =
         0x2b4D825417f568231e809E31B9332ED146760337;
 
-    /// @notice Protocol fee: 3 % (300 bps), on the full pot at resolution.
+    /// @notice Protocol fee: 3 % (300 bps). Base depends on outcome:
+    ///         claim → 3% of coverageAmount; no claim → 3% of premiumPaid.
     uint256 public constant PROTOCOL_FEE_BPS = 300;
 
     /// @notice Minimum USDC contribution for collateral providers (10 USDC).
@@ -360,8 +369,10 @@ contract MutualLumina is ReentrancyGuard, Ownable {
     /**
      * @notice Resolve a pool after the deadline. Oracle-only.
      *
-     * @dev fee = 3 % of (premiumPaid + totalCollateral).
-     *      netAmount = (premiumPaid + totalCollateral) - fee.
+     * @dev Fee base depends on outcome:
+     *        claim approved → fee = 3 % × coverageAmount
+     *        no claim       → fee = 3 % × premiumPaid
+     *      netAmount = (premiumPaid + totalCollateral) − fee.
      *      Fee is transferred to PROTOCOL_OWNER immediately.
      *
      * @param _poolId         Pool to resolve.
@@ -385,9 +396,13 @@ contract MutualLumina is ReentrancyGuard, Ownable {
         pool.status = PoolStatus.Resolved;
         pool.claimApproved = _claimApproved;
 
-        uint256 totalPot = pool.premiumPaid + pool.totalCollateral;
-        uint256 fee = (totalPot * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
+        // Fee base: coverageAmount when claim, premiumPaid when no claim
+        uint256 feeBase = _claimApproved
+            ? pool.coverageAmount
+            : pool.premiumPaid;
+        uint256 fee = (feeBase * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
 
+        uint256 totalPot = pool.premiumPaid + pool.totalCollateral;
         pool.protocolFee = fee;
         pool.netAmount = totalPot - fee;
 
@@ -413,7 +428,7 @@ contract MutualLumina is ReentrancyGuard, Ownable {
      * @notice Emergency resolve when the oracle is silent 24 h after deadline.
      *
      * @dev Anyone may call. Always resolves with claimApproved = false.
-     *      Same fee logic as resolvePool().
+     *      fee = 3 % × premiumPaid (no-claim fee base).
      *
      * @param _poolId  Pool to emergency-resolve.
      */
@@ -434,9 +449,10 @@ contract MutualLumina is ReentrancyGuard, Ownable {
         pool.status = PoolStatus.Resolved;
         pool.claimApproved = false;
 
-        uint256 totalPot = pool.premiumPaid + pool.totalCollateral;
-        uint256 fee = (totalPot * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
+        // Emergency = always no-claim → fee on premiumPaid only
+        uint256 fee = (pool.premiumPaid * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
 
+        uint256 totalPot = pool.premiumPaid + pool.totalCollateral;
         pool.protocolFee = fee;
         pool.netAmount = totalPot - fee;
 
@@ -467,13 +483,15 @@ contract MutualLumina is ReentrancyGuard, Ownable {
      *      ── Cancelled ──
      *        Provider → 100 % of their collateral (premium already refunded).
      *
-     *      ── Resolved · NO CLAIM ──
+     *      ── Resolved · NO CLAIM (fee was 3 % × premiumPaid) ──
      *        Insured  → 0.
      *        Provider → netAmount × contribution / totalCollateral.
+     *                   (equals: collateral + netPremium share)
      *
-     *      ── Resolved · CLAIM APPROVED ──
-     *        Insured  → min(coverageAmount, netAmount).
+     *      ── Resolved · CLAIM APPROVED (fee was 3 % × coverageAmount) ──
+     *        Insured  → coverageAmount − protocolFee.
      *        Provider → (netAmount − insuredPayout) × contribution / totalCollateral.
+     *                   (equals: premiumPaid + excess collateral, shared pro-rata)
      *
      * @param _poolId  Pool to withdraw from.
      */
@@ -516,7 +534,8 @@ contract MutualLumina is ReentrancyGuard, Ownable {
                 );
                 insuredWithdrawn[_poolId] = true;
 
-                uint256 payout = pool.coverageAmount;
+                // Insured gets coverageAmount minus the fee that was already sent
+                uint256 payout = pool.coverageAmount - pool.protocolFee;
                 if (payout > pool.netAmount) {
                     payout = pool.netAmount;
                 }
@@ -533,7 +552,7 @@ contract MutualLumina is ReentrancyGuard, Ownable {
                 hasWithdrawn[_poolId][msg.sender] = true;
 
                 // Deterministic insured payout (same regardless of withdrawal order)
-                uint256 insuredPayout = pool.coverageAmount;
+                uint256 insuredPayout = pool.coverageAmount - pool.protocolFee;
                 if (insuredPayout > pool.netAmount) {
                     insuredPayout = pool.netAmount;
                 }
@@ -561,6 +580,8 @@ contract MutualLumina is ReentrancyGuard, Ownable {
             );
             hasWithdrawn[_poolId][msg.sender] = true;
 
+            // netAmount = premiumPaid×0.97 + totalCollateral
+            // Per provider: collateral + share of net premium
             uint256 payout = (pool.netAmount * contribution) /
                 pool.totalCollateral;
 
@@ -635,8 +656,8 @@ contract MutualLumina is ReentrancyGuard, Ownable {
 
     /// @notice Get pool accounting after resolution.
     /// @param _poolId Pool ID.
-    /// @return netAmount   (premiumPaid + totalCollateral) − fee.
-    /// @return protocolFee  Fee sent to PROTOCOL_OWNER.
+    /// @return netAmount   (premiumPaid + totalCollateral) − protocolFee.
+    /// @return protocolFee  Fee sent to PROTOCOL_OWNER (3% × coverage if claim, 3% × premium if no claim).
     /// @return totalCollateral  Total USDC collateral deposited.
     function getPoolAccounting(
         uint256 _poolId
