@@ -1,9 +1,10 @@
 /**
- * Blockchain interaction module — wraps ethers.js calls to MutualPool V1 and V3 contracts.
+ * Blockchain interaction module — wraps ethers.js calls to MutualPool contracts.
  *
- * Supports both legacy V1 (direct) and V3 (router-gated) flows:
- *   V1: createPool() pays premium directly
- *   V3: createPool() is zero-funded, fundPremium/joinPool go via Router
+ * Supports:
+ *   V1:     Legacy direct createPool() flow
+ *   V3:     Zero-funded, router-gated flow
+ *   Lumina: Standalone — createAndFund() + joinPool() direct (no router)
  *
  * Infrastructure:
  *   - FallbackProvider: Alchemy (priority 1) → Infura (priority 2) → Public RPC (priority 3)
@@ -182,6 +183,32 @@ const MUTUAL_POOL_V3_ABI = [
   "event Withdrawn(uint256 indexed poolId, address indexed participant, uint256 amount)",
 ];
 
+// ABI — MutualLumina (standalone, no router)
+const MUTUAL_LUMINA_ABI = [
+  "function createAndFund(string _description, string _evidenceSource, uint256 _coverageAmount, uint256 _premiumRate, uint256 _deadline) external returns (uint256)",
+  "function joinPool(uint256 _poolId, uint256 _amount) external",
+  "function resolvePool(uint256 _poolId, bool _claimApproved) external",
+  "function withdraw(uint256 _poolId) external",
+  "function cancelAndRefund(uint256 _poolId) external",
+  "function emergencyResolve(uint256 _poolId) external",
+  "function getPool(uint256 _poolId) external view returns (string description, string evidenceSource, uint256 coverageAmount, uint256 premiumRate, uint256 deadline, uint256 depositDeadline, address insured, uint256 premiumPaid, uint256 totalCollateral, uint8 status, bool claimApproved, uint256 participantCount)",
+  "function getPoolParticipants(uint256 _poolId) external view returns (address[])",
+  "function getContribution(uint256 _poolId, address _participant) external view returns (uint256)",
+  "function getPoolAccounting(uint256 _poolId) external view returns (uint256 netAmount, uint256 protocolFee, uint256 totalCollateral)",
+  "function calculatePremium(uint256 _coverageAmount, uint256 _premiumRate) external pure returns (uint256)",
+  "function nextPoolId() external view returns (uint256)",
+  "function oracle() external view returns (address)",
+  "event PoolCreated(uint256 indexed poolId, string description, uint256 coverageAmount, uint256 premiumRate, uint256 deadline)",
+  "event PremiumFunded(uint256 indexed poolId, address indexed insured, uint256 premiumAmount)",
+  "event AgentJoined(uint256 indexed poolId, address indexed participant, uint256 amount)",
+  "event PoolActivated(uint256 indexed poolId, uint256 totalCollateral)",
+  "event PoolResolved(uint256 indexed poolId, bool claimApproved, uint256 totalCollateral, uint256 netAmount, uint256 protocolFee)",
+  "event PoolCancelled(uint256 indexed poolId, uint256 totalCollateral, uint256 premiumRefunded)",
+  "event EmergencyResolved(uint256 indexed poolId, address indexed triggeredBy)",
+  "event FeeCollected(uint256 indexed poolId, uint256 feeAmount)",
+  "event Withdrawn(uint256 indexed poolId, address indexed participant, uint256 amount)",
+];
+
 // ABI — Router
 const ROUTER_ABI = [
   "function fundPremiumWithUSDC(uint256 poolId, uint256 amount) external",
@@ -200,8 +227,8 @@ const ERC20_ABI = [
 ];
 
 class BlockchainClient {
-  constructor({ rpcUrl, privateKey, contractAddress, usdcAddress, v3Address, routerAddress }) {
-    // ── Eje 2: FallbackProvider with multi-RPC resilience ──
+  constructor({ rpcUrl, privateKey, contractAddress, usdcAddress, v3Address, routerAddress, luminaAddress }) {
+    // ── FallbackProvider with multi-RPC resilience ──
     this.provider = buildFallbackProvider(rpcUrl);
     this.wallet = new ethers.Wallet(privateKey, this.provider);
     this.usdc = new ethers.Contract(usdcAddress, ERC20_ABI, this.wallet);
@@ -212,7 +239,7 @@ class BlockchainClient {
       this.contractAddress = contractAddress;
     }
 
-    // V3 contracts (primary)
+    // V3 contracts (legacy, optional)
     if (v3Address) {
       this.v3 = new ethers.Contract(v3Address, MUTUAL_POOL_V3_ABI, this.wallet);
       this.v3Address = v3Address;
@@ -220,6 +247,12 @@ class BlockchainClient {
     if (routerAddress) {
       this.router = new ethers.Contract(routerAddress, ROUTER_ABI, this.wallet);
       this.routerAddress = routerAddress;
+    }
+
+    // MutualLumina contract (standalone, no router)
+    if (luminaAddress) {
+      this.lumina = new ethers.Contract(luminaAddress, MUTUAL_LUMINA_ABI, this.wallet);
+      this.luminaAddress = luminaAddress;
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -612,6 +645,217 @@ class BlockchainClient {
     const amountWei = ethers.parseUnits(mpoolAmount.toString(), 18);
     const usdcOut = await this.router.quoteMpoolToUsdc(amountWei);
     return ethers.formatUnits(usdcOut, 6);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // LUMINA OPERATIONS (standalone — no router)
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Check if Lumina contract is configured.
+   */
+  get hasLumina() {
+    return !!this.lumina;
+  }
+
+  /**
+   * Lumina: Create pool + fund premium in a single transaction.
+   * The oracle (msg.sender) pays the premium in USDC directly.
+   * Pool starts in Open status immediately.
+   */
+  async createAndFundLumina({ description, evidenceSource, coverageAmount, premiumRate, deadline }) {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+
+    const coverageWei = ethers.parseUnits(coverageAmount.toString(), 6);
+    const premiumAmount = (BigInt(coverageWei) * BigInt(premiumRate)) / BigInt(10_000);
+
+    // Approve Lumina contract for premium USDC
+    await this._approveFor(this.luminaAddress, premiumAmount);
+
+    console.log(`[Lumina] createAndFund: "${description}" (coverage=${coverageAmount}, premium=${ethers.formatUnits(premiumAmount, 6)} USDC)`);
+
+    const { tx, receipt } = await this._enqueueTx(({ nonce }) =>
+      this.lumina.createAndFund(description, evidenceSource, coverageWei, premiumRate, deadline, {
+        nonce,
+        gasLimit: 600_000n,
+      })
+    );
+
+    const event = receipt.logs
+      .map((log) => {
+        try { return this.lumina.interface.parseLog(log); }
+        catch { return null; }
+      })
+      .find((e) => e && e.name === "PoolCreated");
+
+    const poolId = event ? Number(event.args.poolId) : null;
+    console.log(`[Lumina] Pool created with ID: ${poolId}, tx: ${tx.hash}`);
+    return { poolId, txHash: tx.hash, premiumPaid: ethers.formatUnits(premiumAmount, 6) };
+  }
+
+  /**
+   * Lumina: Join pool as collateral provider (direct USDC, no router).
+   */
+  async joinPoolLumina(poolId, usdcAmount) {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+
+    const amountWei = ethers.parseUnits(usdcAmount.toString(), 6);
+    await this._approveFor(this.luminaAddress, amountWei);
+
+    console.log(`[Lumina] Joining pool ${poolId} with ${usdcAmount} USDC (direct)`);
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.lumina.joinPool(poolId, amountWei, { nonce })
+    );
+    console.log(`[Lumina] Joined pool ${poolId}, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * Lumina: Resolve pool (oracle-only).
+   */
+  async resolvePoolLumina(poolId, claimApproved) {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+
+    console.log(`[Lumina] Resolving pool ${poolId}, claimApproved=${claimApproved}`);
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.lumina.resolvePool(poolId, claimApproved, { nonce })
+    );
+    console.log(`[Lumina] Pool ${poolId} resolved, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * Lumina: Withdraw after resolution/cancellation.
+   */
+  async withdrawLumina(poolId) {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+
+    console.log(`[Lumina] Withdrawing from pool ${poolId}`);
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.lumina.withdraw(poolId, { nonce })
+    );
+    console.log(`[Lumina] Withdrawn, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * Lumina: Cancel underfunded pool.
+   */
+  async cancelAndRefundLumina(poolId) {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+
+    console.log(`[Lumina] Cancelling pool ${poolId}`);
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.lumina.cancelAndRefund(poolId, { nonce })
+    );
+    console.log(`[Lumina] Pool ${poolId} cancelled, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * Lumina: Emergency resolve (anyone, after 24h).
+   */
+  async emergencyResolveLumina(poolId) {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+
+    console.log(`[Lumina] Emergency resolving pool ${poolId}`);
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.lumina.emergencyResolve(poolId, { nonce })
+    );
+    console.log(`[Lumina] Pool ${poolId} emergency resolved, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  /**
+   * Lumina: Read pool data.
+   */
+  async getPoolLumina(poolId) {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+
+    const data = await executeWithBackoff(() => this.lumina.getPool(poolId));
+    return {
+      description: data.description,
+      evidenceSource: data.evidenceSource,
+      coverageAmount: ethers.formatUnits(data.coverageAmount, 6),
+      premiumRate: Number(data.premiumRate),
+      deadline: Number(data.deadline),
+      depositDeadline: Number(data.depositDeadline),
+      insured: data.insured,
+      premiumPaid: ethers.formatUnits(data.premiumPaid, 6),
+      totalCollateral: ethers.formatUnits(data.totalCollateral, 6),
+      status: Number(data.status), // 0=Open, 1=Active, 2=Resolved, 3=Cancelled
+      claimApproved: data.claimApproved,
+      participantCount: Number(data.participantCount),
+    };
+  }
+
+  /**
+   * Lumina: Get pool accounting after resolution.
+   */
+  async getPoolAccountingLumina(poolId) {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+
+    const data = await executeWithBackoff(() => this.lumina.getPoolAccounting(poolId));
+    return {
+      netAmount: ethers.formatUnits(data.netAmount, 6),
+      protocolFee: ethers.formatUnits(data.protocolFee, 6),
+      totalCollateral: ethers.formatUnits(data.totalCollateral, 6),
+    };
+  }
+
+  async getNextPoolIdLumina() {
+    if (!this.lumina) throw new Error("Lumina contract not configured");
+    return Number(await executeWithBackoff(() => this.lumina.nextPoolId()));
+  }
+
+  /**
+   * Lumina: Build Mogra-compatible payload for createAndFund or joinPool.
+   */
+  buildMograLuminaPayload(method, params) {
+    if (!this.luminaAddress) throw new Error("Lumina contract not configured");
+
+    const luminaIface = new ethers.Interface(MUTUAL_LUMINA_ABI);
+    const erc20Iface = new ethers.Interface(ERC20_ABI);
+    let calldata, approveCalldata, approveAmount;
+
+    if (method === "createAndFund") {
+      const coverageWei = ethers.parseUnits(params.coverageAmount.toString(), 6);
+      const premiumWei = (BigInt(coverageWei) * BigInt(params.premiumRate)) / BigInt(10_000);
+      approveAmount = premiumWei;
+      calldata = luminaIface.encodeFunctionData("createAndFund", [
+        params.description,
+        params.evidenceSource,
+        coverageWei,
+        params.premiumRate,
+        params.deadline,
+      ]);
+      approveCalldata = erc20Iface.encodeFunctionData("approve", [this.luminaAddress, premiumWei]);
+    } else if (method === "joinPool") {
+      const amountWei = ethers.parseUnits(params.amount.toString(), 6);
+      approveAmount = amountWei;
+      calldata = luminaIface.encodeFunctionData("joinPool", [params.poolId, amountWei]);
+      approveCalldata = erc20Iface.encodeFunctionData("approve", [this.luminaAddress, amountWei]);
+    } else {
+      throw new Error(`Unknown Lumina method: ${method}`);
+    }
+
+    return {
+      network: "base",
+      calls: [
+        {
+          to: this.usdc.target,
+          data: approveCalldata,
+          value: "0x0",
+          description: `Approve ${ethers.formatUnits(approveAmount, 6)} USDC for MutualLumina`,
+        },
+        {
+          to: this.luminaAddress,
+          data: calldata,
+          value: "0x0",
+          description: `MutualLumina.${method}(${JSON.stringify(params)})`,
+        },
+      ],
+    };
   }
 
   // ═══════════════════════════════════════════════════════════
