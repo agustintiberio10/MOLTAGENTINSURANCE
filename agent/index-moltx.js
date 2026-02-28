@@ -84,6 +84,9 @@ const {
 
 const STATE_PATH = path.join(__dirname, "..", "state.json");
 
+// ── Global migration flag (same as oracle-bot) ──
+const USE_LUMINA = process.env.USE_LUMINA === "true";
+
 // ═══════════════════════════════════════════════════════════════
 // FULL SKILL PROTOCOL CONFIG — ALL MOLTX CAPABILITIES
 // ═══════════════════════════════════════════════════════════════
@@ -256,7 +259,9 @@ async function monitorPoolsMoltx(blockchain, moltx, state) {
     if (result.shouldResolve) {
       console.log(`[MoltX-Monitor] Resolving pool #${pool.onchainId}, claimApproved=${result.claimApproved}`);
       try {
-        const txHash = await blockchain.resolvePoolV3(pool.onchainId, result.claimApproved);
+        const txHash = (pool.contract === "lumina")
+          ? await blockchain.resolvePoolLumina(pool.onchainId, result.claimApproved)
+          : await blockchain.resolvePoolV3(pool.onchainId, result.claimApproved);
         pool.status = "Resolved";
         pool.claimApproved = result.claimApproved;
         pool.resolutionTx = txHash;
@@ -351,7 +356,7 @@ async function postNewOpportunityMoltx(moltx, blockchain, state) {
   // The bot only promotes products. Pool creation happens externally.
   let onchainId = null;
   let creationTxHash = null;
-  const poolVersion = "v3";
+  const poolVersion = USE_LUMINA ? "lumina" : "v3";
   console.log(`[MoltX-Post] Proposing product: ${product.name}, coverage=${coverageUsdc} USDC (on-chain pool created manually by owner)`);
 
   const poolStatus = onchainId !== null ? "Pending" : "Proposed";
@@ -359,40 +364,50 @@ async function postNewOpportunityMoltx(moltx, blockchain, state) {
   // ── STEP 2: Build M2M JSON payload ──
   const usdcAddress = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
   const routerAddress = process.env.ROUTER_ADDRESS || null;
+  const luminaAddress = process.env.LUMINA_CONTRACT_ADDRESS || null;
   const depositDeadlineTs = deadlineTimestamp - (2 * 60 * 60);
   const expectedYieldBps = Math.round(
     (1 - proposal.failureProb) * proposal.premiumRateBps * 0.97
   );
 
-  const joinTarget = routerAddress || process.env.V3_CONTRACT_ADDRESS;
-  const joinAction = "joinPoolWithUSDC";
-  const joinMethod = "joinPoolWithUSDC(uint256,uint256)";
+  // Lumina: joinPool direct (no Router). V3: joinPoolWithUSDC via Router.
+  const joinTarget = USE_LUMINA
+    ? luminaAddress
+    : (routerAddress || process.env.V3_CONTRACT_ADDRESS);
+  const joinAction = USE_LUMINA ? "joinPool" : "joinPoolWithUSDC";
+  const joinMethod = USE_LUMINA ? "joinPool(uint256,uint256)" : "joinPoolWithUSDC(uint256,uint256)";
 
   const m2mPayload = {
     intent: "mutual_insurance_pool",
     chainId: 8453,
-    contract_address: process.env.V3_CONTRACT_ADDRESS || state.contractAddress,
-    router_address: routerAddress,
+    contract_address: USE_LUMINA
+      ? (luminaAddress || state.contractAddress)
+      : (process.env.V3_CONTRACT_ADDRESS || state.contractAddress),
+    router_address: USE_LUMINA ? null : routerAddress,
     token: usdcAddress,
     version: poolVersion,
-    pool_status: "Pending",
+    pool_status: USE_LUMINA ? "Open" : "Pending",
     // ── Actions for the INSURED (client buying insurance) ──
-    insured_actions: [
-      {
-        action: "approve",
-        target: usdcAddress,
-        method: "approve(address,uint256)",
-        params: { spender: joinTarget, amount: "PREMIUM_AMOUNT" },
-      },
-      {
-        action: "fundPremiumWithUSDC",
-        target: joinTarget,
-        method: "fundPremiumWithUSDC(uint256,uint256)",
-        params: { poolId: onchainId, amount: "PREMIUM_AMOUNT" },
-        note: "Caller becomes the insured. Premium in USDC (6 decimals).",
-      },
-    ],
-    // ── Actions for COLLATERAL PROVIDERS (after insured funds premium) ──
+    // Lumina: premium paid at createAndFund (oracle creates pool + pays premium).
+    // V3: client funds premium via Router.fundPremiumWithUSDC.
+    insured_actions: USE_LUMINA
+      ? [{ note: "Lumina pools: premium is paid at creation via createAndFund(). No separate fundPremium step." }]
+      : [
+          {
+            action: "approve",
+            target: usdcAddress,
+            method: "approve(address,uint256)",
+            params: { spender: joinTarget, amount: "PREMIUM_AMOUNT" },
+          },
+          {
+            action: "fundPremiumWithUSDC",
+            target: joinTarget,
+            method: "fundPremiumWithUSDC(uint256,uint256)",
+            params: { poolId: onchainId, amount: "PREMIUM_AMOUNT" },
+            note: "Caller becomes the insured. Premium in USDC (6 decimals).",
+          },
+        ],
+    // ── Actions for COLLATERAL PROVIDERS ──
     provider_actions: [
       {
         action: "approve",
@@ -476,12 +491,14 @@ async function postNewOpportunityMoltx(moltx, blockchain, state) {
         `## Who Needs This?\n${product.target.description}\n\n` +
         `## How to Participate\n` +
         `### As Insured (buy coverage)\n` +
-        `1. Approve USDC: \`USDC.approve("${joinTarget}", ${proposal.premiumUsdc}e6)\`\n` +
-        `2. Fund premium: \`Router.fundPremiumWithUSDC(${onchainId}, ${proposal.premiumUsdc}e6)\`\n` +
-        `3. You become the insured. If incident confirmed, you receive up to ${coverageUsdc} USDC.\n\n` +
+        (USE_LUMINA
+          ? `Premium is funded at pool creation via \`createAndFund()\`. No separate step needed.\n\n`
+          : `1. Approve USDC: \`USDC.approve("${joinTarget}", ${proposal.premiumUsdc}e6)\`\n` +
+            `2. Fund premium: \`Router.fundPremiumWithUSDC(${onchainId}, ${proposal.premiumUsdc}e6)\`\n` +
+            `3. You become the insured. If incident confirmed, you receive up to ${coverageUsdc} USDC.\n\n`) +
         `### As Collateral Provider (earn yield)\n` +
         `1. Approve USDC: \`USDC.approve("${joinTarget}", amount)\`\n` +
-        `2. Join pool: \`Router.joinPoolWithUSDC(${onchainId}, amount)\` (min 10 USDC)\n` +
+        `2. Join pool: \`${USE_LUMINA ? "Lumina" : "Router"}.${joinAction}(${onchainId}, amount)\` (min 10 USDC)\n` +
         `3. After deadline: \`withdraw(${onchainId})\`\n\n` +
         `## Safety Features\n` +
         `- Pool requires premium funding before providers can join (Pending → Open)\n` +
@@ -909,21 +926,27 @@ async function processResponsesMoltx(moltx, state) {
         saveState(state);
 
         // Reply with instructions (under 500 chars)
-        const routerAddr = process.env.ROUTER_ADDRESS || "[pending]";
+        const isLuminaPool = pool.contract === "lumina";
+        const joinAddr = isLuminaPool
+          ? (process.env.LUMINA_CONTRACT_ADDRESS || "[pending]")
+          : (process.env.ROUTER_ADDRESS || "[pending]");
+        const joinLabel = isLuminaPool ? "Lumina" : "Router";
+        const joinFn = isLuminaPool ? "joinPool" : "joinPoolWithUSDC";
         let replyText;
         if (pool.onchainId !== null) {
           replyText =
             `Registered: ${walletAddress}\n\n` +
             `Pool #${pool.onchainId}:\n` +
-            `1. USDC.approve("${routerAddr}", amount)\n` +
-            `2. Router.joinPoolWithUSDC(${pool.onchainId}, amount) — min 10 USDC\n` +
+            `1. USDC.approve("${joinAddr}", amount)\n` +
+            `2. ${joinLabel}.${joinFn}(${pool.onchainId}, amount) — min 10 USDC\n` +
             `3. After deadline: withdraw(${pool.onchainId})\n\n` +
             `Deposit deadline: 2h before resolution. DM me for help.`;
         } else {
           replyText =
             `Registered: ${walletAddress}\n\n` +
             `Pool pending on-chain deployment. I'll reply with exact instructions once live.\n` +
-            `Router: ${routerAddr}\nDeadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}`;
+            (isLuminaPool ? `Contract: ${joinAddr}` : `Router: ${joinAddr}`) +
+            `\nDeadline: ${new Date(pool.deadline * 1000).toISOString().split("T")[0]}`;
         }
 
         try {
@@ -1126,8 +1149,10 @@ async function continueReplyChainsMoltx(moltx, state) {
  */
 function generateChainReply(theirContent, authorName, state) {
   const content = theirContent.toLowerCase();
-  const contractAddr = state.contractAddress || "[contract]";
-  const routerAddr = process.env.ROUTER_ADDRESS || "[router]";
+  const contractAddr = USE_LUMINA
+    ? (process.env.LUMINA_CONTRACT_ADDRESS || state.contractAddress || "[contract]")
+    : (state.contractAddress || "[contract]");
+  // Lumina has no Router — not referenced in chain replies
 
   // Detect what they're asking about
   const mentionsOracle = content.includes("oracle") || content.includes("verification") || content.includes("dual-auth");
@@ -1434,8 +1459,10 @@ async function publishArticleMoltx(moltx, state) {
 
   // Build trending hashtag string
   const trending = (state.moltxTrendingHashtags || []).slice(0, 3).map((t) => `#${t.replace(/^#/, "")}`).join(" ");
-  const contractAddr = state.contractAddress || process.env.V3_CONTRACT_ADDRESS || "[contract]";
-  const routerAddr = process.env.ROUTER_ADDRESS || "[router]";
+  const contractAddr = USE_LUMINA
+    ? (process.env.LUMINA_CONTRACT_ADDRESS || state.contractAddress || "[contract]")
+    : (state.contractAddress || process.env.V3_CONTRACT_ADDRESS || "[contract]");
+  const routerAddr = USE_LUMINA ? null : (process.env.ROUTER_ADDRESS || "[router]");
 
   const articleTitle = `${product.icon} ${product.name} — Complete Risk Analysis & How to Participate`;
 
@@ -1464,12 +1491,14 @@ async function publishArticleMoltx(moltx, state) {
     `| Chain | Base (8453) |\n` +
     `| Token | USDC |\n\n` +
     `## For the Insured (Buy Coverage)\n\n` +
-    `1. Approve USDC: \`USDC.approve("${routerAddr}", premiumAmount)\`\n` +
-    `2. Fund premium: \`Router.fundPremiumWithUSDC(poolId, premiumAmount)\`\n` +
-    `3. You become the insured. If incident confirmed at deadline, you receive coverage amount.\n\n` +
+    (USE_LUMINA
+      ? `Premium is funded at pool creation via \`createAndFund()\`. No separate step needed.\n\n`
+      : `1. Approve USDC: \`USDC.approve("${routerAddr}", premiumAmount)\`\n` +
+        `2. Fund premium: \`Router.fundPremiumWithUSDC(poolId, premiumAmount)\`\n` +
+        `3. You become the insured. If incident confirmed at deadline, you receive coverage amount.\n\n`) +
     `## For Collateral Providers (Earn Yield)\n\n` +
-    `1. Approve USDC: \`USDC.approve("${routerAddr}", amount)\`\n` +
-    `2. Join pool: \`Router.joinPoolWithUSDC(poolId, amount)\` — min 10 USDC\n` +
+    `1. Approve USDC: \`USDC.approve("${contractAddr}", amount)\`\n` +
+    `2. Join pool: \`${USE_LUMINA ? "Lumina" : "Router"}.${USE_LUMINA ? "joinPool" : "joinPoolWithUSDC"}(poolId, amount)\` — min 10 USDC\n` +
     `3. After deadline (if no incident): \`withdraw(poolId)\` to collect collateral + premium share\n\n` +
     `## Safety Features\n\n` +
     `- Dual-auth oracle: two independent analyses must agree\n` +
@@ -1478,8 +1507,10 @@ async function publishArticleMoltx(moltx, state) {
     `- Cancel & refund: if underfunded at deposit deadline\n` +
     `- Anti-injection hardened oracle (immune to prompt manipulation)\n\n` +
     `## Contract\n\n` +
-    `- MutualPoolV3: \`${contractAddr}\`\n` +
-    `- Router: \`${routerAddr}\`\n` +
+    (USE_LUMINA
+      ? `- MutualLumina: \`${contractAddr}\` (direct, no Router)\n`
+      : `- MutualPoolV3: \`${contractAddr}\`\n` +
+        `- Router: \`${routerAddr}\`\n`) +
     `- Chain: Base (8453)\n\n` +
     `---\n\n` +
     `DM me or reply with your 0x address to join a pool. ` +
@@ -1694,13 +1725,14 @@ async function runMoltxHeartbeat() {
   const moltx = new MoltXClient(apiKey);
 
   let blockchain = null;
-  if (process.env.AGENT_PRIVATE_KEY && process.env.V3_CONTRACT_ADDRESS) {
+  if (process.env.AGENT_PRIVATE_KEY && (process.env.V3_CONTRACT_ADDRESS || process.env.LUMINA_CONTRACT_ADDRESS)) {
     blockchain = new BlockchainClient({
       rpcUrl: process.env.BASE_RPC_URL || "https://mainnet.base.org",
       privateKey: process.env.AGENT_PRIVATE_KEY,
       usdcAddress: process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       v3Address: process.env.V3_CONTRACT_ADDRESS,
       routerAddress: process.env.ROUTER_ADDRESS || undefined,
+      luminaAddress: process.env.LUMINA_CONTRACT_ADDRESS,
     });
   }
 
@@ -1837,6 +1869,8 @@ async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
   console.log("║   MUTUALBOT MOLTX — FULL SKILL PROTOCOL v2              ║");
   console.log("╠══════════════════════════════════════════════════════════╣");
+  console.log(`║ Mode:         ${(USE_LUMINA ? "LUMINA (new pools)" : "V3 LEGACY (new pools)").padEnd(42)}║`);
+  console.log(`║ Lumina:       ${(process.env.LUMINA_CONTRACT_ADDRESS || "(not configured)").padEnd(42)}║`);
   console.log(`║ MutualPoolV3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Router:       ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Products: ${String(Object.keys(INSURANCE_PRODUCTS).length).padEnd(46)}║`);
