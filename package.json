@@ -23,6 +23,8 @@
     "launch:mpoolv3": "node scripts/launch-mpoolv3.js",
     "deploy:fees": "npx hardhat run scripts/deploy-fee-system.js --network baseMainnet",
     "deploy:fees:testnet": "npx hardhat run scripts/deploy-fee-system.js --network baseSepolia",
+    "deploy:lumina": "npx hardhat run scripts/deploy-lumina.js --network baseMainnet",
+    "deploy:lumina:testnet": "npx hardhat run scripts/deploy-lumina.js --network baseSepolia",
     "test": "npx hardhat test",
     "railway": "node scripts/start-railway.js",
     "railway:oracle": "BOT_MODE=oracle node scripts/start-railway.js",
