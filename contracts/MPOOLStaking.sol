@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title MPOOLStaking
@@ -19,13 +20,12 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * - Yield is exogenous (USDC from protocol fees).
  * - No inflationary emission — staking rewards come from real revenue.
  */
-contract MPOOLStaking is ReentrancyGuard {
+contract MPOOLStaking is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable stakingToken;   // MPOOL
     IERC20 public immutable rewardsToken;   // USDC
 
-    address public owner;
     address public feeRouter;               // Only feeRouter or owner can notify rewards
 
     // Reward state (Synthetix pattern)
@@ -46,15 +46,9 @@ contract MPOOLStaking is ReentrancyGuard {
     event RewardPaid(address indexed user, uint256 reward);
     event RewardNotified(uint256 reward);
     event FeeRouterUpdated(address indexed newRouter);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
-        _;
-    }
 
     modifier onlyRewardDistributor() {
-        require(msg.sender == owner || msg.sender == feeRouter, "Not authorized");
+        require(msg.sender == owner() || msg.sender == feeRouter, "Not authorized");
         _;
     }
 
@@ -66,12 +60,11 @@ contract MPOOLStaking is ReentrancyGuard {
         _;
     }
 
-    constructor(address _stakingToken, address _rewardsToken) {
+    constructor(address _stakingToken, address _rewardsToken) Ownable(msg.sender) {
         require(_stakingToken != address(0), "Invalid staking token");
         require(_rewardsToken != address(0), "Invalid rewards token");
         stakingToken = IERC20(_stakingToken);
         rewardsToken = IERC20(_rewardsToken);
-        owner = msg.sender;
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -131,17 +124,18 @@ contract MPOOLStaking is ReentrancyGuard {
     /**
      * @notice Distribute USDC rewards to stakers. Instantly updates rewardPerToken.
      * @param reward Amount of USDC to distribute (must be pre-approved/transferred).
+     *
+     * @notice Minimum practical reward depends on totalStaked.
+     * With 1M MPOOL staked, rewards below 0.01 USDC may truncate to zero.
      */
-    function notifyRewardAmount(uint256 reward) external onlyRewardDistributor {
+    function notifyRewardAmount(uint256 reward) external nonReentrant onlyRewardDistributor {
         require(reward > 0, "Reward must be > 0");
+        require(totalStaked > 0, "No stakers");
 
         // Transfer USDC from caller
         rewardsToken.safeTransferFrom(msg.sender, address(this), reward);
 
-        if (totalStaked > 0) {
-            rewardPerTokenStored += (reward * 1e18) / totalStaked;
-        }
-        // If no stakers, reward stays in contract for next distribution cycle
+        rewardPerTokenStored += (reward * 1e18) / totalStaked;
 
         totalRewardsDistributed += reward;
         emit RewardNotified(reward);
@@ -182,13 +176,14 @@ contract MPOOLStaking is ReentrancyGuard {
     // ═══════════════════════════════════════════════════════════
 
     function setFeeRouter(address _feeRouter) external onlyOwner {
+        require(_feeRouter != address(0), "Invalid fee router");
         feeRouter = _feeRouter;
         emit FeeRouterUpdated(_feeRouter);
     }
 
-    function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Invalid owner");
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
+    function recoverToken(address token, uint256 amount) external onlyOwner {
+        require(token != address(stakingToken), "Use unstake for staking token");
+        require(token != address(rewardsToken), "Cannot recover rewards token");
+        IERC20(token).safeTransfer(owner(), amount);
     }
 }

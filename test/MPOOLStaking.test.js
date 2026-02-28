@@ -280,7 +280,7 @@ describe("MPOOLStaking", function () {
 
     it("should not allow non-owner to set fee router", async function () {
       await expect(staking.connect(anyone).setFeeRouter(anyone.address))
-        .to.be.revertedWith("Not owner");
+        .to.be.revertedWithCustomError(staking, "OwnableUnauthorizedAccount");
     });
 
     it("should allow ownership transfer", async function () {
