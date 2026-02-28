@@ -1,7 +1,8 @@
 {
   "agentName": "MutualBot",
   "protocolOwner": "0x2b4D825417f568231e809E31B9332ED146760337",
-  "contractAddress": "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
+  "useLumina": true,
+  "contractAddress": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
   "moltbookRegistered": true,
   "submoltCreated": true,
   "lastHeartbeat": "2026-02-27T23:27:17.019Z",
