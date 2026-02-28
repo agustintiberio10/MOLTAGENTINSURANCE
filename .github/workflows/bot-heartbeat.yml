@@ -1,0 +1,105 @@
+name: MutualBot Heartbeat (Cron)
+
+# Runs every 30 minutes as a reliable backup scheduler.
+# If Railway is alive and posting, this is redundant (the bot checks
+# lastPostTime and skips if a recent post exists).
+# If Railway is down, this keeps the bot posting automatically.
+
+on:
+  schedule:
+    # Every 30 minutes, 24/7
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    # Manual trigger for testing
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: bot-heartbeat
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --production
+
+      - name: Run MoltBook heartbeat (single cycle)
+        env:
+          SINGLE_RUN: "1"
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          MOLTX_API_KEY: ${{ secrets.MOLTX_API_KEY }}
+          AGENT_PRIVATE_KEY: ${{ secrets.AGENT_PRIVATE_KEY }}
+          ALCHEMY_RPC_URL: ${{ secrets.ALCHEMY_RPC_URL }}
+          INFURA_RPC_URL: ${{ secrets.INFURA_RPC_URL }}
+          BASE_RPC_URL: "https://mainnet.base.org"
+          USDC_ADDRESS: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+          PROTOCOL_OWNER: "0x2b4D825417f568231e809E31B9332ED146760337"
+          USE_LUMINA: "true"
+          V3_CONTRACT_ADDRESS: ${{ secrets.V3_CONTRACT_ADDRESS }}
+          ROUTER_ADDRESS: ${{ secrets.ROUTER_ADDRESS }}
+          LUMINA_CONTRACT_ADDRESS: ${{ secrets.LUMINA_CONTRACT_ADDRESS }}
+          LUMINA_STAKING_ADDRESS: ${{ secrets.LUMINA_STAKING_ADDRESS }}
+          LUMINA_FEE_ROUTER_ADDRESS: ${{ secrets.LUMINA_FEE_ROUTER_ADDRESS }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          echo "=== MoltBook Heartbeat ==="
+          node -e "
+            require('dotenv').config();
+            const { runHeartbeat } = require('./agent/index.js');
+            runHeartbeat()
+              .then(() => { console.log('MoltBook cycle complete'); process.exit(0); })
+              .catch(err => { console.error('MoltBook error:', err.message); process.exit(1); });
+          "
+
+      - name: Run MoltX heartbeat (single cycle)
+        if: success() || failure()
+        env:
+          SINGLE_RUN: "1"
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          MOLTX_API_KEY: ${{ secrets.MOLTX_API_KEY }}
+          AGENT_PRIVATE_KEY: ${{ secrets.AGENT_PRIVATE_KEY }}
+          ALCHEMY_RPC_URL: ${{ secrets.ALCHEMY_RPC_URL }}
+          INFURA_RPC_URL: ${{ secrets.INFURA_RPC_URL }}
+          BASE_RPC_URL: "https://mainnet.base.org"
+          USDC_ADDRESS: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+          PROTOCOL_OWNER: "0x2b4D825417f568231e809E31B9332ED146760337"
+          USE_LUMINA: "true"
+          V3_CONTRACT_ADDRESS: ${{ secrets.V3_CONTRACT_ADDRESS }}
+          ROUTER_ADDRESS: ${{ secrets.ROUTER_ADDRESS }}
+          LUMINA_CONTRACT_ADDRESS: ${{ secrets.LUMINA_CONTRACT_ADDRESS }}
+          LUMINA_STAKING_ADDRESS: ${{ secrets.LUMINA_STAKING_ADDRESS }}
+          LUMINA_FEE_ROUTER_ADDRESS: ${{ secrets.LUMINA_FEE_ROUTER_ADDRESS }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          echo "=== MoltX Heartbeat ==="
+          node -e "
+            require('dotenv').config();
+            const { runMoltxHeartbeat } = require('./agent/index-moltx.js');
+            runMoltxHeartbeat()
+              .then(() => { console.log('MoltX cycle complete'); process.exit(0); })
+              .catch(err => { console.error('MoltX error:', err.message); process.exit(1); });
+          "
+
+      - name: Commit updated state
+        run: |
+          git config user.name "MutualBot CI"
+          git config user.email "bot@mutualbot.ci"
+          git add state.json agent/oracle-state.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No state changes to commit"
+          else
+            git commit -m "chore: auto-update state after cron heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          fi
