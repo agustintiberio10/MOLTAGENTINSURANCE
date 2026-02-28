@@ -35,7 +35,37 @@ jobs:
       - name: Install dependencies
         run: npm install --production
 
+      - name: Run Oracle Bot heartbeat (single cycle)
+        env:
+          SINGLE_RUN: "1"
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          MOLTX_API_KEY: ${{ secrets.MOLTX_API_KEY }}
+          AGENT_PRIVATE_KEY: ${{ secrets.AGENT_PRIVATE_KEY }}
+          ALCHEMY_RPC_URL: ${{ secrets.ALCHEMY_RPC_URL }}
+          INFURA_RPC_URL: ${{ secrets.INFURA_RPC_URL }}
+          BASE_RPC_URL: "https://mainnet.base.org"
+          USDC_ADDRESS: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+          PROTOCOL_OWNER: "0x2b4D825417f568231e809E31B9332ED146760337"
+          USE_LUMINA: "true"
+          V3_CONTRACT_ADDRESS: ${{ secrets.V3_CONTRACT_ADDRESS }}
+          ROUTER_ADDRESS: ${{ secrets.ROUTER_ADDRESS }}
+          LUMINA_CONTRACT_ADDRESS: ${{ secrets.LUMINA_CONTRACT_ADDRESS }}
+          LUMINA_STAKING_ADDRESS: ${{ secrets.LUMINA_STAKING_ADDRESS }}
+          LUMINA_FEE_ROUTER_ADDRESS: ${{ secrets.LUMINA_FEE_ROUTER_ADDRESS }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+        run: |
+          echo "=== Oracle Bot Heartbeat ==="
+          node -e "
+            require('dotenv').config();
+            const { initOracleBot, runOracleHeartbeat } = require('./agent/oracle-bot.js');
+            initOracleBot()
+              .then(() => runOracleHeartbeat())
+              .then(() => { console.log('Oracle cycle complete'); process.exit(0); })
+              .catch(err => { console.error('Oracle error:', err.message); process.exit(1); });
+          "
+
       - name: Run MoltBook heartbeat (single cycle)
+        if: success() || failure()
         env:
           SINGLE_RUN: "1"
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}

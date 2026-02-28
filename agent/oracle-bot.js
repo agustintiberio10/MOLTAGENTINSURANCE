@@ -405,9 +405,14 @@ async function maybeCreatePool(blockchain, moltx, state) {
     return;
   }
 
+  // Build a parametric description with numeric threshold so evaluateRisk() can parse it.
+  // Product displayName alone lacks the numeric value required by validateParametricEvent().
+  const failureProbPct = (product.baseFailureProb * 100).toFixed(1);
+  const riskDescription = `${product.displayName} — ${failureProbPct}% historical failure probability`;
+
   const riskResult = evaluateRisk(
     {
-      description: product.displayName,
+      description: riskDescription,
       evidenceSource: product.evidenceSources[0],
       coverageAmount: coverageUsdc,
       premiumRate: proposal.premiumRateBps,
@@ -417,19 +422,20 @@ async function maybeCreatePool(blockchain, moltx, state) {
   );
 
   if (!riskResult.approved) {
-    const isSemanticReject = (riskResult.reason || "").includes("[SEMANTIC GATE");
+    const rejection = riskResult.rejection || "unknown";
+    const isSemanticReject = rejection.includes("[SEMANTIC GATE");
     if (isSemanticReject) {
       console.error(`[Create] ⛔ SEMANTIC GATE REJECTION — Pool NOT created (zero gas spent)`);
       console.error(`[Create]   Product: ${product.id} | ${product.displayName}`);
       console.error(`[Create]   Evidence: ${product.evidenceSources[0]}`);
-      console.error(`[Create]   Reason: ${riskResult.reason}`);
+      console.error(`[Create]   Reason: ${rejection}`);
     } else {
-      console.warn(`[Create] Risk rejected: ${riskResult.reason}`);
+      console.warn(`[Create] Risk rejected: ${rejection}`);
     }
     return;
   }
 
-  console.log(`[Create] Risk approved: ${riskResult.reason}`);
+  console.log(`[Create] Risk approved for ${product.id} (premium: ${proposal.premiumUsdc} USDC)`);
 
   // Build description
   const description = `${product.displayName}: ${product.target.description.slice(0, 100)}`;
