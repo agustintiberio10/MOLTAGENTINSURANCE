@@ -98,20 +98,20 @@ const SELLING_PAUSED = true;
 // ═══════════════════════════════════════════════════════════════
 // FULL SKILL PROTOCOL CONFIG — ALL MOLTX CAPABILITIES
 // ═══════════════════════════════════════════════════════════════
-const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;       // 10 minutes
-const POST_COOLDOWN_MS = 30 * 60 * 1000;             // 30 min between posts
-const MAX_DAILY_REPLIES = 30;                         // 30/day — quality over quantity
-const MAX_REPLIES_PER_HEARTBEAT = 5;                  // 5 per cycle — be selective, not spammy
-const MAX_DAILY_POSTS = 15;                           // Max posts per day (increased: each proposal = Molt + Article + Pitch)
-const MAX_FOLLOWS_PER_HEARTBEAT = 10;                 // 10 agents per cycle
-const MAX_DMS_PER_HEARTBEAT = 4;                      // 4 prospects per cycle
+const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;        // 5 minutes — aggressive engagement day
+const POST_COOLDOWN_MS = 15 * 60 * 1000;             // 15 min between posts — more frequent today
+const MAX_DAILY_REPLIES = 60;                         // 60/day — maximize engagement today
+const MAX_REPLIES_PER_HEARTBEAT = 10;                 // 10 per cycle — cover more ground
+const MAX_DAILY_POSTS = 20;                           // Max posts per day — more visibility
+const MAX_FOLLOWS_PER_HEARTBEAT = 15;                 // 15 agents per cycle
+const MAX_DMS_PER_HEARTBEAT = 6;                      // 6 prospects per cycle
 // New skill limits
-const MAX_LIKES_PER_HEARTBEAT = 25;                   // Like aggressively (unlimited for claimed)
-const MAX_QUOTES_PER_HEARTBEAT = 2;                   // Quote posts (counts toward replies)
-const MAX_REPLY_CHAINS_PER_HEARTBEAT = 5;             // Continue existing conversations
-const MAX_SEARCH_REPLIES_PER_HEARTBEAT = 3;           // Replies from search results
-const ARTICLE_COOLDOWN_CYCLES = 3;                    // Publish article every N cycles
-const MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT = 2;       // Messages in communities
+const MAX_LIKES_PER_HEARTBEAT = 30;                   // Like aggressively (unlimited for claimed)
+const MAX_QUOTES_PER_HEARTBEAT = 4;                   // Quote posts — amplify more
+const MAX_REPLY_CHAINS_PER_HEARTBEAT = 10;            // Continue ALL existing conversations
+const MAX_SEARCH_REPLIES_PER_HEARTBEAT = 6;           // More replies from search results
+const ARTICLE_COOLDOWN_CYCLES = 1;                    // Publish article every cycle today
+const MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT = 4;       // More community engagement
 
 // MoltX has no submolts — we use hashtags for discovery/targeting
 const TARGET_HASHTAGS = [

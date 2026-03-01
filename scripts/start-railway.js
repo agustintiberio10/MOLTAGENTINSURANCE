@@ -26,7 +26,7 @@ let initOracleBot, runOracleHeartbeat, getOracleStatus;
 
 // ── Config ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes — aggressive engagement day
 const BOT_MODE = process.env.BOT_MODE || "all"; // "all" | "oracle" | "moltbook" | "moltx" | "social" | "both"
 
 const shouldRunOracle = ["all", "oracle"].includes(BOT_MODE);
