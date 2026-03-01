@@ -13,6 +13,7 @@
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
+const { deriveWalletKey, getTeeStatus } = require("./tee.js");
 
 // ═══════════════════════════════════════════════════════════════
 // EXPONENTIAL BACKOFF HELPER (Eje 4)
@@ -200,44 +201,54 @@ const ERC20_ABI = [
 ];
 
 class BlockchainClient {
-  constructor({ rpcUrl, privateKey, contractAddress, usdcAddress, v3Address, routerAddress }) {
+  constructor() {
+    this._txQueue = Promise.resolve();
+    this._pendingNonce = null;
+  }
+
+  static async create({ rpcUrl, usdcAddress, contractAddress, v3Address, routerAddress, luminaAddress }) {
+    const instance = new BlockchainClient();
+
     // ── Eje 2: FallbackProvider with multi-RPC resilience ──
-    this.provider = buildFallbackProvider(rpcUrl);
-    this.wallet = new ethers.Wallet(privateKey, this.provider);
-    this.usdc = new ethers.Contract(usdcAddress, ERC20_ABI, this.wallet);
+    instance.provider = buildFallbackProvider(rpcUrl);
+
+    // ── TEE wallet derivation or env fallback ──
+    const teeStatus = getTeeStatus();
+    let privateKey;
+    if (teeStatus.sdkInstalled) {
+      console.log("[Blockchain] TEE SDK detected — deriving wallet key from TEE...");
+      privateKey = await deriveWalletKey();
+    } else {
+      privateKey = process.env.AGENT_PRIVATE_KEY;
+      if (!privateKey) {
+        throw new Error("[Blockchain] No wallet source: TEE SDK not installed and AGENT_PRIVATE_KEY not set");
+      }
+      console.warn("[Blockchain] TEE SDK not available — using AGENT_PRIVATE_KEY fallback");
+    }
+
+    instance.wallet = new ethers.Wallet(privateKey, instance.provider);
+    instance.usdc = new ethers.Contract(usdcAddress, ERC20_ABI, instance.wallet);
 
     // V1 contract (legacy, optional)
     if (contractAddress) {
-      this.contract = new ethers.Contract(contractAddress, MUTUAL_POOL_ABI, this.wallet);
-      this.contractAddress = contractAddress;
+      instance.contract = new ethers.Contract(contractAddress, MUTUAL_POOL_ABI, instance.wallet);
+      instance.contractAddress = contractAddress;
     }
 
     // V3 contracts (primary)
     if (v3Address) {
-      this.v3 = new ethers.Contract(v3Address, MUTUAL_POOL_V3_ABI, this.wallet);
-      this.v3Address = v3Address;
+      instance.v3 = new ethers.Contract(v3Address, MUTUAL_POOL_V3_ABI, instance.wallet);
+      instance.v3Address = v3Address;
     }
     if (routerAddress) {
-      this.router = new ethers.Contract(routerAddress, ROUTER_ABI, this.wallet);
-      this.routerAddress = routerAddress;
+      instance.router = new ethers.Contract(routerAddress, ROUTER_ABI, instance.wallet);
+      instance.routerAddress = routerAddress;
+    }
+    if (luminaAddress) {
+      instance.luminaAddress = luminaAddress;
     }
 
-    // ══════════════════════════════════════════════════════════════
-    // NONCE-SAFE TX QUEUE
-    // ══════════════════════════════════════════════════════════════
-    //
-    // Serializes ALL write transactions through a single queue.
-    // Prevents "nonce too low" errors when multiple txs fire in
-    // the same heartbeat cycle (e.g., cancel + resolve + create).
-    //
-    // Flow:
-    //   1. _enqueueTx() chains onto _txQueue (Promise chain)
-    //   2. Fetches nonce from network on first tx, then increments locally
-    //   3. On any error → resets nonce so next tx re-fetches
-    //   4. Each tx waits 1 block confirmation before releasing the queue
-    //
-    this._txQueue = Promise.resolve();
-    this._pendingNonce = null;
+    return instance;
   }
 
   /**

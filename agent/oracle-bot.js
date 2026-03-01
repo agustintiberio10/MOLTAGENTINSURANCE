@@ -50,6 +50,7 @@ const path = require("path");
 
 // ── Modules internos ──
 const BlockchainClient = require("./blockchain.js");
+const { getTeeStatus } = require("./tee.js");
 const MoltXClient = require("./moltx.js");
 const { resolveWithDualAuth } = require("./oracle.js");
 const { evaluateRisk, generatePoolProposal, EVENT_CATEGORIES } = require("./risk.js");
@@ -193,15 +194,22 @@ function saveState(state) {
 // INITIALIZATION
 // ═══════════════════════════════════════════════════════════════════════
 
-function initClients() {
+async function initClients() {
+  const teeStatus = getTeeStatus();
+  console.log(`[Init] TEE Status: SDK=${teeStatus.sdkInstalled}, Simulator=${teeStatus.simulatorMode}`);
+
   const requiredEnvVars = [
-    "AGENT_PRIVATE_KEY",
     "BASE_RPC_URL",
     "USDC_ADDRESS",
     "V3_CONTRACT_ADDRESS",
     "ROUTER_ADDRESS",
     "MOLTX_API_KEY",
   ];
+
+  // Only require AGENT_PRIVATE_KEY if TEE SDK is not installed
+  if (!teeStatus.sdkInstalled) {
+    requiredEnvVars.push("AGENT_PRIVATE_KEY");
+  }
 
   for (const key of requiredEnvVars) {
     if (!process.env[key]) {
@@ -211,9 +219,8 @@ function initClients() {
     }
   }
 
-  const blockchain = new BlockchainClient({
+  const blockchain = await BlockchainClient.create({
     rpcUrl: process.env.BASE_RPC_URL,
-    privateKey: process.env.AGENT_PRIVATE_KEY,
     usdcAddress: process.env.USDC_ADDRESS,
     v3Address: process.env.V3_CONTRACT_ADDRESS,
     routerAddress: process.env.ROUTER_ADDRESS,
@@ -293,7 +300,7 @@ async function maybeCreatePool(blockchain, moltx, state) {
     return;
   }
 
-  const riskResult = evaluateRisk(
+  const riskResult = await evaluateRisk(
     {
       description: product.displayName,
       evidenceSource: product.evidenceSources[0],
@@ -1102,7 +1109,7 @@ async function initOracleBot() {
   console.log("  Oracle: Dual-Auth (Judge + Auditor)");
   console.log("═══════════════════════════════════════════════════════════\n");
 
-  const { blockchain, moltx } = initClients();
+  const { blockchain, moltx } = await initClients();
   const state = loadState();
 
   // ── Verify oracle role ──

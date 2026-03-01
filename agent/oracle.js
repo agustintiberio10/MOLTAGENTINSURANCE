@@ -41,7 +41,7 @@
  *   3. Evidence URL fetch (legacy, for non-gas products)
  */
 
-const { execSync } = require("child_process");
+const { teeFetch, teeFetchPost, generateAttestation } = require("./tee.js");
 const { INSURANCE_PRODUCTS } = require("./products.js");
 
 // ═══════════════════════════════════════════════════════════════
@@ -115,7 +115,7 @@ function sanitizeEvidence(rawContent) {
  *
  * @returns {{ fastGasPrice: number, source: string } | null}
  */
-function fetchGasDataFromEtherscan() {
+async function fetchGasDataFromEtherscan() {
   const apiKey = process.env.ETHERSCAN_API_KEY || "";
   const url = apiKey
     ? `https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey=${apiKey}`
@@ -123,8 +123,7 @@ function fetchGasDataFromEtherscan() {
 
   for (let attempt = 1; attempt <= GAS_API_RETRY_COUNT; attempt++) {
     try {
-      const cmd = `curl -s --max-time 15 "${url}"`;
-      const out = execSync(cmd, { encoding: "utf8", timeout: FETCH_TIMEOUT_MS });
+      const out = await teeFetch(url, { timeout: FETCH_TIMEOUT_MS });
       const data = JSON.parse(out);
 
       if (data.status === "1" && data.result && data.result.FastGasPrice) {
@@ -143,7 +142,7 @@ function fetchGasDataFromEtherscan() {
     // Wait before retry (except on last attempt)
     if (attempt < GAS_API_RETRY_COUNT) {
       console.log(`[Oracle] Retrying in ${GAS_API_RETRY_DELAY_MS / 1000}s...`);
-      execSync(`sleep ${GAS_API_RETRY_DELAY_MS / 1000}`);
+      await new Promise(r => setTimeout(r, GAS_API_RETRY_DELAY_MS));
     }
   }
 
@@ -156,20 +155,18 @@ function fetchGasDataFromEtherscan() {
  *
  * @returns {{ fastGasPrice: number, source: string } | null}
  */
-function fetchGasDataFromRPC() {
+async function fetchGasDataFromRPC() {
   const rpcUrl = process.env.ETH_RPC_URL || "https://eth.llamarpc.com";
 
   try {
-    const payload = JSON.stringify({
+    const payload = {
       jsonrpc: "2.0",
       method: "eth_gasPrice",
       params: [],
       id: 1,
-    });
+    };
 
-    // Pass JSON via stdin (@-) to avoid shell escaping issues
-    const cmd = `curl -s --max-time 15 -X POST -H "Content-Type: application/json" --data-binary @- "${rpcUrl}"`;
-    const out = execSync(cmd, { input: payload, encoding: "utf8", timeout: FETCH_TIMEOUT_MS });
+    const out = await teeFetchPost(rpcUrl, payload, { timeout: FETCH_TIMEOUT_MS });
     const data = JSON.parse(out);
 
     if (data.result) {
@@ -195,15 +192,15 @@ function fetchGasDataFromRPC() {
  *
  * @returns {{ fastGasPrice: number, source: string } | null}
  */
-function fetchGasData() {
+async function fetchGasData() {
   // Try Etherscan API first (structured JSON, with retries)
-  const etherscanResult = fetchGasDataFromEtherscan();
+  const etherscanResult = await fetchGasDataFromEtherscan();
   if (etherscanResult) return etherscanResult;
 
   console.log("[Oracle] Primary API exhausted. Falling back to RPC node...");
 
   // Fallback to RPC node
-  const rpcResult = fetchGasDataFromRPC();
+  const rpcResult = await fetchGasDataFromRPC();
   if (rpcResult) return rpcResult;
 
   console.error("[Oracle] All gas data sources failed.");
@@ -222,14 +219,13 @@ function fetchGasData() {
  * @returns {string} Raw response content
  * @throws {Error} If fetch fails (results in FALSE verdict)
  */
-function fetchEvidenceStrict(url) {
+async function fetchEvidenceStrict(url) {
   if (!url || typeof url !== "string" || !url.startsWith("http")) {
     throw new Error("Invalid evidence source URL");
   }
 
   try {
-    const cmd = `curl -sL --max-time 20 --max-redirs 3 -H "User-Agent: MutualBot-Oracle/3.0" -H "Accept: application/json,text/html" "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 25_000 });
+    const out = await teeFetch(url, { timeout: 25000 });
 
     if (!out || out.trim().length === 0) {
       throw new Error("Empty response from evidence source");
@@ -565,7 +561,7 @@ async function resolveWithDualAuth(pool) {
   let gasData = null;
   if (isGasPool) {
     console.log(`[Oracle] Gas pool detected. Fetching structured gas data...`);
-    gasData = fetchGasData();
+    gasData = await fetchGasData();
     if (gasData) {
       console.log(`[Oracle] Gas data acquired: ${gasData.fastGasPrice.toFixed(2)} Gwei (${gasData.source})`);
     } else {
@@ -577,7 +573,7 @@ async function resolveWithDualAuth(pool) {
   let rawEvidence = "";
   let evidenceParsed = { isJson: false, data: null, text: "" };
   try {
-    rawEvidence = fetchEvidenceStrict(pool.evidenceSource);
+    rawEvidence = await fetchEvidenceStrict(pool.evidenceSource);
     evidenceParsed = parseEvidenceResponse(rawEvidence);
     if (evidenceParsed.isJson) {
       console.log(`[Oracle] Evidence fetched as structured JSON (${rawEvidence.length} bytes).`);
@@ -649,6 +645,12 @@ async function resolveWithDualAuth(pool) {
       "Dual Auth: Both Judge and Auditor must agree for TRUE",
     ],
   };
+
+  dualAuthSummary.attestation = null;
+  try {
+    const att = await generateAttestation({ poolId: pool.onchainId, verdict: finalVerdict, judge: { verdict: judgeResult.verdict }, auditor: { verdict: auditorResult.verdict }, consensus: bothAgree, timestamp: Math.floor(Date.now()/1000) });
+    if (att) dualAuthSummary.attestation = att;
+  } catch (err) { console.warn("[Oracle] Attestation failed:", err.message); }
 
   const evidenceSummary = finalVerdict
     ? `DUAL-AUTH APPROVED: Both Judge and Auditor confirm incident. ${judgeResult.reasoning} | ${auditorResult.reasoning}`

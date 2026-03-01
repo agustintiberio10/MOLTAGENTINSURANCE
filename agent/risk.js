@@ -9,7 +9,7 @@
  *     Gate C — URL Reachability: the URL must respond (HEAD check) to prevent dead links
  *   Rejections are logged locally. Zero gas is spent on rejected proposals.
  */
-const { execSync } = require("child_process");
+const { teeFetch } = require("./tee.js");
 const { INSURANCE_PRODUCTS } = require("./products.js");
 
 const RISK_CRITERIA = {
@@ -238,34 +238,37 @@ function checkOracleCapability(description, evidenceUrl) {
  * @param {string} evidenceUrl
  * @returns {{ passed: boolean, reason: string, httpStatus: number|null }}
  */
-function checkUrlReachability(evidenceUrl) {
+async function checkUrlReachability(evidenceUrl) {
   try {
-    const result = execSync(
-      `curl -sS -o /dev/null -w "%{http_code}" --head --max-time 8 --location "${evidenceUrl}"`,
-      { encoding: "utf8", timeout: 12000 }
-    ).trim();
+    const out = await teeFetch(evidenceUrl, { timeout: 12000 });
 
-    const status = parseInt(result, 10);
-
-    // Accept 2xx and 3xx (some APIs return 301/302 for status pages)
-    // Also accept 405 (Method Not Allowed) — means server is alive but rejects HEAD
-    if ((status >= 200 && status < 400) || status === 405) {
-      return { passed: true, reason: `URL reachable (HTTP ${status}).`, httpStatus: status };
-    }
-
-    // 403 can mean the page exists but blocks automated requests (e.g. Cloudflare)
-    // We allow it — the oracle's full fetch at resolution time uses different headers
-    if (status === 403) {
-      return { passed: true, reason: `URL exists but blocks HEAD (HTTP 403). Allowed — oracle uses full fetch at resolution.`, httpStatus: status };
-    }
-
-    return {
-      passed: false,
-      reason: `DEAD EVIDENCE URL: '${evidenceUrl}' returned HTTP ${status}. ` +
-        `The oracle needs a working evidence source to verify claims.`,
-      httpStatus: status,
-    };
+    // If teeFetch succeeded, the URL is reachable
+    return { passed: true, reason: `URL reachable (HTTP 200).`, httpStatus: 200 };
   } catch (err) {
+    const msg = err.message || "";
+    // If we got an HTTP error status, parse it
+    const statusMatch = msg.match(/HTTP (\d+)/);
+    if (statusMatch) {
+      const status = parseInt(statusMatch[1], 10);
+
+      // Accept 3xx redirects, 405 Method Not Allowed
+      if ((status >= 300 && status < 400) || status === 405) {
+        return { passed: true, reason: `URL reachable (HTTP ${status}).`, httpStatus: status };
+      }
+
+      // 403 can mean the page exists but blocks automated requests (e.g. Cloudflare)
+      if (status === 403) {
+        return { passed: true, reason: `URL exists but blocks request (HTTP 403). Allowed — oracle uses full fetch at resolution.`, httpStatus: status };
+      }
+
+      return {
+        passed: false,
+        reason: `DEAD EVIDENCE URL: '${evidenceUrl}' returned HTTP ${status}. ` +
+          `The oracle needs a working evidence source to verify claims.`,
+        httpStatus: status,
+      };
+    }
+
     return {
       passed: false,
       reason: `UNREACHABLE EVIDENCE URL: '${evidenceUrl}' — connection failed (${err.message.slice(0, 80)}). ` +
@@ -284,7 +287,7 @@ function checkUrlReachability(evidenceUrl) {
  * @param {string} proposal.evidenceSource
  * @returns {{ passed: boolean, reason: string, gate: string, details: object }}
  */
-function verifySemanticViability(proposal) {
+async function verifySemanticViability(proposal) {
   const { description, evidenceSource } = proposal;
 
   // Gate A: Trusted Domain
@@ -302,7 +305,7 @@ function verifySemanticViability(proposal) {
   }
 
   // Gate C: URL Reachability
-  const reachResult = checkUrlReachability(evidenceSource);
+  const reachResult = await checkUrlReachability(evidenceSource);
   if (!reachResult.passed) {
     console.error(`[GATE-C REJECT] ${reachResult.reason}`);
     return { passed: false, reason: reachResult.reason, gate: "C-UrlReachability", details: reachResult };
@@ -390,7 +393,7 @@ if (!EVENT_CATEGORIES.oss_delivery) {
  * @param {number} activePoolCount - current active pools
  * @returns {{ approved: boolean, reason: string, riskLevel: string, estimatedFailureProb: number }}
  */
-function evaluateRisk(proposal, activePoolCount = 0) {
+async function evaluateRisk(proposal, activePoolCount = 0) {
   const { description, evidenceSource, coverageAmount, premiumRate, deadlineTimestamp } = proposal;
 
   // 1. Check binary & verifiable outcome
@@ -400,7 +403,7 @@ function evaluateRisk(proposal, activePoolCount = 0) {
 
   // ── NEW: Semantic Verifiability Gate (Gates A + B + C) ──
   // Runs BEFORE any on-chain interaction. Rejects locally → zero gas spent.
-  const semanticResult = verifySemanticViability({ description, evidenceSource });
+  const semanticResult = await verifySemanticViability({ description, evidenceSource });
   if (!semanticResult.passed) {
     return reject(`[SEMANTIC GATE ${semanticResult.gate}] ${semanticResult.reason}`);
   }
