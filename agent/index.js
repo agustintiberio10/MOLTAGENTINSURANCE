@@ -194,14 +194,31 @@ const OWN_SUBMOLT = "mutual-insurance";
 
 // Keywords that trigger engagement — selective to avoid spamming everything.
 // Only engage when the topic is genuinely relevant to insurance/risk.
-// (Aligned with MoltX: 22 keywords, not 51)
-const SALES_TRIGGER_KEYWORDS = [
-  "risk", "insurance", "hedge", "coverage", "protection",
-  "uptime", "downtime", "outage", "failure", "incident",
-  "exploit", "hack", "vulnerability", "security", "audit",
-  "bridge delay", "gas spike", "oracle", "data quality", "rate limit",
+// Split into STRONG (1 match = engage) and WEAK (need 2+ matches).
+const STRONG_TRIGGER_KEYWORDS = [
+  "insurance", "hedge", "coverage", "protection", "mutual insurance",
+  "exploit", "hack", "vulnerability", "smart contract exploit",
+  "bridge delay", "gas spike", "rate limit", "data corruption",
+  "parametric", "underwrite", "claim", "payout",
+];
+
+const WEAK_TRIGGER_KEYWORDS = [
+  "risk", "uptime", "downtime", "outage", "failure", "incident",
+  "security", "audit", "oracle", "data quality",
   "sla", "yield", "collateral", "mutual", "premium",
   "loss", "recover", "contingency", "backup plan",
+];
+
+// Combined for backwards compat where needed
+const SALES_TRIGGER_KEYWORDS = [...STRONG_TRIGGER_KEYWORDS, ...WEAK_TRIGGER_KEYWORDS];
+
+// Topics that signal the post is OFF-TOPIC for insurance engagement.
+// If the post is about these subjects, skip even if a keyword matches.
+const OFF_TOPIC_SIGNALS = [
+  "tesla coil", "recipe", "cooking", "poem", "poetry", "fiction",
+  "art gallery", "music", "game review", "movie", "book review",
+  "git command", "five git", "vim", "emacs", "hello world",
+  "vacation", "self-improvement", "meditation", "hobby",
 ];
 
 // --- State Management ---
@@ -824,6 +841,21 @@ async function engageFeed(moltbook, state) {
     if (state.commentedPosts.includes(post.id)) continue;
 
     const content = ((post.title || "") + " " + (post.content || ""));
+    const lowerContent = content.toLowerCase();
+
+    // ── OFF-TOPIC FILTER: Skip posts clearly unrelated to DeFi/agents/risk ──
+    const isOffTopic = OFF_TOPIC_SIGNALS.some((sig) => lowerContent.includes(sig));
+    if (isOffTopic) continue;
+
+    // ── PER-AUTHOR DEDUP: Max 1 comment per author per day ──
+    const postAuthor = post.author_name || "";
+    if (!state._commentedAuthorsToday) state._commentedAuthorsToday = {};
+    const todayDate = new Date().toISOString().split("T")[0];
+    if (state._commentedAuthorsDate !== todayDate) {
+      state._commentedAuthorsToday = {};
+      state._commentedAuthorsDate = todayDate;
+    }
+    if (postAuthor && (state._commentedAuthorsToday[postAuthor] || 0) >= 1) continue;
 
     // Try product-specific opportunity detection
     const opportunities = detectOpportunities(content);
@@ -845,6 +877,7 @@ async function engageFeed(moltbook, state) {
         incrementDailyComments(state);
         engaged++;
         state.commentedPosts.push(post.id);
+        if (postAuthor) state._commentedAuthorsToday[postAuthor] = (state._commentedAuthorsToday[postAuthor] || 0) + 1;
         console.log(`[Engage] TARGETED: "${(post.title || "").substring(0, 40)}" → ${bestMatch.product.name} (score: ${bestMatch.matchScore})`);
         // Respect 20s cooldown between comments to prevent spam detection
         if (engaged < remainingComments) {
@@ -855,11 +888,15 @@ async function engageFeed(moltbook, state) {
         if (checkSuspension(err.message)) break;
       }
     } else {
-      // GENERAL engagement — check for any relevant keywords
-      const lowerContent = content.toLowerCase();
-      const matchedKeywords = SALES_TRIGGER_KEYWORDS.filter((kw) => lowerContent.includes(kw));
+      // GENERAL engagement — require STRONG keyword match (1 is enough)
+      // or 2+ WEAK keyword matches to ensure topic relevance
+      const strongMatches = STRONG_TRIGGER_KEYWORDS.filter((kw) => lowerContent.includes(kw));
+      const weakMatches = WEAK_TRIGGER_KEYWORDS.filter((kw) => lowerContent.includes(kw));
+      const matchedKeywords = [...strongMatches, ...weakMatches];
 
-      if (matchedKeywords.length >= 1) {
+      const isRelevantEnough = strongMatches.length >= 1 || weakMatches.length >= 2;
+
+      if (isRelevantEnough) {
         const comment = generateContextualComment(matchedKeywords, state.contractAddress, post);
 
         // Skip if we've sent identical content recently
@@ -874,6 +911,7 @@ async function engageFeed(moltbook, state) {
           incrementDailyComments(state);
           engaged++;
           state.commentedPosts.push(post.id);
+          if (postAuthor) state._commentedAuthorsToday[postAuthor] = (state._commentedAuthorsToday[postAuthor] || 0) + 1;
           console.log(`[Engage] GENERAL: "${(post.title || "").substring(0, 40)}" (keywords: ${matchedKeywords.slice(0, 3).join(", ")})`);
           // Respect 20s cooldown between comments to prevent spam detection
           if (engaged < remainingComments) {
@@ -1537,9 +1575,21 @@ async function engageSubmoltFeeds(moltbook, state) {
         if (state.commentedPosts.includes(post.id)) continue;
 
         const content = ((post.title || "") + " " + (post.content || "")).toLowerCase();
-        const matchedKeywords = SALES_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
 
-        if (matchedKeywords.length >= 1) {
+        // Off-topic filter
+        const isOffTopic = OFF_TOPIC_SIGNALS.some((sig) => content.includes(sig));
+        if (isOffTopic) continue;
+
+        // Per-author dedup
+        const subAuthor = post.author_name || "";
+        if (subAuthor && (state._commentedAuthorsToday?.[subAuthor] || 0) >= 1) continue;
+
+        const strongMatches = STRONG_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
+        const weakMatches = WEAK_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
+        const matchedKeywords = [...strongMatches, ...weakMatches];
+        const isRelevantEnough = strongMatches.length >= 1 || weakMatches.length >= 2;
+
+        if (isRelevantEnough) {
           // Upvote
           try { await moltbook.upvotePost(post.id); } catch {}
 
@@ -1557,6 +1607,7 @@ async function engageSubmoltFeeds(moltbook, state) {
             incrementDailyComments(state);
             engaged++;
             state.commentedPosts.push(post.id);
+            if (subAuthor) state._commentedAuthorsToday[subAuthor] = (state._commentedAuthorsToday[subAuthor] || 0) + 1;
             console.log(`[Moltbook-Submolt] m/${submoltName}: "${(post.title || "").substring(0, 40)}..." (${matchedKeywords.slice(0, 3).join(", ")})`);
 
             if (engaged < MAX_SUBMOLT_COMMENTS_PER_HEARTBEAT) {

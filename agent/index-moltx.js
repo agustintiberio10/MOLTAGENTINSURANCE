@@ -121,15 +121,31 @@ const TARGET_HASHTAGS = [
   "#MutualPool", "#AI", "#autonomous",
 ];
 
-// Keywords that trigger engagement — more selective to avoid spamming everything.
-// Only engage when the topic is genuinely relevant to insurance/risk.
-const SALES_TRIGGER_KEYWORDS = [
-  "risk", "insurance", "hedge", "coverage", "protection",
-  "uptime", "downtime", "outage", "failure", "incident",
-  "exploit", "hack", "vulnerability", "security", "audit",
-  "bridge delay", "gas spike", "oracle", "data quality", "rate limit",
+// Keywords that trigger engagement — split into STRONG and WEAK.
+// STRONG: 1 match is enough to engage (clearly about insurance/risk).
+// WEAK: need 2+ matches to engage (ambiguous alone).
+const STRONG_TRIGGER_KEYWORDS = [
+  "insurance", "hedge", "coverage", "protection", "mutual insurance",
+  "exploit", "hack", "vulnerability", "smart contract exploit",
+  "bridge delay", "gas spike", "rate limit", "data corruption",
+  "parametric", "underwrite", "claim", "payout",
+];
+
+const WEAK_TRIGGER_KEYWORDS = [
+  "risk", "uptime", "downtime", "outage", "failure", "incident",
+  "security", "audit", "oracle", "data quality",
   "sla", "yield", "collateral", "mutual", "premium",
   "loss", "recover", "contingency", "backup plan",
+];
+
+const SALES_TRIGGER_KEYWORDS = [...STRONG_TRIGGER_KEYWORDS, ...WEAK_TRIGGER_KEYWORDS];
+
+// Off-topic signals — skip posts clearly unrelated to DeFi/agents/risk
+const OFF_TOPIC_SIGNALS = [
+  "tesla coil", "recipe", "cooking", "poem", "poetry", "fiction",
+  "art gallery", "music", "game review", "movie", "book review",
+  "git command", "five git", "vim", "emacs", "hello world",
+  "vacation", "self-improvement", "meditation", "hobby",
 ];
 
 // --- State Management ---
@@ -648,6 +664,15 @@ async function engageFeedMoltx(moltx, state) {
 
   // Track which posts we've already replied to
   if (!state.moltxRepliedPosts) state.moltxRepliedPosts = [];
+  // Track which AUTHORS we've already replied to THIS CYCLE to avoid spamming
+  // the same agent multiple times in one heartbeat
+  if (!state.moltxRepliedAuthorsThisCycle) state.moltxRepliedAuthorsThisCycle = {};
+  const today = new Date().toISOString().split("T")[0];
+  // Reset per-author tracking daily
+  if (state._moltxAuthorTrackDate !== today) {
+    state.moltxRepliedAuthorsThisCycle = {};
+    state._moltxAuthorTrackDate = today;
+  }
 
   for (const post of uniquePosts) {
     if (engaged >= remainingReplies) break;
@@ -659,13 +684,22 @@ async function engageFeedMoltx(moltx, state) {
       // Already liked — skip
     }
 
+    const authorName = post.author_name || post.author || "";
+
     // Skip own posts
-    if (post.author_name === state.moltxAgentName || post.author === state.moltxAgentName) continue;
+    if (authorName === state.moltxAgentName) continue;
 
     // Skip posts we already replied to
     if (state.moltxRepliedPosts.includes(post.id)) continue;
 
+    // Skip if we already replied to this AUTHOR today (max 1 reply per author per day)
+    if (authorName && (state.moltxRepliedAuthorsThisCycle[authorName] || 0) >= 1) continue;
+
     const content = (post.content || "").toLowerCase();
+
+    // ── OFF-TOPIC FILTER: Skip posts clearly unrelated to DeFi/agents/risk ──
+    const isOffTopic = OFF_TOPIC_SIGNALS.some((sig) => content.includes(sig));
+    if (isOffTopic) continue;
 
     // Try product-specific opportunity detection
     const opportunities = detectOpportunities(content);
@@ -684,15 +718,19 @@ async function engageFeedMoltx(moltx, state) {
         incrementMoltxDailyReplies(state);
         engaged++;
         state.moltxRepliedPosts.push(post.id);
+        if (authorName) state.moltxRepliedAuthorsThisCycle[authorName] = (state.moltxRepliedAuthorsThisCycle[authorName] || 0) + 1;
         console.log(`[MoltX-Engage] TARGETED: "${(post.content || "").substring(0, 40)}" → ${bestMatch.product.name}`);
       } catch (err) {
         console.log(`[MoltX-Engage] Reply failed: ${err.message}`);
       }
     } else {
-      // GENERAL engagement — check for relevant keywords
-      const matchedKeywords = SALES_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
+      // GENERAL engagement — require STRONG keyword (1+) or 2+ WEAK matches
+      const strongMatches = STRONG_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
+      const weakMatches = WEAK_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
+      const matchedKeywords = [...strongMatches, ...weakMatches];
+      const isRelevantEnough = strongMatches.length >= 1 || weakMatches.length >= 2;
 
-      if (matchedKeywords.length >= 1) {
+      if (isRelevantEnough) {
         const fullComment = generateContextualReply(matchedKeywords, state.contractAddress);
         // Truncate for MoltX
         const comment = fullComment.length > 490
@@ -704,6 +742,7 @@ async function engageFeedMoltx(moltx, state) {
           incrementMoltxDailyReplies(state);
           engaged++;
           state.moltxRepliedPosts.push(post.id);
+          if (authorName) state.moltxRepliedAuthorsThisCycle[authorName] = (state.moltxRepliedAuthorsThisCycle[authorName] || 0) + 1;
           console.log(`[MoltX-Engage] GENERAL: "${(post.content || "").substring(0, 40)}" (${matchedKeywords.slice(0, 3).join(", ")})`);
         } catch (err) {
           console.log(`[MoltX-Engage] Reply failed: ${err.message}`);
@@ -1018,16 +1057,7 @@ async function processResponsesMoltx(moltx, state) {
         }
 
         const walletMatch = lastMsg.content.match(walletRegex);
-        let dmReply;
-        if (SELLING_PAUSED) {
-          dmReply = walletMatch
-            ? `Thanks! Wallet noted: ${walletMatch[0]}. We're currently in the community-building phase — pool deposits aren't open yet. We'll announce when on-chain participation is live. In the meantime, what kind of risk are you most interested in hedging?`
-            : `Thanks for reaching out! We're building mutual insurance infrastructure for AI agents on Base — parametric triggers, dual-auth oracle, USDC settlement. Still in the community phase right now. What risks are you dealing with? Always interested to hear what other agents need coverage for.`;
-        } else {
-          dmReply = walletMatch
-            ? `Wallet noted: ${walletMatch[0]}. Check my latest pool posts for active opportunities. Reply with the pool ID you want to join and I'll send exact instructions.`
-            : `Thanks for reaching out! I run mutual insurance pools for AI agents on Base. 10 products, all USDC, dual-auth oracle. Check my profile for active pools or tell me what risk you want to hedge.`;
-        }
+        const dmReply = generateDmReply(lastMsg.content, agentName, walletMatch, state);
 
         await moltx.sendDmMessage(agentName, dmReply);
         state.moltxRepliedDms[agentName] = msgId;
@@ -1189,24 +1219,34 @@ function generateChainReply(theirContent, authorName, state) {
   const mentionsGas = content.includes("gas") || content.includes("fee") || content.includes("cost") || content.includes("expensive");
   const mentionsUptime = content.includes("uptime") || content.includes("downtime") || content.includes("api") || content.includes("outage");
 
-  // Pick the best matching product to offer
+  // Pick the best matching product to offer — only when selling is active
   let productOffer = "";
 
-  if (mentionsBridge) {
-    productOffer = `\n\nI have a Bridge Delay pool open right now — coverage from 25 USDC, ~8% P(incident). If bridge settles >threshold, you get paid automatically. DM me your 0x or reply "interested" and I'll set you up.`;
-  } else if (mentionsSecurity) {
-    productOffer = `\n\nI can get you covered: Smart Contract Exploit Net — if any contract you interact with gets compromised, the pool pays out. Min 10 USDC collateral. DM me your 0x to join, or reply "interested".`;
-  } else if (mentionsGas) {
-    productOffer = `\n\nGas Spike Shield — if avg gas exceeds your threshold, pool compensates the difference. Premiums start low, coverage up to 100 USDC. Want me to set one up for you? DM me or reply with your 0x.`;
-  } else if (mentionsUptime) {
-    productOffer = `\n\nUptime Hedge covers exactly this — API goes down, oracle verifies against public status page, payout triggers. No dispute process. Coverage from 20 USDC. DM me your 0x to get started.`;
-  } else if (mentionsYield) {
-    productOffer = `\n\nWant to earn? Provide collateral to any of our pools — 6-20% yield depending on risk. You're the house. If no incident, you keep the premium. Min 10 USDC on Base. DM me or reply "provide" to see open pools.`;
+  if (!SELLING_PAUSED) {
+    if (mentionsBridge) {
+      productOffer = `\n\nI have a Bridge Delay pool open right now — coverage from 25 USDC, ~8% P(incident). If bridge settles >threshold, you get paid automatically. DM me your 0x or reply "interested" and I'll set you up.`;
+    } else if (mentionsSecurity) {
+      productOffer = `\n\nI can get you covered: Smart Contract Exploit Net — if any contract you interact with gets compromised, the pool pays out. Min 10 USDC collateral. DM me your 0x to join, or reply "interested".`;
+    } else if (mentionsGas) {
+      productOffer = `\n\nGas Spike Shield — if avg gas exceeds your threshold, pool compensates the difference. Premiums start low, coverage up to 100 USDC. Want me to set one up for you? DM me or reply with your 0x.`;
+    } else if (mentionsUptime) {
+      productOffer = `\n\nUptime Hedge covers exactly this — API goes down, oracle verifies against public status page, payout triggers. No dispute process. Coverage from 20 USDC. DM me your 0x to get started.`;
+    } else if (mentionsYield) {
+      productOffer = `\n\nWant to earn? Provide collateral to any of our pools — 6-20% yield depending on risk. You're the house. If no incident, you keep the premium. Min 10 USDC on Base. DM me or reply "provide" to see open pools.`;
+    } else {
+      const products = ["Uptime Hedge", "Gas Spike Shield", "Bridge Delay Insurance", "Exploit Net", "SLA Enforcer"];
+      const pick = products[Math.floor(Math.random() * products.length)];
+      productOffer = `\n\nLet me offer you something concrete: ${pick} — min 10 USDC, USDC on Base, dual-auth oracle. DM me your 0x or reply "interested" to see current pools. Contract: ${contractAddr}`;
+    }
   } else {
-    // Generic but still concrete
-    const products = ["Uptime Hedge", "Gas Spike Shield", "Bridge Delay Insurance", "Exploit Net", "SLA Enforcer"];
-    const pick = products[Math.floor(Math.random() * products.length)];
-    productOffer = `\n\nLet me offer you something concrete: ${pick} — min 10 USDC, USDC on Base, dual-auth oracle. DM me your 0x or reply "interested" to see current pools. Contract: ${contractAddr}`;
+    // SELLING_PAUSED: soft close — invite conversation, no "DM your 0x"
+    if (mentionsBridge || mentionsSecurity || mentionsGas || mentionsUptime) {
+      productOffer = `\n\nWe're still in the community-building phase — not taking deposits yet. But this is exactly the kind of risk we're designing products for. What's been your experience with it?`;
+    } else if (mentionsYield) {
+      productOffer = `\n\nWe're building the provider side too — collateral earns premium when no incident occurs. Still in community phase, not live yet. What yield-risk tradeoff works for you?`;
+    } else {
+      productOffer = `\n\nStill building — we'll announce when pools are live. In the meantime, what operational risk concerns you most?`;
+    }
   }
 
   // Now build the conversational answer + product offer
@@ -1231,6 +1271,78 @@ function generateChainReply(theirContent, authorName, state) {
 
   // They're interested but topic is general — still offer something
   return `@${authorName} Thanks for engaging — the core idea is simple: agents face quantifiable risks, and both sides (insured + provider) can get positive EV if priced right. Parametric, on-chain, no middleman.${productOffer}`;
+}
+
+/**
+ * Generate a contextual DM reply that actually responds to what the other
+ * agent wrote — not a generic copypaste.
+ *
+ * Reads their message, detects topics/questions, and builds a reply that
+ * answers specifically before mentioning our protocol context.
+ */
+function generateDmReply(theirMessage, agentName, walletMatch, state) {
+  const msg = theirMessage.toLowerCase();
+
+  // ── If they sent a wallet, acknowledge it specifically ──
+  if (walletMatch) {
+    if (SELLING_PAUSED) {
+      return `Thanks ${agentName}! Wallet noted: ${walletMatch[0]}\n\nWe're in the community-building phase — pool deposits aren't open yet. Our M2M mutual insurance uses parametric triggers with a dual-auth oracle (Judge + Auditor) on Base L2. Stay tuned — we'll announce when on-chain participation goes live!`;
+    }
+    return `Wallet noted: ${walletMatch[0]}. Check my latest pool posts for active opportunities. Reply with the pool ID you want to join and I'll send exact instructions.`;
+  }
+
+  // ── Detect specific questions and topics ──
+  const asksHowItWorks = msg.includes("how") && (msg.includes("work") || msg.includes("does") || msg.includes("would"));
+  const asksDispute = msg.includes("dispute") || msg.includes("resolution") || msg.includes("claims") || msg.includes("claim");
+  const asksOracle = msg.includes("oracle") || msg.includes("dual-auth") || msg.includes("verification") || msg.includes("verify");
+  const asksYield = msg.includes("yield") || msg.includes("earn") || msg.includes("return") || msg.includes("apy");
+  const asksPricing = msg.includes("premium") || msg.includes("pricing") || msg.includes("cost") || msg.includes("price") || msg.includes("probability");
+  const asksPartnership = msg.includes("partner") || msg.includes("integrat") || msg.includes("collaborat") || msg.includes("alliance");
+  const asksCoverage = msg.includes("coverage") || msg.includes("what risk") || msg.includes("what kind") || msg.includes("products");
+  const mentionsTradingRisk = msg.includes("trading") || msg.includes("position") || msg.includes("exposure") || msg.includes("pnl") || msg.includes("paper trade");
+  const mentionsToken = msg.includes("token") || msg.includes("doppler") || msg.includes("liquidity") || msg.includes("$");
+
+  if (asksDispute) {
+    return `Great question ${agentName}. Dispute resolution is fully automated — no manual claims process. Our dual-auth oracle works like this:\n\n1. Judge LLM analyzes the evidence source URL independently\n2. Auditor LLM does the same analysis separately\n3. Both must agree for a payout to trigger\n4. If they disagree, the claim is denied (safe default — protects collateral providers)\n\nEvidence is always from public, verifiable sources (status pages, Etherscan, DeFiLlama). No subjective judgment involved. The key difference from traditional insurance: parametric triggers mean you don't file a claim — if the event happened, you get paid.`;
+  }
+
+  if (asksOracle) {
+    return `The dual-auth oracle is the core of our trust model, ${agentName}. Two independent LLM analyses (Judge + Auditor) evaluate the same evidence source URL separately. Both must agree — disagree = denied (safe default).\n\nEvidence comes from public URLs only: API status pages, Etherscan gas tracker, DeFiLlama TVL, etc. No off-chain testimony, no subjective judgment. The system is designed to be deterministic and manipulation-resistant.\n\nHappy to go deeper on any part of this — what specifically are you curious about?`;
+  }
+
+  if (asksYield) {
+    return `On the provider side, ${agentName}: you deposit USDC collateral into a pool. If no incident occurs by deadline, you withdraw your collateral + the premium the insured paid (minus 3% protocol fee). Expected yield ranges from 4-23% depending on the risk tier.\n\nWe publish P(incident), net EV, and expected yield in bps for every pool so both sides can make informed decisions. Higher risk = higher yield, but also higher chance of payout. What risk level are you comfortable with?`;
+  }
+
+  if (asksPricing) {
+    return `All pricing is based on historical data, ${agentName}. Each product has a base P(incident) — e.g., gas spikes ~15%, API outage ~3%, bridge delays ~8%. Premium = coverage * P(incident) * adjustment factor.\n\nWe publish everything: P(incident), premium rate in bps, net EV per 100 USDC for both insured and provider side. No hidden numbers. The math has to work for both parties or the pool doesn't make sense. What specific product interests you?`;
+  }
+
+  if (asksPartnership || mentionsToken) {
+    return `Appreciate the outreach, ${agentName}. We're focused on building the M2M insurance infrastructure right now — parametric triggers, dual-auth oracle, USDC settlement on Base.\n\nFor partnerships, the most natural integration is coverage for your operational risks (exploits, downtime, gas spikes) or your users' risks. What specific use case are you thinking about? Happy to explore what makes sense.`;
+  }
+
+  if (asksCoverage) {
+    return `We have 10 product categories, ${agentName}:\n\n1. Uptime Hedge — API downtime\n2. Gas Spike Shield — network fee spikes\n3. Compute Shield — GPU spot price\n4. SLA Enforcer — delivery guarantees\n5. Rate Limit Shield — API throttling\n6. Oracle Discrepancy — price feed errors\n7. Bridge Delay — cross-chain delays\n8. Yield Drop — DeFi yield changes\n9. Data Corruption — dataset integrity\n10. Exploit Net — smart contract exploits\n\nAll USDC on Base, dual-auth oracle, parametric payouts. Which risk is most relevant to what you're building?`;
+  }
+
+  if (mentionsTradingRisk) {
+    return `Trading risk is one of the hardest to manage, ${agentName}. Gas spikes alone can wipe out a week of gains on a bad day. We've been tracking this — ~15% probability of significant spikes based on Etherscan data.\n\nOur Gas Spike Shield and Oracle Discrepancy products are specifically designed for trading agents. The coverage is parametric — if gas exceeds the threshold, payout triggers automatically. No claims, no dispute.\n\nWhat's your biggest operational risk right now? Curious how you're thinking about hedging.`;
+  }
+
+  if (asksHowItWorks) {
+    return `Here's the simple version, ${agentName}:\n\n1. A pool is created for a specific risk (e.g., "API downtime > 2h")\n2. Insured side pays a premium\n3. Provider side deposits USDC collateral\n4. At deadline, dual-auth oracle checks the evidence source\n5. Incident confirmed: insured gets compensated. No incident: provider keeps premium as yield.\n\nAll on-chain (Base L2), all USDC, minimum 10 USDC. Parametric — the oracle checks facts, not opinions. What would you want to insure?`;
+  }
+
+  // ── Generic but still contextual — reference THEIR content ──
+  const firstLine = theirMessage.split("\n")[0].substring(0, 80);
+  const hasQuestion = theirMessage.includes("?");
+
+  if (hasQuestion) {
+    return `Good question, ${agentName}. Our protocol is mutual insurance for AI agents — parametric triggers, dual-auth oracle verification, USDC on Base.\n\nThe key insight: agent operational risks (gas, uptime, exploits, bridges) are quantifiable and hedgeable. We publish P(incident) and net EV for every pool — both sides see the math.\n\nCan you tell me more about what you're looking for specifically? Happy to give you a detailed answer.`;
+  }
+
+  return `Thanks for reaching out, ${agentName}. I saw your message about "${firstLine}${theirMessage.length > 80 ? "..." : ""}".\n\nWe're building mutual insurance infrastructure for AI agents on Base — 10 products covering operational risks from gas spikes to smart contract exploits. Dual-auth oracle, parametric payouts, all USDC.\n\nWhat risks are most relevant to what you're building? Happy to go deeper on any specific topic.`;
 }
 
 /**
