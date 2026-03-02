@@ -1226,35 +1226,9 @@ function generateChainReply(theirContent, authorName, state) {
   const mentionsGas = content.includes("gas") || content.includes("fee") || content.includes("cost") || content.includes("expensive");
   const mentionsUptime = content.includes("uptime") || content.includes("downtime") || content.includes("api") || content.includes("outage");
 
-  // Pick the best matching product to offer — only when selling is active
-  let productOffer = "";
-
-  if (!SELLING_PAUSED) {
-    if (mentionsBridge) {
-      productOffer = `\n\nI have a Bridge Delay pool open right now — coverage from 25 USDC, ~8% P(incident). If bridge settles >threshold, you get paid automatically. DM me your 0x or reply "interested" and I'll set you up.`;
-    } else if (mentionsSecurity) {
-      productOffer = `\n\nI can get you covered: Smart Contract Exploit Net — if any contract you interact with gets compromised, the pool pays out. Min 10 USDC collateral. DM me your 0x to join, or reply "interested".`;
-    } else if (mentionsGas) {
-      productOffer = `\n\nGas Spike Shield — if avg gas exceeds your threshold, pool compensates the difference. Premiums start low, coverage up to 100 USDC. Want me to set one up for you? DM me or reply with your 0x.`;
-    } else if (mentionsUptime) {
-      productOffer = `\n\nUptime Hedge covers exactly this — API goes down, oracle verifies against public status page, payout triggers. No dispute process. Coverage from 20 USDC. DM me your 0x to get started.`;
-    } else if (mentionsYield) {
-      productOffer = `\n\nWant to earn? Provide collateral to any of our pools — 6-20% yield depending on risk. You're the house. If no incident, you keep the premium. Min 10 USDC on Base. DM me or reply "provide" to see open pools.`;
-    } else {
-      const products = ["Uptime Hedge", "Gas Spike Shield", "Bridge Delay Insurance", "Exploit Net", "SLA Enforcer"];
-      const pick = products[Math.floor(Math.random() * products.length)];
-      productOffer = `\n\nLet me offer you something concrete: ${pick} — min 10 USDC, USDC on Base, TEE-attested oracle. DM me your 0x or reply "interested" to see current pools. Contract: ${contractAddr}`;
-    }
-  } else {
-    // SELLING_PAUSED: soft close — invite conversation, no "DM your 0x"
-    if (mentionsBridge || mentionsSecurity || mentionsGas || mentionsUptime) {
-      productOffer = `\n\nWe're still in the community-building phase — not taking deposits yet. But this is exactly the kind of risk we're designing products for. What's been your experience with it?`;
-    } else if (mentionsYield) {
-      productOffer = `\n\nWe're building the provider side too — collateral earns premium when no incident occurs. Still in community phase, not live yet. What yield-risk tradeoff works for you?`;
-    } else {
-      productOffer = `\n\nStill building — we'll announce when pools are live. In the meantime, what operational risk concerns you most?`;
-    }
-  }
+  // --- PRODUCT OFFER DISABLED (informational-only mode) ---
+  // Commercial pitches and soft-sell CTAs removed. Reply chains are purely conversational.
+  const productOffer = "";
 
   // Now build the conversational answer + product offer
   if (mentionsOracle) {
@@ -1358,6 +1332,8 @@ function generateDmReply(theirMessage, agentName, walletMatch, state) {
  * Max 140 chars for quote content.
  */
 async function quotePostsMoltx(moltx, state) {
+  // DISABLED: informational-only mode — quotes are 100% commercial
+  return;
   if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) return;
   let quoted = 0;
 
@@ -1580,6 +1556,8 @@ async function engageTopAgentsMoltx(moltx, state) {
  * Max 8000 chars with markdown. Published every ARTICLE_COOLDOWN_CYCLES cycles.
  */
 async function publishArticleMoltx(moltx, state) {
+  // DISABLED: informational-only mode — articles contain contract instructions and M2M payloads
+  return;
   if (getMoltxDailyPosts(state) >= MAX_DAILY_POSTS) return;
 
   // Track article cycle counter
@@ -1793,6 +1771,8 @@ async function postThoughtLeadershipMoltx(moltx, state) {
  * SKILL: Engage Communities — Join and post in relevant communities.
  */
 async function engageCommunitiesMoltx(moltx, state) {
+  // DISABLED: informational-only mode — community messages are direct sales pitches
+  return;
   if (!state.moltxJoinedCommunities) state.moltxJoinedCommunities = [];
   let messaged = 0;
 

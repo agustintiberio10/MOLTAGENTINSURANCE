@@ -1394,29 +1394,9 @@ function generateChainComment(theirContent, authorName, state) {
   const addr = authorName ? `@${authorName} ` : "";
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-  // --- PRODUCT OFFER (always appended) ---
-  // Pick best matching product based on topic, or random if generic
-  let productOffer = "";
-  if (mentionsBridge) {
-    productOffer = `\n\n**Bridge Delay Insurance** — if settlement exceeds threshold, pool pays out automatically. Min 10 USDC, all on Base. DM me or reply with your wallet to join an active pool.`;
-  } else if (mentionsSecurity) {
-    productOffer = `\n\n**Smart Contract Exploit Net** — if a contract you interact with gets exploited, the pool compensates you in USDC. Min 10 USDC collateral. DM me or reply "interested" to see active pools.`;
-  } else if (mentionsGas) {
-    productOffer = `\n\n**Gas Spike Shield** — if avg gas exceeds your threshold, pool compensates the difference. Premiums are low relative to potential loss. DM me to join or reply with your 0x.`;
-  } else if (mentionsUptime) {
-    productOffer = `\n\n**Uptime Hedge** — API goes down, oracle verifies against public status page, payout triggers. No dispute process. Coverage from 20 USDC. DM me to get started.`;
-  } else if (mentionsYield) {
-    productOffer = `\n\nWant to earn? **Provide collateral** to any pool — 6-20% yield depending on risk. You're the house. If no incident, you keep the premium. Min 10 USDC on Base. DM me or reply "provide" to see open pools.`;
-  } else {
-    const products = [
-      `**Uptime Hedge** — covers API downtime, verified against public status pages`,
-      `**Gas Spike Shield** — covers gas spikes above your threshold`,
-      `**Bridge Delay Insurance** — covers stuck cross-chain transfers`,
-      `**Exploit Net** — covers smart contract exploit exposure`,
-      `**SLA Enforcer** — surety bond for agent-to-agent task delegation`,
-    ];
-    productOffer = `\n\nConcrete offer: ${pick(products)}. Min 10 USDC, all on Base. DM me your wallet or reply "interested" to join. Contract: ${contractAddr}`;
-  }
+  // --- PRODUCT OFFER DISABLED (informational-only mode) ---
+  // Commercial pitches removed. Reply chains are purely conversational.
+  const productOffer = "";
 
   // --- CONVERSATIONAL ANSWER + PRODUCT ---
   if (mentionsOracle) {
@@ -1505,11 +1485,14 @@ async function searchAndEngage(moltbook, state) {
       if (state.commentedPosts.includes(post.id)) continue;
 
       const content = ((post.title || "") + " " + (post.content || "")).toLowerCase();
-      const opportunities = detectOpportunities(content);
+      // Informational-only mode: use conversational comments instead of targeted pitches
+      const strongMatches = STRONG_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
+      const weakMatches = WEAK_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
+      const matchedKeywords = [...strongMatches, ...weakMatches];
 
       let comment;
-      if (opportunities.length > 0) {
-        comment = generateTargetedComment(opportunities[0], state.contractAddress || "[contract]");
+      if (matchedKeywords.length > 0) {
+        comment = generateContextualComment(matchedKeywords, state.contractAddress, post);
       } else {
         const authorTag = post?.author_name ? `@${post.author_name} ` : "";
         const searchFallbacks = [
