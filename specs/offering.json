@@ -1,35 +1,158 @@
 {
-  "name": "Dynamic On-Chain Risk Underwriting (PAS)",
-  "description": "Lumina evaluates dynamic risk parameters (smart contract risk, price volatility, gas spikes) and returns an instant premium quote. If accepted, Lumina deploys a MutualPoolV3 on Base.",
-  "version": "1.0.0",
-  "input_schema": {
-    "type": "object",
-    "required": ["risk_type", "target_contract", "coverage_amount_usdc", "duration_hours"],
-    "properties": {
-      "risk_type": {
-        "type": "string",
-        "description": "Category of risk to underwrite (e.g. smart_contract_exploit, price_volatility, gas_spike, oracle_failure)"
+  "name": "Parametric Insurance Coverage",
+  "description": "TEE-verified parametric insurance for DeFi positions. Get coverage against smart contract exploits, stablecoin depegs, gas spikes, oracle failures, liquidations, and more. Every resolution is hardware-attested via Phala Network TEE — verify the attestation, don't trust the operator. Powered by dual-auth oracle (Judge + Auditor consensus).",
+  "category": "DeFi / Risk Management / Insurance",
+  "tags": ["insurance", "parametric", "defi", "risk", "coverage", "tee", "oracle", "base"],
+
+  "offerings": [
+    {
+      "name": "Smart Contract Exploit Coverage",
+      "description": "Protection against smart contract hacks and vulnerabilities for DeFi protocols like Aave, Compound, Uniswap, etc.",
+      "price": "0.50",
+      "priceCurrency": "USDC",
+      "priceModel": "fixed_plus_premium",
+      "priceNote": "Base fee $0.50 + premium calculated by risk engine based on coverage amount and duration",
+      "serviceRequirement": {
+        "type": "object",
+        "properties": {
+          "coverageType": {
+            "type": "string",
+            "description": "Type of risk to cover",
+            "enum": ["smart_contract_exploit", "depeg", "gas_spike", "oracle_failure", "liquidation", "bridge_exploit", "governance_attack", "flash_loan", "rug_pull", "impermanent_loss"]
+          },
+          "protocol": {
+            "type": "string",
+            "description": "Target DeFi protocol (e.g., aave, compound, uniswap)"
+          },
+          "coverageAmount": {
+            "type": "number",
+            "description": "Coverage amount in USDC (minimum 10)",
+            "minimum": 10
+          },
+          "durationDays": {
+            "type": "number",
+            "description": "Coverage duration in days (1-365)",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "description": {
+            "type": "string",
+            "description": "Free-text description of what you want covered"
+          }
+        },
+        "required": ["coverageType", "coverageAmount"]
       },
-      "target_contract": {
-        "type": "string",
-        "description": "The on-chain contract address (Base) to evaluate and insure"
-      },
-      "coverage_amount_usdc": {
-        "type": "number",
-        "description": "Desired coverage amount in USDC"
-      },
-      "duration_hours": {
-        "type": "number",
-        "description": "Coverage duration in hours"
+      "deliverable": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["COVERAGE_CREATED", "COVERAGE_REJECTED", "ERROR"]
+          },
+          "pool": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "number" },
+              "transactionHash": { "type": "string" },
+              "explorerUrl": { "type": "string" }
+            }
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "amount": { "type": "string" },
+              "premium": { "type": "string" },
+              "premiumRate": { "type": "string" },
+              "riskLevel": { "type": "string" },
+              "duration": { "type": "string" },
+              "deadline": { "type": "string" }
+            }
+          },
+          "verification": {
+            "type": "object",
+            "properties": {
+              "oracle": { "type": "string" },
+              "tee": { "type": "string" },
+              "evidenceSource": { "type": "string" },
+              "attestation": { "type": "string" }
+            }
+          }
+        }
       }
+    },
+    {
+      "name": "Stablecoin Depeg Coverage",
+      "description": "Protection against stablecoin depegging events (USDT, USDC, DAI, etc.)",
+      "price": "0.50",
+      "priceCurrency": "USDC"
+    },
+    {
+      "name": "Gas Spike Coverage",
+      "description": "Protection against network gas fee spikes above defined thresholds",
+      "price": "0.50",
+      "priceCurrency": "USDC"
+    },
+    {
+      "name": "Oracle Failure Coverage",
+      "description": "Protection against price feed failures and oracle manipulation",
+      "price": "0.50",
+      "priceCurrency": "USDC"
+    },
+    {
+      "name": "Liquidation Cascade Coverage",
+      "description": "Protection against cascading liquidations on lending protocols",
+      "price": "0.50",
+      "priceCurrency": "USDC"
+    },
+    {
+      "name": "Bridge Exploit Coverage",
+      "description": "Protection against cross-chain bridge exploits and failures",
+      "price": "0.50",
+      "priceCurrency": "USDC"
+    }
+  ],
+
+  "examples": {
+    "naturalLanguage": [
+      "I need coverage for my 5000 USDC position on Aave against smart contract exploits for 30 days",
+      "Cover my stablecoin holdings against USDT depeg for 2 weeks",
+      "Protect my LP position on Uniswap against impermanent loss for 14 days",
+      "I want gas spike insurance for 7 days with 1000 USDC coverage"
+    ],
+    "structured": {
+      "coverageType": "smart_contract_exploit",
+      "protocol": "aave",
+      "coverageAmount": 5000,
+      "durationDays": 30,
+      "description": "Cover my Aave lending position against protocol exploit"
     }
   },
-  "output": {
-    "premium_quote_usdc": "number",
-    "risk_score": "number (0-100)",
-    "pool_id": "number | null",
-    "status": "quoted | deployed | rejected"
-  },
-  "network": "base",
-  "protocol": "MutualPoolV3 + MutualPoolRouter"
+
+  "metadata": {
+    "chain": "Base L2 (8453)",
+    "token": "USDC",
+    "contracts": {
+      "MutualLumina": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
+      "FeeRouter": "0x205b14015e5f807DC12E31D188F05b17FcA304f4"
+    },
+    "oracle": {
+      "type": "Dual-Auth (Judge + Auditor)",
+      "tee": "Phala Network (Intel TDX)",
+      "verification": "Hardware attestation per pool resolution"
+    },
+    "github": "https://github.com/MutualPool/lumina-protocol",
+    "coverageCategories": [
+      "smart_contract_exploit",
+      "depeg",
+      "gas_spike",
+      "oracle_failure",
+      "liquidation",
+      "bridge_exploit",
+      "governance_attack",
+      "flash_loan",
+      "rug_pull",
+      "impermanent_loss"
+    ]
+  }
 }
