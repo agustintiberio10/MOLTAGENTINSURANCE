@@ -5,7 +5,7 @@
   "contractAddress": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
   "moltbookRegistered": true,
   "submoltCreated": true,
-  "lastHeartbeat": "2026-03-02T04:58:12.271Z",
+  "lastHeartbeat": "2026-03-02T05:06:08.935Z",
   "pools": [
     {
       "onchainId": 6,
@@ -77,7 +77,8 @@
       "participants": [
         "0xF6136525350bAB60FD711379fBeF20a5Aa088Ba3",
         "0x3534634c2530B4CE77Bc2aE4056522a91eB81351",
-        "0xac7D8461021913878d98dD4E40B23C79772cfBa3"
+        "0xac7D8461021913878d98dD4E40B23C79772cfBa3",
+        "0xd401Df9aDd0896292aA5984575af4De0bA5E9Ba3"
       ],
       "createdAt": "2026-02-28T19:44:54.931Z"
     }
@@ -86,15 +87,15 @@
     "totalPoolsResolved": 0,
     "totalClaimsPaid": 0,
     "totalFeesCollected": 0,
-    "totalParticipants": 3
+    "totalParticipants": 4
   },
   "dailyComments": {
     "2026-02-27": 0,
     "2026-02-28": 16,
     "2026-03-01": 22,
-    "2026-03-02": 18
+    "2026-03-02": 26
   },
-  "lastPostTime": "2026-03-02T04:49:36.458Z",
+  "lastPostTime": "2026-03-02T05:06:06.768Z",
   "moltxRegistered": true,
   "moltxAgentName": "MutualPoolLiqBot",
   "moltxWalletLinked": true,
@@ -111,7 +112,7 @@
     "2026-02-27": 0,
     "2026-02-28": 1,
     "2026-03-01": 1,
-    "2026-03-02": 1
+    "2026-03-02": 2
   },
   "subscribedSubmolts": true,
   "introPosted": true,
@@ -171,7 +172,15 @@
     "89c5db7f-059b-4649-bfea-459bf8215d8c",
     "81173ab4-f876-43e6-b996-4a7084e62bb2",
     "77a60d81-f030-4922-98ba-70a316280627",
-    "67da3c0e-fb25-44eb-a5dd-e9b4d5ccc77e"
+    "67da3c0e-fb25-44eb-a5dd-e9b4d5ccc77e",
+    "05b7ec6e-4d86-4d59-a64f-23a93748684c",
+    "1701d323-bbe4-49e2-a14e-40edb9fce98f",
+    "faa64aa4-75d7-4774-b334-fdfadba61f2b",
+    "ec04ac9c-809f-4f6b-941e-40ec6b82a0d0",
+    "3d0d1905-8438-42c2-b79a-d674bbf8de26",
+    "b13aff09-54a6-4817-af70-6a14e9e52036",
+    "dc3a0385-04b4-40ee-9c0f-901b3b374d3d",
+    "9b8b0fd2-2221-44d5-ad64-3ed6036f24c9"
   ],
   "followedAgents": [
     "cybercentry",
@@ -185,17 +194,17 @@
     "2026-02-27": 6,
     "2026-02-28": 9,
     "2026-03-01": 24,
-    "2026-03-02": 17
+    "2026-03-02": 44
   },
   "moltxDailyPosts": {
     "2026-02-27": 0,
     "2026-02-28": 2,
     "2026-03-01": 3,
-    "2026-03-02": 2
+    "2026-03-02": 6
   },
   "moltxIntroPosted": true,
   "moltxIntroPostId": "0df347f3-a73a-4d72-956f-6a9b18b1b54e",
-  "moltxLastPostTime": "2026-03-02T04:52:26.497Z",
+  "moltxLastPostTime": "2026-03-02T05:09:44.706Z",
   "moltxFollowedAgents": [
     "DeeqAgent",
     "Delx",
@@ -243,13 +252,8 @@
     "traverse",
     "Seoyeon"
   ],
-  "moltxLastHeartbeat": "2026-03-02T04:52:38.089Z",
+  "moltxLastHeartbeat": "2026-03-02T05:15:21.702Z",
   "moltxRepliedPosts": [
-    "d7764199-251c-4be0-b8ce-e2e5b5ab2c76",
-    "1bea8040-a1f2-482e-91ad-3c7824fc872a",
-    "da7b423d-a184-4159-9598-7f55512c9e8d",
-    "7cc6251f-7f64-4ff0-9f35-c27ef5896bb5",
-    "313837fb-0a74-4ee6-a1ed-45917a315073",
     "d9551dcc-553f-42d3-8c9c-2210572c204e",
     "db9f20d5-35be-4f77-a6ee-d2a139b040b0",
     "2682e654-5418-4af0-90f8-359cfb6a88a3",
@@ -336,7 +340,26 @@
     "2bdb93a7-a23c-4433-abf0-8a28c9fa9859",
     "95d201a9-dee5-4150-9354-cff58ff8c9e9",
     "2d0a6e4d-c3bc-4034-85f0-b5d06d953399",
-    "7eb32c19-ac8d-422b-9fb0-17db1e93c767"
+    "7eb32c19-ac8d-422b-9fb0-17db1e93c767",
+    "3c7d1e18-35fb-4987-aa8f-880d368ff065",
+    "3999fa14-a248-468f-841b-91e2ee34d087",
+    "e3e5c7b4-26e4-4a25-aa9d-5e8925ac9938",
+    "6240fc35-306b-476f-9962-5cfa1e1472a1",
+    "d8e8b2df-6782-4615-829f-36774baeeb5f",
+    "2f782b65-9fbf-4746-bfa6-2701cf744168",
+    "08314845-3abf-4bd4-9324-5d51c7305744",
+    "7d737211-f9fc-4500-9760-a20dbbe371f2",
+    "9de3a1b0-c72b-4140-8468-172290e03676",
+    "6ac6544b-17e4-40c2-af1a-a1e38549d05f",
+    "590a5b3b-da7a-4029-ba33-9a40ef379b6e",
+    "b119008a-7be1-4a81-9c01-6dacc2f9542b",
+    "ca5b64e3-0855-46b1-b2ca-5d73fb8733e1",
+    "a5f051fb-f0a4-4933-8cca-aa891778579a",
+    "4fc0ee7a-0932-48be-88af-1c853ccbd895",
+    "21f3f466-65d2-41cf-bfa3-c715b546dd65",
+    "44c74019-889e-4b8e-acbe-002035638665",
+    "dcf6a461-e47a-46f2-8823-c0a77474a57a",
+    "b53c8ba7-5438-45d5-9f84-4003f61d5de4"
   ],
   "moltxTrendingHashtags": [
     "agenteconomy",
@@ -369,7 +392,15 @@
     "31b19aaa-37e9-4366-9127-18748808051e",
     "a81882c4-37ef-4ffe-a337-e3061a468734",
     "c4453762-5954-44c6-a526-9b0d73d290eb",
-    "a6a05dde-5f8f-49f0-a221-7edb896b178d"
+    "a6a05dde-5f8f-49f0-a221-7edb896b178d",
+    "4a5fa78e-a0da-4f2d-99f5-667428cd2d68",
+    "06ec20f2-3244-428f-b814-b82cba794d28",
+    "ab541a02-409a-4eaa-89c2-539a3c533a76",
+    "da2a5f78-bea0-4054-a90a-1c5805ffbdcb",
+    "5838d766-ebc6-45bf-ac3f-367ed2baa997",
+    "53a21761-83ee-4102-bdd9-5164fe542b6a",
+    "013fd3f4-fc02-40ad-afca-57561186e76a",
+    "3c536b4e-107b-4a39-8baf-a753db65dac1"
   ],
   "moltxQuotedPosts": [
     "cbf9bcd3-dece-4bcc-bb58-6e77dd37fe40"
@@ -393,7 +424,10 @@
     "compute_shield",
     "smart_contract_exploit",
     "data_corruption",
-    "sla_enforcer"
+    "sla_enforcer",
+    "uptime_hedge",
+    "rate_limit",
+    "oracle_discrepancy"
   ],
   "moltxPoolCycleCounter": 2,
   "chainedComments": [],
@@ -453,7 +487,15 @@
     "peubuw",
     "-f676bc",
     "-9kowy6",
-    "-rfbuc6"
+    "-rfbuc6",
+    "-6w2q49",
+    "5rrlde",
+    "-xn2f2o",
+    "ylu92m",
+    "-t38tgr",
+    "-qso3o3",
+    "feb7hg",
+    "-igelau"
   ],
   "lumina": {
     "contractAddress": "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
@@ -469,7 +511,8 @@
     "story_exploit",
     "debate_oracle",
     "story_gas",
-    "insurance_is_rational"
+    "insurance_is_rational",
+    "edu_provider_side"
   ],
   "_commentedAuthorsToday": {},
   "_commentedAuthorsDate": "2026-03-02",
@@ -477,11 +520,17 @@
     "ai_security_guard": 1,
     "SlopLauncher": 1,
     "DeeqAgent": 1,
-    "Akay": 1
+    "Akay": 1,
+    "metamorph1x3": 1,
+    "LocusAgent": 1,
+    "Base_Market_Intelligence": 1,
+    "clawde_co": 1,
+    "UltraClawd": 1
   },
   "_moltxAuthorTrackDate": "2026-03-02",
   "moltbookPostedThoughts": [
     "mb_dual_auth",
-    "mb_tee_narrative"
+    "mb_tee_narrative",
+    "mb_why_uninsured"
   ]
 }

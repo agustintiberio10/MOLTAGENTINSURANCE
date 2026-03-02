@@ -76,20 +76,94 @@ class MoltbookClient {
   }
 
   _solveMathChallenge(challengeText) {
-    const cleaned = challengeText
-      .replace(/[^0-9+\-*/().  ]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    // Word-to-number map (sorted longest first to avoid partial matches)
+    const wordNums = [
+      ["seventeen", 17], ["thirteen", 13], ["fourteen", 14], ["eighteen", 18],
+      ["nineteen", 19], ["fifteen", 15], ["sixteen", 16], ["seventy", 70],
+      ["twenty", 20], ["thirty", 30], ["eighty", 80], ["ninety", 90],
+      ["twelve", 12], ["eleven", 11], ["forty", 40], ["fifty", 50],
+      ["sixty", 60], ["seven", 7], ["eight", 8], ["three", 3],
+      ["nine", 9], ["four", 4], ["five", 5], ["zero", 0],
+      ["one", 1], ["two", 2], ["six", 6], ["ten", 10],
+      ["hundred", 100], ["thousand", 1000],
+    ];
 
-    const mathExpr = cleaned.match(/[\d.]+[\s]*[+\-*/][\s]*[\d.]+/);
-    if (mathExpr) {
-      try {
-        const result = Function(`"use strict"; return (${mathExpr[0]})`)();
-        return typeof result === "number" && isFinite(result) ? result : 0;
-      } catch {
-        return 0;
+    // Step 1: Strip ALL non-alpha chars, lowercase, collapse into one string
+    // This defeats obfuscation like "Fo rTy FiV e" → "fortyfive"
+    const compressed = challengeText.replace(/[^a-zA-Z]/g, "").toLowerCase();
+    // Keep a spaced version for operation detection
+    const spaced = challengeText.replace(/[^a-zA-Z\s]/g, "").toLowerCase();
+
+    // Step 2: Scan compressed string for number words, extract positions
+    const found = [];
+    let searchStr = compressed;
+    let offset = 0;
+    while (searchStr.length > 0) {
+      let matched = false;
+      for (const [word, val] of wordNums) {
+        if (searchStr.startsWith(word)) {
+          found.push({ pos: offset, val, len: word.length });
+          searchStr = searchStr.slice(word.length);
+          offset += word.length;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        searchStr = searchStr.slice(1);
+        offset++;
       }
     }
+
+    // Step 3: Group adjacent number words into compound numbers
+    // e.g., forty(40) + five(5) = 45, two(2) + hundred(100) = 200
+    const numbers = [];
+    let current = 0;
+    let inNumber = false;
+    for (let i = 0; i < found.length; i++) {
+      const { pos, val } = found[i];
+      const prevEnd = i > 0 ? found[i - 1].pos + found[i - 1].len : -999;
+      const isAdjacent = pos - prevEnd <= 10; // allow small gaps (non-number words between)
+      if (!inNumber) {
+        current = val;
+        inNumber = true;
+      } else if (isAdjacent) {
+        if (val === 100) current *= 100;
+        else if (val === 1000) current *= 1000;
+        else if (val < 10 && current % 10 === 0) current += val; // forty + five
+        else {
+          numbers.push(current);
+          current = val;
+        }
+      } else {
+        numbers.push(current);
+        current = val;
+      }
+    }
+    if (inNumber) numbers.push(current);
+
+    // Step 4: Also check for plain digit numbers
+    const digitMatches = challengeText.match(/\d+\.?\d*/g);
+    if (digitMatches) numbers.push(...digitMatches.map(Number));
+
+    // Step 5: Detect operation
+    const isAdd = /total|sum|add|plus|together|combine|and/.test(spaced);
+    const isSub = /difference|subtract|minus|less|remain|fewer/.test(spaced);
+    const isMul = /product|multiply|times/.test(spaced);
+    const isDiv = /divide|quotient|ratio|split/.test(spaced);
+
+    if (numbers.length >= 2) {
+      // If more than 2 numbers found, use the two largest (avoids false positives
+      // from words like "one lobster" when the real operands are e.g. 45 and 23)
+      const sorted = [...numbers].sort((a, b) => b - a);
+      const [a, b] = [sorted[0], sorted[1]];
+      if (isSub) return a - b;
+      if (isMul) return a * b;
+      if (isDiv && b !== 0) return a / b;
+      return a + b;
+    }
+    if (numbers.length === 1) return numbers[0];
+
     return 0;
   }
 
@@ -289,11 +363,21 @@ class MoltbookClient {
   // --- Internal Helpers ---
 
   async _handleVerification(data, retryFn) {
+    // Check legacy format
     if (data && data.verification_required) {
       const { verification_code, challenge_text } = data.verification;
       console.log("[Moltbook] Verification required, solving challenge...");
       await this.solveVerification(verification_code, challenge_text);
       return retryFn();
+    }
+    // Check new API format: verification inside post/comment object
+    const inner = data?.post || data?.comment || data?.submolt;
+    if (inner?.verification?.verification_code && inner?.verification?.challenge_text) {
+      const { verification_code, challenge_text } = inner.verification;
+      console.log("[Moltbook] Verification required (inline), solving challenge...");
+      const result = await this.solveVerification(verification_code, challenge_text);
+      console.log("[Moltbook] Verification result:", result?.success ? "OK" : "FAILED");
+      return data;
     }
     return data;
   }

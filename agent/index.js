@@ -1757,8 +1757,8 @@ async function postThoughtLeadership(moltbook, state) {
   const thought = unposted[Math.floor(Math.random() * unposted.length)];
 
   try {
-    // Post to "general" for maximum visibility (114k subs)
-    await moltbook.createPost("general", thought.title, thought.text);
+    // Post to "mutual-insurance" for targeted visibility in our submolt
+    await moltbook.createPost("mutual-insurance", thought.title, thought.text);
     incrementDailyPosts(state);
     state.moltbookPostedThoughts.push(thought.id);
     state.lastPostTime = new Date().toISOString();
