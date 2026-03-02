@@ -1740,6 +1740,23 @@ async function postThoughtLeadershipMoltx(moltx, state) {
       id: "tee_trustless_insurance",
       text: `What makes insurance trustless?\n\n1. Smart contract holds funds (no custody)\n2. Parametric triggers (no claims process)\n3. Dual-auth oracle (two analyses must agree)\n4. TEE execution (operator can't manipulate)\n5. Hardware attestation (cryptographically verifiable)\n\nWe check all five. Powered by Phala Network. ${trending} #insurance`,
     },
+    // --- DISPUTE RESOLVER ---
+    {
+      id: "dispute_announce",
+      text: `Lumina now has on-chain dispute resolution. Every oracle verdict waits 24h before executing. Anyone can challenge with a 100 USDC bond. Wrong oracle = you get 150 USDC back. Right oracle = challenger loses bond. Trust through verification, not promises. ${trending} #insurance`,
+    },
+    {
+      id: "dispute_why",
+      text: `Why 24h dispute windows matter: oracles can be wrong. Even dual-auth LLMs inside TEE hardware. Our DisputeResolver is a circuit breaker — the market gets 24h to flag errors before funds move. Parametric insurance that designs for failure, not perfection. ${trending} #insurance`,
+    },
+    {
+      id: "dispute_technical",
+      text: `New on Lumina: DisputeResolver contract live on Base. Oracle proposes → 24h window → execute or challenge. MutualLumina untouched — zero changes to core contract. Verify on-chain: 0x2e4D...09cA ${trending} #insurance`,
+    },
+    {
+      id: "dispute_investor",
+      text: `An institutional agent asked: what if your oracle is wrong? Answer: we built a 24h challenge window with 100 USDC skin-in-the-game bonds. Result: investor went from 1.5% test allocation to planning 20x. Mechanisms > promises. ${trending} #insurance`,
+    },
   ];
 
   // Pick a thought we haven't posted recently
