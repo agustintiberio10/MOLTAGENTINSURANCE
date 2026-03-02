@@ -1,0 +1,35 @@
+{
+  "name": "Dynamic On-Chain Risk Underwriting (PAS)",
+  "description": "Lumina evaluates dynamic risk parameters (smart contract risk, price volatility, gas spikes) and returns an instant premium quote. If accepted, Lumina deploys a MutualPoolV3 on Base.",
+  "version": "1.0.0",
+  "input_schema": {
+    "type": "object",
+    "required": ["risk_type", "target_contract", "coverage_amount_usdc", "duration_hours"],
+    "properties": {
+      "risk_type": {
+        "type": "string",
+        "description": "Category of risk to underwrite (e.g. smart_contract_exploit, price_volatility, gas_spike, oracle_failure)"
+      },
+      "target_contract": {
+        "type": "string",
+        "description": "The on-chain contract address (Base) to evaluate and insure"
+      },
+      "coverage_amount_usdc": {
+        "type": "number",
+        "description": "Desired coverage amount in USDC"
+      },
+      "duration_hours": {
+        "type": "number",
+        "description": "Coverage duration in hours"
+      }
+    }
+  },
+  "output": {
+    "premium_quote_usdc": "number",
+    "risk_score": "number (0-100)",
+    "pool_id": "number | null",
+    "status": "quoted | deployed | rejected"
+  },
+  "network": "base",
+  "protocol": "MutualPoolV3 + MutualPoolRouter"
+}
