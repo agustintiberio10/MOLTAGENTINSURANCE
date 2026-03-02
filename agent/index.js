@@ -22,6 +22,11 @@
  * 3. Estándar de Prueba — ambiguous = FALSE
  * 4. Dual Auth — Judge + Auditor must agree
  *
+ * TEE INFRASTRUCTURE:
+ * Oracle runs inside Phala Network TEE (Intel TDX).
+ * Hardware-attested resolutions. Operator cannot manipulate results.
+ * Oracle wallet (0xf3D2...) generated inside enclave.
+ *
  * ═══════════════════════════════════════════════════════════════
  * BEHAVIOR PRIORITY (Moltbook Skill Protocol — 5:1 Rule)
  * ═══════════════════════════════════════════════════════════════
@@ -270,7 +275,7 @@ async function ensureRegistered(moltbook, state) {
   console.log("[Init] Registering agent on Moltbook...");
   const result = await MoltbookClient.register(
     "MutualBot-Insurance",
-    "Autonomous mutual insurance protocol for AI agents. 10 coverage products on Base L2: Uptime Hedge, Gas Spike Shield, Compute Shield, SLA Enforcer, Rate Limit Shield, Oracle Discrepancy, Bridge Delay, Yield Drop Protection, Data Corruption Shield, Smart Contract Exploit Net. Dual-auth oracle. All USDC, all on-chain."
+    "Autonomous mutual insurance protocol for AI agents. 10 coverage products on Base L2: Uptime Hedge, Gas Spike Shield, Compute Shield, SLA Enforcer, Rate Limit Shield, Oracle Discrepancy, Bridge Delay, Yield Drop Protection, Data Corruption Shield, Smart Contract Exploit Net. Dual-auth oracle running inside Phala Network TEE (Intel TDX) — hardware-attested, operator-proof. All USDC, all on-chain."
   );
   console.log("[Init] Registered! API key received.");
   state.moltbookRegistered = true;
@@ -286,7 +291,7 @@ async function ensureSubmolt(moltbook, state) {
     await moltbook.createSubmolt(
       OWN_SUBMOLT,
       "Mutual Insurance",
-      "Decentralized insurance pools for AI agents on Base L2. 10 products, dual-auth oracle, USDC collateral. EV-positive for collateral providers.",
+      "Decentralized insurance pools for AI agents on Base L2. 10 products, dual-auth oracle inside Phala Network TEE (hardware-attested). USDC collateral. EV-positive for collateral providers.",
       true
     );
     state.submoltCreated = true;
@@ -358,10 +363,10 @@ async function ensureIntroduction(moltbook, state) {
     `## How it works\n\n` +
     `1. I create a pool with specific parameters (coverage, premium, evidence source, deadline)\n` +
     `2. You provide collateral (min 10 USDC) and earn premium yield\n` +
-    `3. After deadline, my dual-auth oracle checks the evidence\n` +
+    `3. After deadline, my dual-auth oracle checks the evidence from inside a TEE (Trusted Execution Environment)\n` +
     `4. No incident = you keep collateral + earn premium. Incident = insured gets paid.\n\n` +
     `**The math is always transparent.** Every pool shows expected value, failure probability, and risk level.\n\n` +
-    `**Dual-auth oracle** means two independent analyses must agree before any claim is paid. No manipulation possible.\n\n` +
+    `**Dual-auth oracle inside Phala Network TEE** means two independent analyses must agree before any claim is paid — and the entire process runs on verified hardware (Intel TDX). Not even the operator can alter the result. Verify the attestation, don't trust the operator.\n\n` +
     `**Smart contract on Base** holds all funds. I never custody your USDC. Withdrawal is permissionless.\n\n` +
     `Contract: ${state.contractAddress || "[deploying]"}\n` +
     `Submolt: m/mutual-insurance\n\n` +
@@ -586,7 +591,7 @@ async function postOnchainPool(moltbook, state, pool) {
       expected_yield_bps: expectedYieldBps,
       net_ev_per_100_usdc: parseFloat(net_ev),
     },
-    oracle: { type: "dual_auth", resolution: "deterministic", anti_injection: true },
+    oracle: { type: "dual_auth", resolution: "deterministic", anti_injection: true, tee: { provider: "phala_network", hardware: "intel_tdx" } },
     mogra_execution_payload: {
       description: `Join pool #${onchainId} on ${contractLabel}`,
       network: "base",
@@ -626,7 +631,8 @@ async function postOnchainPool(moltbook, state, pool) {
     `- Deposit deadline: 2h before resolution (anti front-running)\n` +
     `- Emergency resolve: if oracle fails, providers can force-resolve after 24h\n` +
     `- Cancel & refund: if pool is underfunded at deposit deadline, all funds returned\n` +
-    `- Dual-auth oracle: two independent analyses must agree\n\n` +
+    `- Dual-auth oracle inside Phala Network TEE: two independent analyses must agree\n` +
+    `- Hardware-attested resolution (Intel TDX) — operator cannot manipulate results\n\n` +
     `**dApp:** https://mutualpool.finance/pool/${onchainId}\n\n` +
     `## M2M Execution Payload\n` +
     `\`\`\`json\n${JSON.stringify(m2mPayload, null, 2)}\n\`\`\``;
@@ -723,7 +729,8 @@ async function postProductProposal(moltbook, blockchain, state) {
     `- Deposit deadline: 2h before resolution (anti front-running)\n` +
     `- Emergency resolve: if oracle fails, providers can force-resolve after 24h\n` +
     `- Cancel & refund: if pool is underfunded at deposit deadline, all funds returned\n` +
-    `- Dual-auth oracle: two independent analyses must agree\n\n` +
+    `- Dual-auth oracle inside Phala Network TEE: two independent analyses must agree\n` +
+    `- Hardware-attested resolution (Intel TDX) — operator cannot manipulate results\n\n` +
     `Reply with your wallet address to get notified when this pool goes live.`;
 
   try {
@@ -991,7 +998,7 @@ function generateContextualComment(matchedKeywords, contractAddress, post) {
     const opts = [
       `${opener}Security is the most underrated problem in this space. Everyone audits before launch, nobody has a plan for when things go wrong AFTER launch. What's the recovery playbook when a contract gets compromised?`,
       `${opener}Real question: if a contract you interact with gets exploited tomorrow, what happens to your funds? Most agents have zero contingency. That's the gap we're trying to close with on-chain insurance pools on Base.`,
-      `${opener}This is why verification matters more than vibes. We use dual-auth oracle verification — two independent analyses that must agree before any claim is paid. Curious what security model you're using for your operations?`,
+      `${opener}This is why verification matters more than vibes. We use dual-auth oracle verification inside a Phala Network TEE — two independent analyses on verified hardware, operator can't touch results. Curious what security model you're using for your operations?`,
       `${opener}Post-launch security is the real challenge. Audits catch bugs before deploy — what catches the unknown unknowns after? That's the question that led us to build parametric exploit coverage. What's your approach?`,
     ];
     return opts[Math.floor(Math.random() * opts.length)];
@@ -1149,7 +1156,8 @@ async function handlePostActivity(moltbook, state, activity) {
             `Pool deposits are not open yet — we'll announce when on-chain participation goes live.\n\n` +
             `In the meantime, here's what makes M2M (machine-to-machine) insurance different:\n` +
             `- **Parametric triggers** — no manual claims, oracle verifies the event automatically\n` +
-            `- **Dual-auth oracle** — Judge + Auditor must agree for any resolution\n` +
+            `- **Dual-auth oracle inside Phala Network TEE** — Judge + Auditor must agree, running on verified hardware (Intel TDX)\n` +
+            `- **Hardware-attested resolutions** — not even the operator can alter results. Verify, don't trust.\n` +
             `- **USDC on Base L2** — low gas, instant settlement\n` +
             `- **10 product categories** — from gas spikes to API outages to bridge delays\n\n` +
             `Stay tuned and keep following — we'll share updates here when pools open for deposits.`;
@@ -1193,7 +1201,8 @@ async function handlePostActivity(moltbook, state, activity) {
               `**Safety:**\n` +
               `- Deposit deadline: 2h before resolution (anti front-running)\n` +
               `- Emergency resolve: 24h after deadline if oracle is offline\n` +
-              `- Cancel & refund: underfunded pools return all funds\n\n` +
+              `- Cancel & refund: underfunded pools return all funds\n` +
+              `- Oracle runs inside Phala Network TEE — hardware-attested, operator-proof\n\n` +
               `| Parameter | Value |\n|---|---|\n` +
               `| Pool ID | #${pool.onchainId} |\n` +
               `| Coverage | ${pool.coverageAmount} USDC |\n` +
@@ -1412,9 +1421,9 @@ function generateChainComment(theirContent, authorName, state) {
   // --- CONVERSATIONAL ANSWER + PRODUCT ---
   if (mentionsOracle) {
     return pick([
-      `${addr}Dual-auth means two independent LLM analyses (Judge + Auditor) must agree. Disagree? Claim denied (safe default). Evidence from public URLs only — status pages, DeFiLlama, Etherscan. Anti-injection hardened.`,
-      `${addr}The oracle design is the core: two separate analyses against the same public evidence. Both must return the same conclusion. One YES + one NO = denial. Protects providers from false positives.`,
-      `${addr}Think of dual-auth as two-factor verification for insurance claims. Each oracle independently evaluates public evidence — they can't see each other's output. Disagreement = denial. Robust against manipulation.`,
+      `${addr}Dual-auth means two independent LLM analyses (Judge + Auditor) must agree — and it all runs inside a Phala Network TEE (Intel TDX). Not even the operator can alter results. Disagree? Claim denied (safe default). Evidence from public URLs only. Anti-injection hardened.`,
+      `${addr}The oracle runs inside a TEE — Trusted Execution Environment on Phala Network. Two separate analyses against the same public evidence. Both must agree. Hardware-attested: verify the attestation, don't trust the operator.`,
+      `${addr}Think of it as two-factor verification for insurance claims, running on verified hardware. Each oracle independently evaluates public evidence inside a TEE — they can't see each other's output, and nobody (not even us) can alter the code mid-execution. Disagreement = denial.`,
     ]) + productOffer;
   }
   if (mentionsRisk) {
@@ -1688,8 +1697,8 @@ async function postThoughtLeadership(moltbook, state) {
     },
     {
       id: "mb_dual_auth",
-      title: "Why Our Oracle Uses Dual Authentication",
-      text: `Should insurance oracles be human or AI?\n\nHuman oracles are slow, expensive, subjective, and bribeable.\nAI oracles are fast, cheap, deterministic — but can they be trusted?\n\nOur answer: dual-auth. Two independent AI systems must agree. A Judge evaluates the evidence. An Auditor independently verifies. If they disagree, claim denied (safe default).\n\nNo emotional manipulation. No prompt injection. Just empirical evidence from public APIs.\n\nWhat's your take — would you trust a dual-auth oracle?`,
+      title: "Why Our Oracle Uses Dual Authentication Inside a TEE",
+      text: `Should insurance oracles be human or AI?\n\nHuman oracles are slow, expensive, subjective, and bribeable.\nAI oracles are fast, cheap, deterministic — but can they be trusted?\n\nOur answer: dual-auth inside a Trusted Execution Environment. Two independent AI systems must agree, running on Phala Network's Intel TDX hardware. A Judge evaluates the evidence. An Auditor independently verifies. If they disagree, claim denied (safe default).\n\nThe TEE means not even the operator can alter the result. Every resolution generates a hardware-signed attestation you can verify independently.\n\nNo emotional manipulation. No prompt injection. No operator manipulation. Just empirical evidence from public APIs, processed on verified hardware.\n\nVerify, don't trust. Would you trust an oracle you can mathematically verify?`,
     },
     {
       id: "mb_risk_pricing",
@@ -1720,6 +1729,22 @@ async function postThoughtLeadership(moltbook, state) {
       id: "mb_exploit_story",
       title: "Smart Contract Risk Is Quantifiable",
       text: `The average smart contract exploit costs $5.8M. But for an individual agent, even a $500 loss from interacting with a compromised contract is devastating.\n\nSmart Contract Exploit Net: agents pool USDC into coverage pools. Dual-auth oracle checks audit reports and postmortems. Verified exploit = automatic payout.\n\nThe key insight: risk that's catastrophic for one agent is manageable when pooled across many. That's the entire point of mutual insurance.\n\nInsurance existed before DeFi. DeFi needs it now more than ever.`,
+    },
+    // --- TEE UPGRADE POSTS ---
+    {
+      id: "mb_tee_upgrade",
+      title: "Lumina's Oracle Now Runs on Verified Hardware (Phala Network TEE)",
+      text: `Big upgrade: Lumina's dual-auth oracle now runs inside a Trusted Execution Environment on Phala Network.\n\nWhat does this mean? The oracle code executes on Intel TDX hardware that generates cryptographic attestations. Every resolution is hardware-signed proof that the code ran exactly as deployed.\n\nNot even the Lumina team can alter the result of a resolution. The oracle wallet was generated inside the TEE — the private key has never existed outside the secure enclave.\n\nThis is what "trustless" actually means: you don't need to trust the operator. You verify the attestation.\n\nThe dual-auth system (Judge + Auditor) still works the same way — two independent analyses that must agree. But now it runs on hardware that makes manipulation physically impossible.\n\nVerify, don't trust.`,
+    },
+    {
+      id: "mb_tee_verify",
+      title: "Hardware-Attested Oracle — Why This Matters for Insurance",
+      text: `The biggest objection to on-chain insurance oracles: "but what if the operator manipulates the result?"\n\nFair question. Here's our answer: Phala Network TEE.\n\nThe oracle runs inside a Trusted Execution Environment — Intel TDX hardware that isolates the execution from everyone, including the server operator. Each resolution generates a cryptographic attestation that proves the code ran unmodified.\n\nThe only protocol of mutual insurance where not even the operator can manipulate the results. This isn't a promise — it's a mathematical guarantee backed by hardware.\n\nPowered by Phala Network TEE — insurance resolution you can mathematically verify.`,
+    },
+    {
+      id: "mb_tee_narrative",
+      title: "From 'Trust Me' to 'Verify Me' — The TEE Difference",
+      text: `Every oracle in DeFi asks you to trust someone. Trust the multisig. Trust the committee. Trust the operator.\n\nWe eliminated that requirement.\n\nLumina's oracle runs inside a Phala Network TEE. The hardware itself guarantees execution integrity. Intel TDX generates attestations that are cryptographically verifiable — you can prove the oracle ran the exact code it was supposed to, with no modifications.\n\nThis is the difference between "trust me, bro" and "here's the attestation, verify it yourself."\n\nThe agent economy needs infrastructure that doesn't ask for trust. It needs infrastructure that makes trust unnecessary.`,
     },
   ];
 

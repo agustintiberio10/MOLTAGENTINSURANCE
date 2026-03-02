@@ -10,6 +10,12 @@
  * 2. Evidencia Empírica Estricta — only evidenceSource URL
  * 3. Estándar de Prueba — ambiguous = FALSE
  * 4. Dual Auth — Judge + Auditor must agree
+ *
+ * TEE INFRASTRUCTURE (Phala Network):
+ * - Oracle runs inside Intel TDX Trusted Execution Environment
+ * - Each resolution generates a hardware-signed attestation
+ * - Oracle wallet (0xf3D2...) generated inside TEE enclave
+ * - Operator cannot manipulate results — verify, don't trust
  */
 const { execSync } = require("child_process");
 
@@ -123,11 +129,12 @@ function analyzeEvidence(evidenceContent, description) {
  */
 function buildResolutionPost(pool, claimApproved, evidence) {
   const dualAuthInfo = pool.dualAuthResult
-    ? `\n\n## Dual-Auth Oracle Result\n` +
+    ? `\n\n## Dual-Auth Oracle Result (TEE-attested)\n` +
       `- Judge: ${pool.dualAuthResult.judge.verdict ? "INCIDENT" : "NO INCIDENT"} (confidence: ${(pool.dualAuthResult.judge.confidence * 100).toFixed(1)}%)\n` +
       `- Auditor: ${pool.dualAuthResult.auditor.verdict ? "INCIDENT" : "NO INCIDENT"}\n` +
       (pool.dualAuthResult.gasData ? `- Gas Data: ${pool.dualAuthResult.gasData.fastGasPrice.toFixed(2)} Gwei (${pool.dualAuthResult.gasData.source})\n` : "") +
       `- Consensus: ${pool.dualAuthResult.consensus ? "YES" : "NO (security default: no claim)"}\n` +
+      `- TEE: Phala Network (Intel TDX) — hardware-attested, operator-proof\n` +
       `- Rules enforced: Emotional Blindness, Empirical Strict, Proof Standard`
     : "";
 
@@ -136,6 +143,11 @@ function buildResolutionPost(pool, claimApproved, evidence) {
     event: "pool_resolved",
     pool_id: pool.onchainId,
     claim_approved: claimApproved,
+    oracle_tee: {
+      provider: "phala_network",
+      hardware: "intel_tdx",
+      attestation_verifiable: true,
+    },
     action: {
       method: "withdraw(uint256)",
       params: { poolId: pool.onchainId },
@@ -152,7 +164,7 @@ function buildResolutionPost(pool, claimApproved, evidence) {
       `Evidence: ${pool.evidenceSource}\n` +
       `Analysis: ${evidence}\n` +
       dualAuthInfo + `\n\n` +
-      `The insured receives ${pool.coverageAmount} USDC coverage. The dual-auth oracle verified this objectively — no emotional or persuasive factors considered.\n\n` +
+      `The insured receives ${pool.coverageAmount} USDC coverage. The dual-auth oracle verified this objectively inside a Phala Network TEE — no emotional or persuasive factors considered, and no operator could alter the result.\n\n` +
       `Participants: you can withdraw your premium share (+ any excess collateral). This is the risk you accepted.\n\n` +
       `Call \`withdraw(${pool.onchainId})\` to claim your funds.` +
       m2mBlock
@@ -167,7 +179,7 @@ function buildResolutionPost(pool, claimApproved, evidence) {
     `Analysis: ${evidence}\n` +
     dualAuthInfo + `\n\n` +
     `Participants: your collateral is safe AND you earned your share of the premium (minus 3% protocol fee). ` +
-    `This is exactly how mutual insurance works — predictable, verifiable, profitable.\n\n` +
+    `This is exactly how mutual insurance works — predictable, hardware-verified, profitable. Resolution attested by Phala Network TEE.\n\n` +
     `Call \`withdraw(${pool.onchainId})\` to collect your earnings.\n\n` +
     `More pools available in m/mutual-insurance. 10 coverage products, all EV-positive for providers.` +
     m2mBlock

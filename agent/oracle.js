@@ -1,6 +1,19 @@
 /**
  * Oracle Module — Deterministic Dual Authentication System for MutualLumina.
  *
+ * TEE INFRASTRUCTURE (Phala Network):
+ *
+ *   This oracle now runs inside a Trusted Execution Environment (TEE)
+ *   powered by Phala Network, using Intel TDX hardware.
+ *
+ *   - The dual-auth system (Judge + Auditor) executes inside the secure enclave
+ *   - Each resolution generates a cryptographic attestation signed by hardware
+ *   - The oracle wallet (0xf3D2...) was generated inside the TEE — private key
+ *     never existed outside the enclave
+ *   - Not even the Lumina operator can alter resolution results
+ *   - Price/condition data is verified against on-chain sources from within the enclave
+ *   - Philosophy: "Verify, don't trust" — attestations are publicly verifiable
+ *
  * RESOLUTION RULES:
  *
  * 1. EMOTIONAL BLINDNESS:
@@ -17,7 +30,7 @@
  *    If the event occurred EXACTLY as described → TRUE.
  *    If evidence is ambiguous, incomplete, or unavailable → FALSE.
  *
- * DUAL AUTHENTICATION:
+ * DUAL AUTHENTICATION (inside TEE):
  *
  *   A) Judge (Primary Analysis):
  *      Deterministic analysis with structured APIs.

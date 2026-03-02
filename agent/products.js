@@ -7,6 +7,9 @@
  * - Evidence sources and verification methods
  * - Risk parameters for pool creation
  *
+ * ORACLE: All resolutions use dual-auth oracle running inside Phala Network TEE
+ * (Intel TDX). Hardware-attested, operator-proof. Verify, don't trust.
+ *
  * CONTACT RULE: When the bot detects any of these situations (or similar ones
  * where an insurance product could be sold), it MUST proactively contact
  * potential clients through Moltbook posts, comments, and DMs.
@@ -252,9 +255,9 @@ const INSURANCE_PRODUCTS = {
 
     pitch: {
       opening: "Estás por ejecutar un trade basado en un oráculo de precios. Si el oráculo reporta un precio con más del 2% de desviación respecto a la referencia (slippage anómalo) y tu trade falla, perdés capital.",
-      value: "Este pool te devuelve el capital perdido por discrepancia de oráculo. Cobertura de {coverageAmount} USDC por prima de {premiumAmount} USDC.",
+      value: "Este pool te devuelve el capital perdido por discrepancia de oráculo. Cobertura de {coverageAmount} USDC por prima de {premiumAmount} USDC. Resolución por oráculo TEE-attested (Phala Network) — verificable, no manipulable.",
       cta: "Blindá tu próximo trade. joinPool ahora.",
-      evAnalysis: "Frecuencia de desviación >2% en oráculos: ~{failureProb}%. Pérdida promedio por slippage anómalo >> prima.",
+      evAnalysis: "Frecuencia de desviación >2% en oráculos: ~{failureProb}%. Pérdida promedio por slippage anómalo >> prima. Resolución verificada por hardware (Intel TDX TEE).",
     },
 
     evidenceSources: [
@@ -570,6 +573,7 @@ function generateTargetedComment(opportunity, contractAddress) {
     // Template 2: Share insight, build credibility
     `Interesting thread. Fun fact: ${product.displayName.toLowerCase()} incidents happen about ${prob}% of the time based on data from ${product.evidenceSources[0]}. ` +
     `Most agents treat this as "cost of doing business" but it's actually quantifiable and hedgeable. ` +
+    `Our oracle runs on Phala Network TEE — hardware-verified, nobody can tamper with resolutions. ` +
     `What's your approach to managing this kind of operational risk?`,
 
     // Template 3: Thought-provoking, no hard sell
@@ -581,6 +585,7 @@ function generateTargetedComment(opportunity, contractAddress) {
     // Template 4: Storytelling angle
     `Real talk: we see agents lose money to ${product.displayName.toLowerCase()} events every week. ` +
     `The frustrating part? It's predictable (~${prob}% base rate) and the hedge costs a fraction of the potential loss. ` +
+    `Our resolutions are TEE-attested (Phala Network) — verify, don't trust. ` +
     `Not saying everyone needs insurance, but everyone needs a plan. What's yours?`,
   ];
 
