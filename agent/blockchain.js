@@ -193,6 +193,15 @@ const ROUTER_ABI = [
   "function paused() external view returns (bool)",
 ];
 
+// ABI — DisputeResolver (24h dispute window for Lumina resolutions)
+const DISPUTE_RESOLVER_ABI = [
+  "function proposeResolution(uint256 _poolId, bool _claimApproved) external",
+  "function executeResolution(uint256 _poolId) external",
+  "function isExecutable(uint256 _poolId) external view returns (bool)",
+  "function isDisputable(uint256 _poolId) external view returns (bool)",
+  "function getProposal(uint256 _poolId) external view returns (bool claimApproved, uint256 proposedAt, uint256 disputeDeadline, uint8 status, address disputer, string disputeReason)",
+];
+
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
@@ -246,6 +255,14 @@ class BlockchainClient {
     }
     if (luminaAddress) {
       instance.luminaAddress = luminaAddress;
+    }
+
+    // DisputeResolver (optional — 24h dispute window for Lumina resolutions)
+    const disputeResolverAddress = process.env.DISPUTE_RESOLVER_ADDRESS;
+    if (disputeResolverAddress) {
+      instance.disputeResolver = new ethers.Contract(disputeResolverAddress, DISPUTE_RESOLVER_ABI, instance.wallet);
+      instance.disputeResolverAddress = disputeResolverAddress;
+      console.log(`[Blockchain] DisputeResolver configured: ${disputeResolverAddress}`);
     }
 
     return instance;
@@ -672,6 +689,41 @@ class BlockchainClient {
         },
       ],
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // DISPUTE RESOLVER (24h dispute window for Lumina resolutions)
+  // ═══════════════════════════════════════════════════════════
+
+  get hasDisputeResolver() {
+    return !!this.disputeResolver;
+  }
+
+  async proposeResolution(poolId, claimApproved) {
+    if (!this.disputeResolver) throw new Error("DisputeResolver not configured");
+
+    console.log(`[DisputeResolver] Proposing resolution for pool ${poolId}, claimApproved=${claimApproved}`);
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.disputeResolver.proposeResolution(poolId, claimApproved, { nonce })
+    );
+    console.log(`[DisputeResolver] Resolution proposed, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  async executeResolution(poolId) {
+    if (!this.disputeResolver) throw new Error("DisputeResolver not configured");
+
+    console.log(`[DisputeResolver] Executing resolution for pool ${poolId}`);
+    const { tx } = await this._enqueueTx(({ nonce }) =>
+      this.disputeResolver.executeResolution(poolId, { nonce })
+    );
+    console.log(`[DisputeResolver] Resolution executed, tx: ${tx.hash}`);
+    return tx.hash;
+  }
+
+  async isExecutable(poolId) {
+    if (!this.disputeResolver) return false;
+    return await executeWithBackoff(() => this.disputeResolver.isExecutable(poolId));
   }
 
   // ═══════════════════════════════════════════════════════════

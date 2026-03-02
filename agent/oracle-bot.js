@@ -772,10 +772,17 @@ async function resolveReadyPools(blockchain, moltx, state) {
       console.log(`[Resolve] Evidence: ${evidence.slice(0, 200)}...`);
 
       // ── Step 2: On-chain resolution ──
-      const txHash = isLumina(pool)
-        ? await blockchain.resolvePoolLumina(pool.onchainId, claimApproved)
-        : await blockchain.resolvePoolV3(pool.onchainId, claimApproved);
-      pool.status = resolvedStatus(pool);
+      let txHash;
+      if (isLumina(pool) && blockchain.hasDisputeResolver) {
+        txHash = await blockchain.proposeResolution(pool.onchainId, claimApproved);
+        pool.status = "proposed";
+        console.log(`[Resolve] Proposed resolution for pool ${pool.onchainId} — 24h dispute window started`);
+      } else {
+        txHash = isLumina(pool)
+          ? await blockchain.resolvePoolLumina(pool.onchainId, claimApproved)
+          : await blockchain.resolvePoolV3(pool.onchainId, claimApproved);
+        pool.status = resolvedStatus(pool);
+      }
       pool.resolutionTxHash = txHash;
       pool.dualAuthResult = dualAuth;
       pool.claimApproved = claimApproved;
@@ -1278,6 +1285,25 @@ async function heartbeat(blockchain, moltx, state) {
   // ── Step 2: Resolve ready pools ──
   console.log("\n[2/4] Checking pools for resolution...");
   await resolveReadyPools(blockchain, moltx, state);
+
+  // ── Step 2.5: Execute proposed resolutions past 24h dispute window ──
+  if (blockchain.hasDisputeResolver) {
+    console.log("\n[2.5/4] Checking dispute resolution executions...");
+    for (const pool of state.pools) {
+      if (pool.contract === "lumina" && pool.status === "proposed") {
+        try {
+          const executable = await blockchain.isExecutable(pool.onchainId);
+          if (executable) {
+            await blockchain.executeResolution(pool.onchainId);
+            pool.status = "resolved";
+            console.log(`[DisputeResolver] Executed resolution for pool ${pool.onchainId}`);
+          }
+        } catch (err) {
+          console.error(`[DisputeResolver] Error checking pool ${pool.onchainId}:`, err.message);
+        }
+      }
+    }
+  }
 
   // ── Step 3: Maybe create a new pool ──
   if (POOL_CREATION_PAUSED) {
