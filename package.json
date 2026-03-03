@@ -31,7 +31,9 @@
     "railway:moltbook": "BOT_MODE=moltbook node scripts/start-railway.js",
     "railway:moltx": "BOT_MODE=moltx node scripts/start-railway.js",
     "railway:social": "BOT_MODE=social node scripts/start-railway.js",
-    "mcp:moltx": "node mcp/moltx-server.js"
+    "mcp:moltx": "node mcp/moltx-server.js",
+    "lumina-bot": "cd moltx-lumina-bot && npx ts-node bot.ts",
+    "lumina-bot:broadcast": "cd moltx-lumina-bot && npx ts-node -e \"require('./bot').broadcastUpdate(process.argv[1])\" --"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",

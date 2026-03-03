@@ -5,3 +5,6 @@ typechain-types/
 .env
 coverage/
 coverage.json
+moltx-lumina-bot/state.json
+moltx-lumina-bot/rewards-log.json
+moltx-lumina-bot/dist/

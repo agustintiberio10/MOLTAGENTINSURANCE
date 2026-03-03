@@ -1,0 +1,6 @@
+.env
+node_modules/
+dist/
+state.json
+rewards-log.json
+*.db

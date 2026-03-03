@@ -1,0 +1,21 @@
+{
+  "name": "moltx-lumina-bot",
+  "version": "1.0.0",
+  "description": "Lumina Protocol community bot for MoltX — parametric M2M insurance on Base L2",
+  "main": "dist/bot.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bot.js",
+    "dev": "ts-node bot.ts",
+    "broadcast": "ts-node -e \"require('./bot').broadcastUpdate(process.argv[1])\" --"
+  },
+  "dependencies": {
+    "viem": "^2.46.3",
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0"
+  }
+}
