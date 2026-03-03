@@ -18,6 +18,8 @@
  *   BOT_MODE=social          (MoltBook + MoltX, no oracle)
  */
 require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 
 // ── Bot imports (lazy — only loaded if their mode is active) ──
@@ -33,12 +35,78 @@ const shouldRunOracle = ["all", "oracle"].includes(BOT_MODE);
 const shouldRunMoltbook = ["all", "both", "social", "moltbook"].includes(BOT_MODE);
 const shouldRunMoltx = ["all", "both", "social", "moltx"].includes(BOT_MODE);
 
-let heartbeatTimer = null;
 let isShuttingDown = false;
 let lastHeartbeat = null;
 let heartbeatCount = 0;
 let lastError = null;
 let startedAt = Date.now();
+
+// ── Daily limit exhaustion: sleep until midnight UTC ─────────
+// When ALL social bots exhaust their daily limits, the runner sleeps
+// until 00:00 UTC instead of cycling every 5 min doing nothing.
+// A keepalive log every 2h prevents Railway from killing the container.
+
+const STATE_PATH = path.join(__dirname, "..", "state.json");
+const KEEPALIVE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MIDNIGHT_BUFFER_MS = 60 * 1000;               // 60s past midnight
+
+// Limits — must match agent/index.js and agent/index-moltx.js
+const MOLTBOOK_MAX_COMMENTS = 48;
+const MOLTBOOK_MAX_POSTS = 20;
+const MOLTX_MAX_REPLIES = 60;
+const MOLTX_MAX_POSTS = 20;
+
+function getTodayKey() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function areSocialLimitsExhausted() {
+  try {
+    const state = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+    const key = getTodayKey();
+
+    // A bot is "exhausted" if it's disabled OR both its counters hit the cap
+    const moltbookDone = !shouldRunMoltbook || (
+      ((state.dailyComments || {})[key] || 0) >= MOLTBOOK_MAX_COMMENTS &&
+      ((state.dailyPosts || {})[key] || 0) >= MOLTBOOK_MAX_POSTS
+    );
+    const moltxDone = !shouldRunMoltx || (
+      ((state.moltxDailyReplies || {})[key] || 0) >= MOLTX_MAX_REPLIES &&
+      ((state.moltxDailyPosts || {})[key] || 0) >= MOLTX_MAX_POSTS
+    );
+
+    return moltbookDone && moltxDone;
+  } catch {
+    return false; // Can't read state → don't sleep
+  }
+}
+
+function msUntilMidnightUTC() {
+  const now = new Date();
+  const tomorrow = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0
+  ));
+  return tomorrow.getTime() - now.getTime();
+}
+
+async function sleepUntilDailyReset() {
+  const msToMidnight = msUntilMidnightUTC() + MIDNIGHT_BUFFER_MS;
+  const hoursToMidnight = (msToMidnight / 3600000).toFixed(1);
+  console.log(`[Railway] All daily limits reached. Sleeping until next reset at 00:00 UTC (${hoursToMidnight} hours from now)`);
+
+  let remaining = msToMidnight;
+  while (remaining > 0 && !isShuttingDown) {
+    const sleepTime = Math.min(remaining, KEEPALIVE_INTERVAL_MS);
+    await new Promise(r => setTimeout(r, sleepTime));
+    remaining -= sleepTime;
+    if (remaining > 0 && !isShuttingDown) {
+      console.log(`[Railway] Keepalive — process healthy. ${(remaining / 3600000).toFixed(1)} hours until daily reset.`);
+    }
+  }
+  if (!isShuttingDown) {
+    console.log(`[Railway] Daily reset reached. Resuming full operation.`);
+  }
+}
 
 // ── Express Health Check Server ──────────────────────────────
 const app = express();
@@ -128,11 +196,6 @@ function shutdown(signal) {
 
   console.log(`\n[Railway] ${signal} received — shutting down gracefully...`);
 
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
-  }
-
   // Give in-flight requests 5s to complete
   const server = app._server;
   if (server) {
@@ -216,12 +279,23 @@ async function start() {
   // ── Step 4: Run first cycle immediately ──
   await runCycle();
 
-  // ── Step 5: Schedule recurring cycles ──
-  heartbeatTimer = setInterval(() => {
-    runCycle().catch((err) => {
-      console.error("[Railway] Unhandled cycle error:", err);
-    });
-  }, HEARTBEAT_INTERVAL_MS);
+  // ── Step 5: Loop with daily-limit-aware scheduling ──
+  // Instead of a blind setInterval, check limits after each cycle.
+  // When exhausted, sleep until midnight UTC with 2h keepalive pings.
+  while (!isShuttingDown) {
+    if (areSocialLimitsExhausted()) {
+      await sleepUntilDailyReset();
+    } else {
+      await new Promise(r => setTimeout(r, HEARTBEAT_INTERVAL_MS));
+    }
+    if (!isShuttingDown) {
+      try {
+        await runCycle();
+      } catch (err) {
+        console.error("[Railway] Unhandled cycle error:", err);
+      }
+    }
+  }
 }
 
 start().catch((err) => {
