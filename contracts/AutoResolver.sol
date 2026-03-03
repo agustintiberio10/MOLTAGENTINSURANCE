@@ -100,6 +100,8 @@ contract AutoResolver is Ownable, ReentrancyGuard {
         string reason
     );
 
+    event PolicyCancelled(uint256 indexed poolId);
+    event PolicyUpdated(uint256 indexed poolId);
     event MaxStalenessUpdated(uint256 newMaxStaleness);
     event DisputeResolverUpdated(address newResolver);
 
@@ -277,12 +279,14 @@ contract AutoResolver is Ownable, ReentrancyGuard {
         if (t == TriggerType.PRICE_DROP_PCT) {
             // threshold en bps: 100 = 1%, 1000 = 10%
             // Fórmula: (startPrice - currentPrice) * 10000 / startPrice >= threshold
+            require(policy.startPrice > 0, "AR: startPrice must be positive");
             if (currentPrice >= policy.startPrice) return false;
             int256 dropBps = ((policy.startPrice - currentPrice) * 10000) / policy.startPrice;
             return dropBps >= policy.threshold;
         }
 
         if (t == TriggerType.PRICE_RISE_PCT) {
+            require(policy.startPrice > 0, "AR: startPrice must be positive");
             if (currentPrice <= policy.startPrice) return false;
             int256 riseBps = ((currentPrice - policy.startPrice) * 10000) / policy.startPrice;
             return riseBps >= policy.threshold;
@@ -291,6 +295,7 @@ contract AutoResolver is Ownable, ReentrancyGuard {
         if (t == TriggerType.PRICE_DIVERGENCE) {
             // Comparar dos feeds — la diferencia porcentual debe superar threshold (bps)
             int256 secondaryPrice = _getLatestPrice(policy.secondaryFeed);
+            require(currentPrice > 0 && secondaryPrice > 0, "AR: prices must be positive");
             int256 diff;
             if (currentPrice > secondaryPrice) {
                 diff = ((currentPrice - secondaryPrice) * 10000) / secondaryPrice;
@@ -301,7 +306,11 @@ contract AutoResolver is Ownable, ReentrancyGuard {
         }
 
         if (t == TriggerType.GAS_ABOVE) {
-            // En Base L2, tx.gasprice retorna el gas price de la L2
+            // LIMITACIÓN: En Base L2, tx.gasprice solo retorna el gas price de la L2
+            // execution layer, no incluye el L1 data fee (blob fee). El valor puede ser
+            // muy bajo (~0.001 gwei) y no refleja el costo real de la transacción.
+            // Para producción se debería usar un oracle de gas dedicado (ej: Chainlink
+            // Gas Price Feed o un oracle custom) que reporte el costo total L1+L2.
             return int256(uint256(tx.gasprice)) > policy.threshold;
         }
 
@@ -352,6 +361,40 @@ contract AutoResolver is Ownable, ReentrancyGuard {
     // ══════════════════════════════════════════════════════════════
     // ADMIN
     // ══════════════════════════════════════════════════════════════
+
+    /// @notice Cancela una póliza sin llamar a DisputeResolver.
+    ///         Útil para corregir registros erróneos antes de que se resuelvan.
+    function cancelPolicy(uint256 poolId) external onlyOwner {
+        PolicyTrigger storage policy = policies[poolId];
+        require(policy.chainlinkFeed != address(0), "AR: not registered");
+        require(!policy.resolved, "AR: already resolved");
+        policy.resolved = true;
+        emit PolicyCancelled(poolId);
+    }
+
+    /// @notice Actualiza parámetros seguros de una póliza no resuelta.
+    ///         No permite cambiar triggerType, feeds ni startPrice para evitar manipulación.
+    function updatePolicy(
+        uint256 poolId,
+        int256 threshold,
+        uint256 sustainedPeriod,
+        uint256 waitingPeriod,
+        uint256 deadline
+    ) external onlyOwner {
+        PolicyTrigger storage policy = policies[poolId];
+        require(policy.chainlinkFeed != address(0), "AR: not registered");
+        require(!policy.resolved, "AR: already resolved");
+        require(deadline > block.timestamp, "AR: deadline in past");
+
+        policy.threshold = threshold;
+        policy.sustainedPeriod = sustainedPeriod;
+        policy.waitingPeriod = waitingPeriod;
+        policy.deadline = deadline;
+        // Resetear detección previa ya que los parámetros cambiaron
+        policy.conditionMetAt = 0;
+
+        emit PolicyUpdated(poolId);
+    }
 
     /// @notice Actualiza el tiempo máximo de antigüedad aceptable del price feed.
     function setMaxStaleness(uint256 _maxStaleness) external onlyOwner {
