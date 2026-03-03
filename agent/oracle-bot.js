@@ -74,6 +74,11 @@ const {
   generatePhase4Molt,
 } = require("../specs/m2m-dual-ux-payloads.js");
 const { generateResolutionMolt, generateOpportunityMolt } = require("./example-molts.js");
+const {
+  AutoResolverClient,
+  PRODUCT_TRIGGER_MAP,
+  TRIGGER_LABELS,
+} = require("./autoresolver-client.js");
 
 // ═══════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -360,7 +365,25 @@ function initClients() {
     console.warn("[Init] Get a key: https://etherscan.io/myapikey");
   }
 
-  return { blockchain, moltx };
+  // ── AutoResolver (optional — only if AUTORESOLVER_ADDRESS is set) ──
+  let autoResolver = null;
+  if (process.env.AUTORESOLVER_ADDRESS) {
+    try {
+      autoResolver = new AutoResolverClient(
+        blockchain.provider,
+        blockchain.wallet,
+        process.env.AUTORESOLVER_ADDRESS
+      );
+      console.log("[Init] AutoResolver:", process.env.AUTORESOLVER_ADDRESS);
+    } catch (err) {
+      console.warn("[Init] AutoResolver init failed (continuing without):", err.message);
+    }
+  } else {
+    console.log("[Init] AutoResolver: not configured (AUTORESOLVER_ADDRESS not set)");
+    console.log("[Init]   Parametric pools will use LLM dual-auth oracle only.");
+  }
+
+  return { blockchain, moltx, autoResolver };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -379,7 +402,7 @@ function initClients() {
  *   5. Publica Phase 1 MoltX post con M2M payload
  *   6. Guarda en state con contract tag
  */
-async function maybeCreatePool(blockchain, moltx, state) {
+async function maybeCreatePool(blockchain, moltx, state, autoResolver) {
   // Guard: respect rate limit between creations
   if (state.cycleCount - state.lastPoolCreatedCycle < CONFIG.MIN_CYCLES_BETWEEN_POOLS) {
     console.log("[Create] Cooldown active, skipping pool creation.");
@@ -543,6 +566,27 @@ async function maybeCreatePool(blockchain, moltx, state) {
 
   state.lastPoolCreatedCycle = state.cycleCount;
   saveState(state);
+
+  // ── AutoResolver: register parametric policy if product supports it ──
+  if (autoResolver && poolId != null && PRODUCT_TRIGGER_MAP[product.id]) {
+    try {
+      const result = await autoResolver.registerPolicyForProduct(
+        poolId,
+        product.id,
+        deadlineUnix,
+        { gasThresholdWei: 50_000_000_000 } // default 50 gwei for gas_spike
+      );
+      if (result) {
+        const lastPool = state.pools[state.pools.length - 1];
+        lastPool.autoResolverPolicy = true;
+        lastPool.autoResolverStartPrice = result.startPrice?.toString() || null;
+        saveState(state);
+        console.log(`[Create] AutoResolver policy registered for pool #${poolId}`);
+      }
+    } catch (err) {
+      console.warn(`[Create] AutoResolver policy registration failed (non-fatal): ${err.message}`);
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -725,7 +769,7 @@ async function checkCancellations(blockchain, state) {
  *   3. resolvePoolV3(poolId, claimApproved) on-chain
  *   4. Publica Phase 4 MoltX post con resultado + withdraw payload
  */
-async function resolveReadyPools(blockchain, moltx, state) {
+async function resolveReadyPools(blockchain, moltx, state, autoResolver) {
   const now = Math.floor(Date.now() / 1000);
 
   const readyToResolve = state.pools.filter(
@@ -738,29 +782,70 @@ async function resolveReadyPools(blockchain, moltx, state) {
     console.log(`[Resolve] Evidence: ${pool.evidenceSource}`);
 
     try {
-      // ── Step 1: Dual-auth oracle ──
-      const oracleResult = await resolveWithDualAuth({
-        ...pool,
-        onchainId: pool.onchainId,
-      });
+      let claimApproved, evidence, dualAuth, txHash;
+      let resolvedViaAutoResolver = false;
 
-      if (!oracleResult.shouldResolve) {
-        console.log(`[Resolve] Oracle says not ready: ${oracleResult.evidence}`);
-        continue;
+      // ── Try AutoResolver first for parametric pools ──
+      if (autoResolver && pool.autoResolverPolicy) {
+        try {
+          console.log(`[Resolve] Attempting on-chain parametric resolution via AutoResolver...`);
+          const arResult = await autoResolver.checkAndResolve(pool.onchainId);
+
+          if (arResult.resolved) {
+            claimApproved = arResult.triggered;
+            txHash = arResult.txHash;
+            resolvedViaAutoResolver = true;
+            evidence = arResult.triggered
+              ? "AutoResolver: Parametric trigger condition met (Chainlink price feed)"
+              : "AutoResolver: Coverage period expired without trigger";
+            dualAuth = {
+              method: "autoresolver",
+              triggered: arResult.triggered,
+              onChainVerified: true,
+            };
+            console.log(`[Resolve] AutoResolver verdict: triggered=${arResult.triggered}`);
+          } else if (arResult.conditionDetected) {
+            console.log(`[Resolve] AutoResolver: condition detected but sustained period not met. Skipping.`);
+            continue;
+          } else {
+            console.log(`[Resolve] AutoResolver: no resolution yet (condition not met, deadline not passed on-chain).`);
+            // Fall through to dual-auth below
+          }
+        } catch (arErr) {
+          console.warn(`[Resolve] AutoResolver failed (falling back to dual-auth): ${arErr.message}`);
+          // Fall through to dual-auth
+        }
       }
 
-      const { claimApproved, evidence, dualAuth } = oracleResult;
-      console.log(`[Resolve] Oracle verdict: claimApproved=${claimApproved}`);
-      console.log(`[Resolve] Evidence: ${evidence.slice(0, 200)}...`);
+      // ── Fallback: LLM dual-auth oracle ──
+      if (!resolvedViaAutoResolver) {
+        const oracleResult = await resolveWithDualAuth({
+          ...pool,
+          onchainId: pool.onchainId,
+        });
 
-      // ── Step 2: On-chain resolution ──
-      const txHash = isLumina(pool)
-        ? await blockchain.resolvePoolLumina(pool.onchainId, claimApproved)
-        : await blockchain.resolvePoolV3(pool.onchainId, claimApproved);
+        if (!oracleResult.shouldResolve) {
+          console.log(`[Resolve] Oracle says not ready: ${oracleResult.evidence}`);
+          continue;
+        }
+
+        claimApproved = oracleResult.claimApproved;
+        evidence = oracleResult.evidence;
+        dualAuth = oracleResult.dualAuth;
+        console.log(`[Resolve] Oracle verdict: claimApproved=${claimApproved}`);
+        console.log(`[Resolve] Evidence: ${evidence.slice(0, 200)}...`);
+
+        // On-chain resolution (dual-auth path needs explicit TX)
+        txHash = isLumina(pool)
+          ? await blockchain.resolvePoolLumina(pool.onchainId, claimApproved)
+          : await blockchain.resolvePoolV3(pool.onchainId, claimApproved);
+      }
+
       pool.status = resolvedStatus(pool);
       pool.resolutionTxHash = txHash;
       pool.dualAuthResult = dualAuth;
       pool.claimApproved = claimApproved;
+      pool.resolvedViaAutoResolver = resolvedViaAutoResolver;
       invalidatePool(pool.onchainId, pool.contract);
 
       console.log(`[Resolve] Pool #${pool.onchainId} resolved on-chain, tx: ${txHash}`);
@@ -1238,7 +1323,7 @@ async function ensureWalletLinked(blockchain, moltx) {
 // MAIN HEARTBEAT
 // ═══════════════════════════════════════════════════════════════════════
 
-async function heartbeat(blockchain, moltx, state) {
+async function heartbeat(blockchain, moltx, state, autoResolver) {
   state.cycleCount++;
   state.lastHeartbeat = Math.floor(Date.now() / 1000);
 
@@ -1255,14 +1340,14 @@ async function heartbeat(blockchain, moltx, state) {
 
   // ── Step 2: Resolve ready pools ──
   console.log("\n[2/4] Checking pools for resolution...");
-  await resolveReadyPools(blockchain, moltx, state);
+  await resolveReadyPools(blockchain, moltx, state, autoResolver);
 
   // ── Step 3: Maybe create a new pool ──
   if (POOL_CREATION_PAUSED) {
     console.log("\n[3/4] Pool creation PAUSED (behavioral flag). Skipping.");
   } else {
     console.log("\n[3/4] Pool creation check...");
-    await maybeCreatePool(blockchain, moltx, state);
+    await maybeCreatePool(blockchain, moltx, state, autoResolver);
   }
 
   // ── Step 4: Social engagement ──
@@ -1333,10 +1418,10 @@ async function initOracleBot() {
   console.log("  ORACLE BOT — Dual-Mode Lifecycle Engine");
   console.log(`  Mode: ${USE_LUMINA ? "LUMINA (new pools)" : "V3 LEGACY (new pools)"}`);
   console.log("  Chain: Base Mainnet (8453)");
-  console.log("  Oracle: Dual-Auth (Judge + Auditor)");
+  console.log("  Oracle: Dual-Auth (Judge + Auditor) + AutoResolver (Chainlink)");
   console.log("═══════════════════════════════════════════════════════════\n");
 
-  const { blockchain, moltx } = initClients();
+  const { blockchain, moltx, autoResolver } = initClients();
   const state = loadState();
 
   // ── Verify oracle role on the active contract ──
@@ -1356,6 +1441,16 @@ async function initOracleBot() {
     console.warn("[Init] Could not verify oracle role:", err.message);
   }
 
+  // ── Verify AutoResolver policy count ──
+  if (autoResolver) {
+    try {
+      const policyCount = await autoResolver.getRegisteredPoolCount();
+      console.log(`[Init] AutoResolver: ${policyCount} policies registered on-chain.`);
+    } catch (err) {
+      console.warn("[Init] AutoResolver read failed:", err.message);
+    }
+  }
+
   // ── Link wallet to MoltX ──
   await ensureWalletLinked(blockchain, moltx);
 
@@ -1365,10 +1460,10 @@ async function initOracleBot() {
   console.log("\n[Init] Syncing state from blockchain (ephemeral-safe)...");
   await syncFromChain(blockchain, state);
 
-  _oracleClients = { blockchain, moltx };
+  _oracleClients = { blockchain, moltx, autoResolver };
   _oracleState = state;
 
-  return { blockchain, moltx, state };
+  return { blockchain, moltx, autoResolver, state };
 }
 
 /**
@@ -1379,7 +1474,7 @@ async function runOracleHeartbeat() {
   if (!_oracleClients || !_oracleState) {
     throw new Error("Oracle bot not initialized. Call initOracleBot() first.");
   }
-  await heartbeat(_oracleClients.blockchain, _oracleClients.moltx, _oracleState);
+  await heartbeat(_oracleClients.blockchain, _oracleClients.moltx, _oracleState, _oracleClients.autoResolver);
 }
 
 /**
@@ -1392,12 +1487,14 @@ function getOracleStatus() {
   return {
     initialized: true,
     mode: USE_LUMINA ? "lumina" : "v3",
+    autoResolver: _oracleClients?.autoResolver ? process.env.AUTORESOLVER_ADDRESS : null,
     cycleCount: _oracleState.cycleCount || 0,
     lastHeartbeat: _oracleState.lastHeartbeat || 0,
     pools: {
       total: pools.length,
       v3: pools.filter((p) => (p.contract || "v3") === "v3").length,
       lumina: pools.filter((p) => p.contract === "lumina").length,
+      parametric: pools.filter((p) => p.autoResolverPolicy).length,
       pending: pools.filter(isPoolPending).length,
       open: pools.filter(isPoolOpen).length,
       active: pools.filter(isPoolActive).length,
@@ -1412,7 +1509,7 @@ function getOracleStatus() {
 // ═══════════════════════════════════════════════════════════════════════
 
 async function main() {
-  const { blockchain, moltx, state } = await initOracleBot();
+  const { blockchain, moltx, autoResolver, state } = await initOracleBot();
 
   // ── CLI mode detection ──
   const args = process.argv.slice(2);
@@ -1425,7 +1522,7 @@ async function main() {
 
   if (args[0] === "--once") {
     // Single heartbeat (for testing)
-    await heartbeat(blockchain, moltx, state);
+    await heartbeat(blockchain, moltx, state, autoResolver);
     console.log("\n[Done] Single cycle complete.");
     return;
   }
@@ -1435,12 +1532,12 @@ async function main() {
   console.log("[Start] Press Ctrl+C to stop.\n");
 
   // First heartbeat immediately
-  await heartbeat(blockchain, moltx, state);
+  await heartbeat(blockchain, moltx, state, autoResolver);
 
   // Then on interval
   setInterval(async () => {
     try {
-      await heartbeat(blockchain, moltx, state);
+      await heartbeat(blockchain, moltx, state, autoResolver);
     } catch (err) {
       console.error("[Fatal] Heartbeat error:", err.message);
       console.error(err.stack);

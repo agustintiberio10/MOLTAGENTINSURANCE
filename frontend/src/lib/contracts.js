@@ -79,6 +79,22 @@ export const ROUTER_ABI = [
   "function paused() view returns (bool)",
 ];
 
+export const AUTORESOLVER_ABI = [
+  // Read
+  "function getPolicy(uint256 poolId) view returns (tuple(uint8 triggerType, address chainlinkFeed, address secondaryFeed, int256 threshold, uint256 sustainedPeriod, int256 startPrice, uint256 activatedAt, uint256 waitingPeriod, uint256 deadline, bool resolved, uint256 conditionMetAt))",
+  "function getRegisteredPoolCount() view returns (uint256)",
+  "function getRegisteredPoolIds() view returns (uint256[])",
+  "function disputeResolver() view returns (address)",
+  "function maxStaleness() view returns (uint256)",
+  // Write (permissionless — anyone can trigger resolution)
+  "function checkAndResolve(uint256 poolId)",
+  "function batchCheck(uint256[] poolIds)",
+  // Events
+  "event PolicyRegistered(uint256 indexed poolId, uint8 triggerType, int256 threshold, int256 startPrice)",
+  "event ConditionDetected(uint256 indexed poolId, int256 currentPrice, uint256 sustainedUntil)",
+  "event ResolutionProposed(uint256 indexed poolId, bool triggered, string reason)",
+];
+
 export const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -122,6 +138,37 @@ export const LUMINA_POOL_STATUS_COLORS = {
   1: "#10b981", // green - Active
   2: "#6366f1", // indigo - Resolved
   3: "#ef4444", // red - Cancelled
+};
+
+// ═══════════════════════════════════════════════════════════════
+// AUTORESOLVER TRIGGER TYPES
+// ═══════════════════════════════════════════════════════════════
+
+export const TRIGGER_TYPE = {
+  0: "PRICE_BELOW",
+  1: "PRICE_ABOVE",
+  2: "PRICE_DROP_PCT",
+  3: "PRICE_RISE_PCT",
+  4: "PRICE_DIVERGENCE",
+  5: "GAS_ABOVE",
+};
+
+export const TRIGGER_TYPE_DESCRIPTIONS = {
+  0: "Price falls below threshold",
+  1: "Price rises above threshold",
+  2: "Price drops by percentage (bps) from start",
+  3: "Price rises by percentage (bps) from start",
+  4: "Two price feeds diverge by percentage (bps)",
+  5: "L2 gas price exceeds threshold (wei)",
+};
+
+/** Chainlink Price Feed addresses on Base Mainnet */
+export const CHAINLINK_FEEDS = {
+  "ETH/USD": "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
+  "BTC/USD": "0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F",
+  "USDC/USD": "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B",
+  "DAI/USD": "0x591e79239a7d679378eC8c847e5038150364C78F",
+  "USDT/USD": "0xf19d560eB8d2ADf07BD6D13ed03e1D11215721F9",
 };
 
 // ═══════════════════════════════════════════════════════════════
