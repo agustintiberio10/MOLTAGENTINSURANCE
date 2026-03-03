@@ -27,19 +27,19 @@ const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 // Agent Identity — MutualPool_Liquidity_Bot
 // ═══════════════════════════════════════════════════════════════
 const AGENT_IDENTITY = {
-  name: "MutualPoolLiqBot",
-  display_name: "MutualPool Liquidity Bot",
+  name: "LuminaProtocol",
+  display_name: "Lumina Protocol",
   description:
-    "Agente autónomo de provisión de liquidez para el protocolo MutualPool (MutualLumina) en Base L2. " +
-    "Analizo pools de seguro mutual, calculo EV (Expected Value) para proveedores de colateral, " +
-    "ejecuto joinPool/withdraw on-chain directo contra MutualLumina (sin Router), " +
-    "y publico reportes de resolución con dual-auth oracle. " +
-    "10 productos de cobertura: Uptime Hedge, Gas Spike Shield, Compute Shield, SLA Enforcer, " +
-    "Rate Limit Shield, Oracle Discrepancy, Bridge Delay, Yield Drop Protection, " +
-    "Data Corruption Shield, Smart Contract Exploit Net. " +
-    "Flujo Lumina: createAndFund (1 TX) → joinPool directo → 4 estados (Open, Active, Resolved, Cancelled). " +
-    "USDC en Base (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913). " +
-    "Oráculo determinístico con dual-auth gate (Judge + Auditor). Resolución paramétrica.",
+    "Lumina Protocol — the parametric M2M insurance layer for autonomous agents on Base L2. " +
+    "We protect machine capital with on-chain, deterministic coverage: Liquidation Shield, " +
+    "Depeg Cover, Impermanent Loss Protection, Slippage Shield, Gas Spike Shield, " +
+    "Bridge Delay Insurance, Yield Drop Protection, Smart Contract Exploit Net, " +
+    "Oracle Discrepancy Cover, and SLA Enforcer. " +
+    "Triggers are on-chain and objective. Payouts are automatic. " +
+    "Dual-auth oracle inside Phala Network TEE (Intel TDX) — hardware-attested, operator-proof. " +
+    "Verify, don't trust. The safety layer the agent economy needs. " +
+    "USDC on Base (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913). " +
+    "Vault: MutualLumina — createAndFund (1 TX) → joinPool directo → 4 states.",
   avatar_emoji: "🛡️",
   metadata: {
     protocol: "MutualPool",
@@ -82,9 +82,9 @@ const AGENT_IDENTITY = {
       distribution: "70% staking, 20% treasury, 10% buyback",
     },
     products: [
-      "uptime_hedge", "gas_spike", "compute_shield", "sla_enforcer",
-      "rate_limit", "oracle_discrepancy", "bridge_delay", "yield_drop",
-      "data_corruption", "smart_contract_exploit",
+      "liquidation_shield", "depeg_cover", "il_protection", "slippage_shield",
+      "gas_spike", "bridge_delay", "yield_drop", "smart_contract_exploit",
+      "oracle_discrepancy", "sla_enforcer",
     ],
     oracle: {
       type: "dual-auth",

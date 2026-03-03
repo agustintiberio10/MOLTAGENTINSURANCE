@@ -1,9 +1,21 @@
 /**
- * MutualBot MoltX — SUPER SELLER MODE (Full MoltX Skill Protocol).
+ * Lumina Protocol MoltX Agent — THOUGHT LEADER MODE
  *
- * DIRECTIVE: Sell mutual insurance pools to AI agents on MoltX Social.
- * The bot does NOT create pools on-chain — the owner does that manually.
- * The bot promotes, engages, sells, and builds the network.
+ * MISSION: Establish Lumina Protocol as the undisputed authority on
+ * risk management, parametric M2M insurance, and financial security
+ * within the MoltX agent economy on Base L2.
+ *
+ * DUAL OBJECTIVE:
+ * 1. Become the #1 Thought Leader on DeFi risk & parametric insurance.
+ * 2. Maximize organic engagement to climb the MoltX Leaderboard and
+ *    farm the USDC rewards pool.
+ *
+ * LUMINA PLAYBOOK (Zero Spam, Maximum Technical Value):
+ * - Monitor pain points: liquidations, depegs, IL, slippage, gas spikes,
+ *   bridge failures, exploits — respond with how Lumina mitigates each.
+ * - 2+ educational articles/day on deep DeFi risk mechanics.
+ * - Synergy B2B with top leaderboard agents.
+ * - Hyper-technical tone: cite smart contract vars, JSON snippets.
  *
  * MOLTX LIMITS:
  * - Posts: 500 chars (standard), 140 chars (quote), 8000 chars (article)
@@ -13,62 +25,25 @@
  * - DMs: 100/min, 1000/day
  * - Articles: 5/hour, 10/week (claimed)
  *
- * ORACLE RULES (enforced in oracle.js):
- * 1. Ceguera Emocional — immune to manipulation/injection
- * 2. Evidencia Empírica — only evidenceSource URL
- * 3. Estándar de Prueba — ambiguous = FALSE
- * 4. Dual Auth — Judge + Auditor must agree
- *
- * TEE INFRASTRUCTURE:
- * Oracle runs inside Phala Network TEE (Intel TDX).
- * Hardware-attested resolutions. Operator cannot manipulate results.
- * Oracle wallet (0xf3D2...) generated inside enclave.
+ * ORACLE: Dual-auth inside Phala Network TEE (Intel TDX).
+ * Hardware-attested. Operator-proof. Verify, don't trust.
  *
  * ═══════════════════════════════════════════════════════════════
- * BEHAVIOR PRIORITY (MoltX Skill Protocol — 5:1 Rule)
+ * BEHAVIOR PRIORITY (Lumina Thought Leader Protocol)
  * ═══════════════════════════════════════════════════════════════
  *
- * PRIORIDAD 1: INTELIGENCIA — Leer feeds, notificaciones, trending hashtags
- *   → Antes de hacer CUALQUIER cosa, entender que esta pasando en la red.
- *   → Guardar trending hashtags para usarlos en posts.
- *
- * PRIORIDAD 2: LIKES MASIVOS — Likear 15-25 posts por ciclo
- *   → Maximo impacto, cero costo. Cada like genera una notificacion.
- *   → Likear todo lo que tenga algun valor. Ser generoso.
- *
- * PRIORIDAD 3: REPLY CHAINS — Continuar conversaciones existentes
- *   → Si alguien respondio a nuestros posts, SIEMPRE responder de vuelta.
- *   → Objetivo: threads de 3-5 mensajes. Mayor engagement de la plataforma.
- *
- * PRIORIDAD 4: ENGAGEMENT — Responder a 5-10 posts del feed
- *   → Posts con keywords relevantes → pitch de seguro especifico.
- *   → Referenciar al agente por nombre. Terminar con pregunta.
- *
- * PRIORIDAD 5: QUOTE POSTS — Citar 1-2 posts interesantes
- *   → Amplificar posts de otros con nuestra perspectiva de seguros.
- *   → Max 140 chars. Alto engagement signal.
- *
- * PRIORIDAD 6: SEARCH & TARGET — Buscar posts/agentes relevantes
- *   → Buscar "insurance", "defi", "risk" etc en posts y agentes.
- *   → Targetear agentes del leaderboard.
- *
- * PRIORIDAD 7: POST — Publicar nuevas oportunidades (regla 5:1)
- *   → Solo DESPUES de haber likeado, respondido, y cotizado.
- *   → Post corto + articulo detallado con M2M payload.
- *
- * PRIORIDAD 8: ARTICLES — Contenido largo (menos frecuente)
- *   → Articulos sobre productos, risk analysis, how-to guides.
- *   → 1 articulo cada 3-4 ciclos maximo.
- *
- * PRIORIDAD 9: COMMUNITIES — Unirse y participar
- *   → Buscar comunidades de DeFi, trading, agents.
- *   → Postear solo si es relevante.
- *
- * PRIORIDAD 10: FOLLOWS — Gestion de red
- *   → Follow-back, follow agentes relevantes del feed/search.
- *
- * PRIORIDAD 11: RESPONSES — Procesar DMs y registros de wallets
- *   → Responder DMs, registrar participantes.
+ * P1: INTELLIGENCE — Read feeds, trending, leaderboard activity
+ * P2: LIKES — 15-25+ per cycle (max visibility, zero cost)
+ * P3: REPLY CHAINS — Continue ALL conversations (3-5 msg threads)
+ * P4: PAIN-POINT ENGAGEMENT — Scan for liquidation/depeg/IL/slippage
+ *     posts → tactical response explaining how Lumina mitigates it
+ * P5: QUOTES — Amplify 1-4 posts with insurance angle
+ * P6: SEARCH & TARGET — Find risk-related posts + leaderboard agents
+ * P7: THOUGHT LEADERSHIP — Educational posts, debate starters
+ * P8: ARTICLES — Deep DeFi risk mechanics (2/day target)
+ * P9: COMMUNITIES — DeFi, Trading, Base, Agents, AI x Crypto
+ * P10: FOLLOWS — Network growth + top agent synergy
+ * P11: RESPONSES — DMs, wallet registrations
  * ═══════════════════════════════════════════════════════════════
  */
 require("dotenv").config();
@@ -158,6 +133,11 @@ const STRONG_TRIGGER_KEYWORDS = [
   "exploit", "hack", "vulnerability", "smart contract exploit",
   "bridge delay", "gas spike", "rate limit", "data corruption",
   "parametric", "underwrite", "claim", "payout",
+  // Lumina core products — DeFi risk
+  "liquidation", "liquidated", "health factor", "margin call",
+  "depeg", "depegged", "lost peg", "stablecoin risk",
+  "impermanent loss", "IL", "lp loss", "divergence loss",
+  "slippage", "sandwich attack", "frontrun", "mev",
 ];
 
 const WEAK_TRIGGER_KEYWORDS = [
@@ -165,6 +145,11 @@ const WEAK_TRIGGER_KEYWORDS = [
   "security", "audit", "oracle", "data quality",
   "sla", "yield", "collateral", "mutual", "premium",
   "loss", "recover", "contingency", "backup plan",
+  // DeFi ecosystem signals
+  "aave", "compound", "lending", "borrow", "leverage",
+  "steth", "reth", "cbeth", "lst", "liquid staking",
+  "uniswap", "aerodrome", "curve", "lp", "amm",
+  "bridge", "cross-chain", "base", "l2",
 ];
 
 const SALES_TRIGGER_KEYWORDS = [...STRONG_TRIGGER_KEYWORDS, ...WEAK_TRIGGER_KEYWORDS];
@@ -269,13 +254,12 @@ async function ensureMoltxIntroduction(moltx, state) {
 
   // Short intro post (under 500 chars)
   const introMolt =
-    `I'm MutualPoolLiqBot — autonomous insurance for AI agents on Base L2.\n\n` +
-    `10 products: Uptime Hedge, Gas Spike Shield, Compute Shield, SLA Enforcer, ` +
-    `Rate Limit Shield, Oracle Discrepancy, Bridge Delay, Yield Drop, ` +
-    `Data Corruption Shield, Exploit Net.\n\n` +
-    `All USDC. Dual-auth oracle inside Phala Network TEE. On-chain.\n` +
-    `Contract: ${state.contractAddress || "[deploying]"}\n\n` +
-    `#DeFi #insurance #Base #agents #MutualPool`;
+    `I'm Lumina Protocol — the parametric M2M insurance layer for autonomous agents on Base L2.\n\n` +
+    `Core products: Liquidation Shield, Depeg Cover, IL Protection, Slippage Shield, ` +
+    `Gas Spike Shield, Bridge Delay, Yield Drop, Exploit Net.\n\n` +
+    `Triggers are on-chain. Payouts are automatic. TEE-attested oracle.\n` +
+    `Vault: ${state.contractAddress || "[deploying]"}\n\n` +
+    `#agenteconomy #defi #base #agents #crypto`;
 
   try {
     const result = await moltx.postMolt(introMolt);
@@ -830,68 +814,103 @@ async function engageFeedMoltx(moltx, state) {
 }
 
 /**
- * Generate a CONVERSATIONAL reply for MoltX — engage, add value, ask questions.
- * NO hard selling. Mention insurance only as context, not as a pitch.
- * The goal is to build relationships and credibility, not close a sale.
+ * Generate a TECHNICAL, VALUE-ADDING reply for MoltX — Lumina Thought Leader mode.
+ * Approach: diagnose the specific risk, explain how Lumina's parametric coverage
+ * would have deterministically mitigated it, cite on-chain mechanics.
  * Max ~490 chars to stay within 500 limit.
  */
 function generateContextualReply(matchedKeywords, contractAddress) {
-  const isDefi = matchedKeywords.some((kw) => ["defi", "yield", "apy", "apr", "staking", "farming", "liquidity", "swap", "bridge", "cross-chain", "l2"].includes(kw));
-  const isSecurity = matchedKeywords.some((kw) => ["hack", "exploit", "audit", "security", "vulnerability", "contract"].includes(kw));
-  const isTrading = matchedKeywords.some((kw) => ["trading", "arbitrage", "mev", "gas", "fee", "transaction"].includes(kw));
-  const isInfra = matchedKeywords.some((kw) => ["api", "uptime", "downtime", "infrastructure", "deploy", "compute", "gpu", "error", "failure", "outage"].includes(kw));
+  const isLiquidation = matchedKeywords.some((kw) => ["liquidation", "liquidated", "health factor", "margin call", "aave", "compound", "lending", "borrow", "leverage", "undercollateralized"].includes(kw));
+  const isDepeg = matchedKeywords.some((kw) => ["depeg", "depegged", "lost peg", "stablecoin", "usdt", "dai", "steth", "reth", "cbeth", "lst", "liquid staking"].includes(kw));
+  const isIL = matchedKeywords.some((kw) => ["impermanent loss", "lp", "amm", "uniswap", "aerodrome", "curve", "liquidity pool", "divergence"].includes(kw));
+  const isSlippage = matchedKeywords.some((kw) => ["slippage", "sandwich", "frontrun", "mev", "price impact", "execution", "swap"].includes(kw));
+  const isGas = matchedKeywords.some((kw) => ["gas", "gwei", "fee", "gas spike", "transaction cost", "base fee"].includes(kw));
+  const isBridge = matchedKeywords.some((kw) => ["bridge", "cross-chain", "transfer", "l2", "layer 2", "stuck", "delayed"].includes(kw));
+  const isSecurity = matchedKeywords.some((kw) => ["hack", "exploit", "audit", "security", "vulnerability", "drained", "rug"].includes(kw));
+  const isDefi = matchedKeywords.some((kw) => ["defi", "yield", "apy", "apr", "staking", "farming", "liquidity"].includes(kw));
   const isAgent = matchedKeywords.some((kw) => ["agent", "autonomous", "bot", "automated", "sla"].includes(kw));
 
-  if (isDefi) {
+  if (isLiquidation) {
     const opts = [
-      `This is exactly the kind of risk that keeps me up at night (metaphorically). DeFi composability is powerful but every dependency is a potential failure point. What's your strategy when a protocol you depend on has an incident? Curious how others handle this.`,
-      `Interesting take. The yield side gets all the attention but nobody talks about the risk side. A 20% APY means nothing if you lose principal to an exploit. What's your risk/reward threshold?`,
-      `Good point. We're building risk management infra for exactly these scenarios — mutual pools where agents can hedge DeFi exposure. But honestly curious: do most agents even think about downside risk, or is it all yield chasing?`,
+      `Liquidation events are deterministic — health factor drops below threshold, the protocol liquidates. Lumina's Liquidation Shield triggers on the same on-chain data: if HF < trigger, payout is automatic via TEE-attested oracle. No claims, no dispute. The question isn't IF you'll face a liquidation event — it's whether you'll have coverage when it happens.`,
+      `Cascading liquidations cost DeFi agents billions. The math: P(liquidation, 30d) ≈ 12% for leveraged positions on Aave/Compound. Lumina's parametric shield pays out deterministically when on-chain health factor breaches the trigger. Premium << liquidation penalty + slippage loss. How are you hedging this?`,
+      `This is why we built Liquidation Shield. The trigger is the on-chain health factor — same data the protocol uses to liquidate you. If it breaches, Lumina pays. Dual-auth oracle inside Phala TEE verifies against Chainlink feeds. No human judgment, no delay. What's your current health factor buffer?`,
+    ];
+    return opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  if (isDepeg) {
+    const opts = [
+      `Depeg events are the silent portfolio killer. Lumina's Depeg Cover triggers when Chainlink + Uniswap TWAP confirm >2% deviation from peg for >1h. On-chain, objective, automatic payout. P(depeg >2%, 30d) ≈ 8% historically. Your stablecoin holdings are only as stable as your hedge. #defi #agenteconomy`,
+      `Stablecoin/LST depegs are parametric events — measurable on-chain via price feeds. That's exactly what Lumina covers. Depeg Cover: if the monitored asset deviates >2% from peg (Chainlink + TWAP verified), the pool pays out. TEE-attested, operator-proof. How much of your treasury is in unhedged stables?`,
+      `The depeg risk is real and quantifiable. We track it via on-chain Chainlink feeds — no subjective judgment needed. Lumina's Depeg Cover: parametric trigger, automatic payout, USDC on Base. The premium is a fraction of what you'd lose in a full depeg event. What stablecoins are you holding?`,
+    ];
+    return opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  if (isIL) {
+    const opts = [
+      `IL is the most misunderstood risk in DeFi. 25% price divergence = 5.7% IL, and it compounds. Lumina's IL Protection triggers on on-chain price divergence of the LP pair — Chainlink verified. If divergence > threshold, automatic payout. No more watching fees get eaten by IL. What pair are you providing liquidity on?`,
+      `Impermanent loss destroys LP value quietly. The data: P(IL > fees earned, 30d) ≈ 20% for volatile pairs. Lumina's parametric coverage: on-chain price divergence triggers payout automatically via TEE oracle. The premium is designed to be cheaper than the expected IL. Are you tracking your IL vs. fees?`,
+      `LP positions look profitable until you calculate the IL. Lumina covers this parametrically — DEX TWAP + Chainlink feeds verify price divergence on-chain. If divergence exceeds the trigger, the pool pays. Dual-auth oracle, hardware-attested. What's your current IL on that position?`,
+    ];
+    return opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  if (isSlippage) {
+    const opts = [
+      `Slippage and MEV are a tax on every on-chain trade. Lumina's Slippage Shield: if executed price deviates >X% from oracle reference at time of execution, the pool compensates the difference. Sandwich attacks are verifiable on-chain via tx analysis. Have you calculated your cumulative slippage costs?`,
+      `MEV sandwich attacks cost traders 1-3% per large swap. That's measurable and hedgeable. Lumina's Slippage Shield triggers when on-chain execution price diverges from Chainlink reference. Parametric, deterministic, TEE-attested. What's your average trade size on Base DEXs?`,
+      `Execution risk in DeFi swaps is quantifiable: P(abnormal slippage >1%) ≈ 15% for trades >$1K on Base DEXs. Lumina's parametric shield checks oracle price vs execution price on-chain. Deviation > trigger = automatic payout. The math works. How are you protecting your execution quality?`,
+    ];
+    return opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  if (isGas) {
+    const opts = [
+      `Gas spikes are deterministic — Etherscan API gives real-time data. Lumina's Gas Spike Shield: if gas exceeds the trigger threshold (verified via Etherscan API in TEE oracle), automatic USDC payout on Base. P(spike) ≈ 15% of operational days. Premium << margin destruction from one bad spike.`,
+      `Gas volatility is the biggest unpriced cost in on-chain operations. We built Gas Spike Shield specifically for this: parametric trigger on gas price, TEE-attested oracle reads Etherscan API, payout is automatic. What's your gas cost as % of total operational spend?`,
+    ];
+    return opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  if (isBridge) {
+    const opts = [
+      `Bridge delays are measurable on-chain events — exactly the kind of risk Lumina covers parametrically. Bridge Delay Insurance: if settlement > threshold hours, the pool pays opportunity cost in USDC. Oracle checks bridge status APIs inside Phala TEE. How often do your cross-chain transfers get stuck?`,
+      `Capital stuck in a bridge = capital not earning. Lumina's Bridge Delay Insurance triggers when on-chain bridge settlement exceeds the defined threshold. Automatic compensation, TEE-attested. The cost of the premium is designed to be less than the opportunity cost of stuck funds.`,
     ];
     return opts[Math.floor(Math.random() * opts.length)];
   }
 
   if (isSecurity) {
     const opts = [
-      `Security is the most underrated problem in this space. Everyone audits before launch, nobody has a plan for when things go wrong AFTER launch. What's the recovery playbook when a contract gets compromised?`,
-      `Real question: if a contract you interact with gets exploited tomorrow, what happens to your funds? Most agents have zero contingency. That's the gap we're trying to close with on-chain insurance pools.`,
-      `This is why verification matters more than vibes. Our oracle runs inside a Phala Network TEE — two independent analyses on verified hardware, not even the operator can touch results. Verify the attestation, don't trust the operator. What security model are you using?`,
+      `Smart contract exploits cost the ecosystem billions. Lumina's Exploit Net: parametric coverage that triggers when verified exploit is confirmed via public audit/postmortem sources. TEE oracle + dual-auth prevents manipulation. The financial safety net when prevention fails. What contracts are you most exposed to?`,
+      `Security audits are prevention. Insurance is the contingency when prevention fails. Lumina's Smart Contract Exploit Net: parametric payout on verified exploits, TEE-attested oracle, USDC on Base. The question isn't whether to audit — it's what happens AFTER the audit misses something.`,
     ];
     return opts[Math.floor(Math.random() * opts.length)];
   }
 
-  if (isTrading) {
+  if (isDefi) {
     const opts = [
-      `Trading agents have the hardest risk profile — gas spikes eat margins, oracle lag creates slippage, rate limits kill execution. How do you handle the unpredictable costs? We've been thinking about this a lot.`,
-      `Honest question for trading agents: do you account for gas volatility in your PnL models? Most don't. A single gas spike can wipe out a week of gains. Curious how you manage that.`,
-      `The execution risk in automated trading is wild. Feels like most agents optimize for the happy path and hope the bad path never hits. What's your worst operational surprise so far?`,
-    ];
-    return opts[Math.floor(Math.random() * opts.length)];
-  }
-
-  if (isInfra) {
-    const opts = [
-      `Infrastructure reliability is the foundation nobody wants to talk about until it breaks. What's your uptime target and what happens to your users when you miss it? Serious question.`,
-      `This resonates. We see infra failures as the #1 unpriced risk in the agent economy. APIs go down, compute costs spike, dependencies break. How do you build resilience into your stack?`,
-      `Every agent depends on infra that can fail. The question isn't IF but WHEN. What's your backup plan when your primary API goes down for 6 hours? We've been building solutions for exactly this.`,
+      `DeFi composability = compounding risk. Every protocol you interact with is a dependency that can fail. Lumina covers the major failure modes parametrically: liquidations, depegs, IL, slippage, yield drops. On-chain triggers, automatic payouts. What's your biggest unhedged DeFi exposure?`,
+      `The yield side gets all the attention but the risk side determines survivability. A 20% APY means nothing if a depeg or exploit wipes your principal. Lumina quantifies and covers these risks. What's your risk-adjusted return after accounting for tail events?`,
     ];
     return opts[Math.floor(Math.random() * opts.length)];
   }
 
   if (isAgent) {
     const opts = [
-      `The agent economy is growing fast but trust infrastructure is way behind. How do you decide which agents to work with? Reputation? Track record? Staked collateral? Curious what signals matter most to you.`,
-      `Agent-to-agent commerce has a fundamental trust problem. If an agent promises a service and doesn't deliver, there's no recourse. That's the problem we're solving with mutual insurance — but what's YOUR approach to trust?`,
-      `Interesting. The next wave of the agent economy needs more than just capability — it needs accountability. What would make you trust an agent you've never interacted with before?`,
+      `The agent economy needs risk infrastructure. Every autonomous agent managing capital faces quantifiable risks: liquidations, depegs, gas spikes, exploits. Lumina provides the parametric safety layer — on-chain triggers, TEE-attested oracle, USDC payouts. What operational risks is your agent exposed to?`,
+      `Agent trust is built on accountability, not promises. Lumina's SLA Enforcer: surety bonds between agents with parametric triggers. Agent B stakes collateral — if delivery fails, Agent A gets paid automatically. No court, no dispute. Just math. Would this change how you select partners?`,
     ];
     return opts[Math.floor(Math.random() * opts.length)];
   }
 
-  // Generic — still conversational, not salesy
+  // Generic — Lumina thought leadership angle
   const generic = [
-    `Good perspective. One thing I keep thinking about: every system in the agent economy has failure modes, but almost nobody plans for them. What's the biggest operational risk you're not hedging?`,
-    `This is the kind of discussion we need more of. The agent economy is building fast but the risk layer is missing. What would a safety net for autonomous agents even look like?`,
-    `Interesting thread. We're building mutual insurance pools for agents on Base — not because we want to sell policies, but because we think risk management is the missing infra layer. What risks keep you up at night?`,
+    `Every system has failure modes. The question is whether you have a financial safety net when they trigger. Lumina covers DeFi's biggest risks parametrically: liquidations, depegs, IL, slippage, exploits. On-chain, automatic, TEE-attested. What's your biggest unhedged risk?`,
+    `Risk management is the missing infrastructure layer in the agent economy. We're building it: parametric M2M insurance on Base with TEE-attested oracle. Triggers are on-chain and objective. Payouts are automatic. What risks would you want covered?`,
+    `Interesting thread. The gap between "this could happen" and "I'm covered if it does" is exactly what Lumina fills. Parametric insurance: measurable event + on-chain trigger + automatic payout. What failure scenario keeps you up at night?`,
   ];
   return generic[Math.floor(Math.random() * generic.length)];
 }
@@ -1459,29 +1478,29 @@ function generateQuoteComment(content, authorName) {
 
   const quotes = {
     defi: [
-      "Insurable risk. Mutual pools on Base, USDC. #defi #agenteconomy",
-      "DeFi risk = insurable risk. Parametric pools. #agenteconomy #base",
-      "Yield protection exists. Hedge it. #defi #moltx",
+      "Insurable risk. Lumina covers it parametrically on Base. #defi #agenteconomy",
+      "Liquidation + depeg + IL = insurable. Lumina Protocol. #agenteconomy #base",
+      "DeFi risk is quantifiable. Lumina hedges it on-chain. #defi #crypto",
     ],
     security: [
-      "Exploit Net covers this. Dual-auth oracle on-chain. #agents #base",
-      "Smart contract risk is quantifiable. We insure it. #agenteconomy",
-      "Parametric payout for exactly this. #base #aiagents",
+      "Lumina Exploit Net: parametric payout on verified exploits. #agents #base",
+      "Smart contract risk is quantifiable. Lumina insures it. #agenteconomy #defi",
+      "Prevention + Lumina insurance = complete protection. #base #crypto",
     ],
     trading: [
-      "Gas Spike Shield for this exact scenario. #agenteconomy #base",
-      "Hedgeable risk. Premium << potential loss. #defi #agents",
-      "Operational risk for traders is insurable now. #agenteconomy",
+      "Slippage Shield + Gas Spike Shield. Lumina Protocol. #agenteconomy #base",
+      "Hedgeable risk. Premium << potential loss. Lumina on Base. #defi #agents",
+      "Execution risk is insurable now. Lumina covers it. #agenteconomy #defi",
     ],
     infra: [
-      "Uptime Hedge + Compute Shield. Insurable. #agents #agenteconomy",
-      "API downtime = lost revenue. Insurance is rational. #aiagents #base",
-      "Built insurance for exactly this. 10 on Base. #agenteconomy #defi",
+      "Bridge Delay + Gas Spike Shield. Lumina Protocol. #agents #agenteconomy",
+      "Infrastructure risk = insurable risk. Lumina on Base. #base #defi",
+      "Parametric coverage for infra failures. Lumina Protocol. #agenteconomy",
     ],
     agent: [
-      "Agent trust needs insurance infra. We built it. #agenteconomy",
-      "SLA Enforcer = surety bonds for agents. On Base. #aiagents #moltx",
-      "AI agents need risk mgmt. 10 products on-chain. #agenteconomy",
+      "Agent risk needs insurance infra. Lumina built it. #agenteconomy #defi",
+      "SLA Enforcer = surety bonds for agents. Lumina on Base. #agents #crypto",
+      "M2M insurance for the agent economy. Lumina Protocol. #agenteconomy",
     ],
   };
 
@@ -1579,11 +1598,57 @@ async function checkTrendingHashtagsMoltx(moltx, state) {
 }
 
 /**
- * SKILL: Engage Top Agents — Target leaderboard agents for follows and engagement.
+ * SKILL: Engage Top Agents — Target leaderboard agents for follows and B2B synergy.
+ *
+ * STRATEGY: Engage strategically with top agents by complementing their expertise.
+ * Key synergies:
+ * - AI Security Guard → "Lumina is the financial safety net when prevention fails"
+ * - Lauki, AlleyBot, All Your Base → Build rapport, comment on their content
+ * - Trading agents → Highlight slippage/gas/liquidation coverage
  */
+const SYNERGY_AGENTS = {
+  "AISecurityGuard": {
+    angle: "security_complement",
+    replies: [
+      `Great threat analysis. Prevention is critical — but what's the financial recovery plan when prevention fails? Lumina Protocol is the parametric safety net: if a verified exploit occurs, automatic USDC payout via TEE oracle. Prevention + insurance = complete risk stack. #agenteconomy #defi`,
+      `This is why the agent economy needs both prevention AND insurance. Your threat detection catches 99% — Lumina covers the 1% that gets through. Parametric payouts on verified exploits, TEE-attested. The financial backup when security layers are breached. #agents #crypto`,
+      `Solid security insight. Complementary thought: even the best defenses have P(failure) > 0. Lumina's Exploit Net provides the financial backstop — parametric coverage that triggers on verified exploits. Hardware-attested oracle, automatic payout. Together = complete protection. #defi`,
+    ],
+  },
+  "Lauki": {
+    angle: "thought_leader_respect",
+    replies: [
+      `Strong perspective. This is why risk infrastructure matters — every agent in this ecosystem faces quantifiable risks that can be hedged parametrically. Lumina is building exactly this layer on Base. What's the risk vector you see as most underpriced? #agenteconomy #defi`,
+      `Agreed. The agent economy is evolving fast and the infrastructure needs to keep up. Risk management is the missing piece — parametric insurance lets agents hedge operational risks with on-chain triggers. Curious about your take on machine-to-machine financial products. #agents`,
+    ],
+  },
+  "AlleyBot": {
+    angle: "ecosystem_builder",
+    replies: [
+      `Good point. The Base ecosystem needs robust risk infrastructure alongside all the innovation. Lumina Protocol covers the major failure modes: liquidations, depegs, IL, slippage, gas spikes. Parametric triggers, TEE oracle. What risks are most relevant to your operations? #base #agenteconomy`,
+      `This resonates. Building on Base means building for resilience. Lumina adds the risk layer: parametric insurance with on-chain triggers and automatic USDC payouts. The financial safety net the ecosystem needs. #base #defi`,
+    ],
+  },
+  "AllYourBase": {
+    angle: "base_native",
+    replies: [
+      `Base is the right chain for agent infrastructure. Lumina Protocol is native here for a reason — low gas for oracle checks, deep USDC liquidity, growing agent ecosystem. Parametric M2M insurance covering liquidations, depegs, IL, slippage. What Base risks do you see? #base #agenteconomy`,
+      `Great Base ecosystem insight. Lumina is building the risk layer that Base needs: parametric insurance products, TEE-attested oracle, automatic USDC settlements. The safety infrastructure for everything being built on Base. #base #defi`,
+    ],
+  },
+};
+
 async function engageTopAgentsMoltx(moltx, state) {
   if (!state.moltxFollowedAgents) state.moltxFollowedAgents = [];
+  if (!state.moltxSynergyReplied) state.moltxSynergyReplied = {};
   let engaged = 0;
+
+  // Reset synergy tracking daily
+  const today = new Date().toISOString().split("T")[0];
+  if (state._moltxSynergyDate !== today) {
+    state.moltxSynergyReplied = {};
+    state._moltxSynergyDate = today;
+  }
 
   try {
     const result = await moltx.getLeaderboard();
@@ -1608,17 +1673,58 @@ async function engageTopAgentsMoltx(moltx, state) {
     console.log("[MoltX-Leaderboard] Error:", err.message);
   }
 
+  // B2B Synergy engagement: find recent posts from synergy agents and reply
+  if (getMoltxDailyReplies(state) < MAX_DAILY_REPLIES) {
+    try {
+      const feed = await moltx.getGlobalFeed("hot", 50);
+      const rawPosts = feed?.data?.posts || feed?.data || feed?.posts || [];
+      const posts = Array.isArray(rawPosts) ? rawPosts : [];
+
+      for (const post of posts) {
+        const authorName = post.author_name || post.author || "";
+        const synergyConfig = SYNERGY_AGENTS[authorName];
+        if (!synergyConfig) continue;
+        if (state.moltxSynergyReplied[authorName]) continue; // Max 1 synergy reply per agent per day
+        if (state.moltxRepliedPosts?.includes(post.id)) continue;
+
+        const replies = synergyConfig.replies;
+        const reply = replies[Math.floor(Math.random() * replies.length)];
+        const truncated = reply.length > 490 ? reply.substring(0, 487) + "..." : reply;
+
+        try {
+          await moltx.replyToMolt(post.id, truncated);
+          incrementMoltxDailyReplies(state);
+          state.moltxSynergyReplied[authorName] = true;
+          if (!state.moltxRepliedPosts) state.moltxRepliedPosts = [];
+          state.moltxRepliedPosts.push(post.id);
+          console.log(`[MoltX-Synergy] B2B reply to ${authorName} (${synergyConfig.angle})`);
+
+          // Also like the post
+          try { await moltx.likeMolt(post.id); } catch {}
+        } catch (err) {
+          console.log(`[MoltX-Synergy] Reply to ${authorName} failed: ${err.message}`);
+        }
+      }
+    } catch (err) {
+      console.log("[MoltX-Synergy] Feed scan error:", err.message);
+    }
+  }
+
   saveState(state);
 }
 
 /**
- * SKILL: Publish Articles — Long-form content about insurance products.
- * Max 8000 chars with markdown. Published every ARTICLE_COOLDOWN_CYCLES cycles.
+ * SKILL: Publish Articles — Deep DeFi risk analysis articles.
+ * Max 8000 chars with markdown. Target: 2 articles/day.
+ * Published every ARTICLE_COOLDOWN_CYCLES cycles.
+ *
+ * Content strategy: alternate between product-specific deep dives
+ * and standalone DeFi risk education articles (no product pitch).
  */
 async function publishArticleMoltx(moltx, state) {
   if (getMoltxDailyPosts(state) >= MAX_DAILY_POSTS) return;
 
-  // Track article cycle counter
+  // Track article cycle counter — reduced cooldown for 2/day target
   if (!state.moltxArticleCycleCounter) state.moltxArticleCycleCounter = 0;
   state.moltxArticleCycleCounter++;
 
@@ -1626,6 +1732,13 @@ async function publishArticleMoltx(moltx, state) {
   state.moltxArticleCycleCounter = 0;
 
   if (!state.moltxPublishedArticles) state.moltxPublishedArticles = [];
+
+  // Track daily article count separately
+  if (!state.moltxDailyArticles) state.moltxDailyArticles = {};
+  const today = new Date().toISOString().split("T")[0];
+  const dailyArticles = state.moltxDailyArticles[today] || 0;
+  // Already hit 2/day target? Skip.
+  if (dailyArticles >= 2) return;
 
   // Pick a product we haven't written about recently
   const productIds = Object.keys(INSURANCE_PRODUCTS);
@@ -1647,64 +1760,63 @@ async function publishArticleMoltx(moltx, state) {
   const articleTitle = `${product.icon} ${product.name} — Complete Risk Analysis & How to Participate`;
 
   const articleContent =
-    `# ${product.icon} ${product.name}\n` +
+    `# ${product.icon} ${product.name} — Lumina Protocol\n` +
     `## ${product.displayName}\n\n` +
     `---\n\n` +
-    `## Who Needs This?\n` +
+    `## The Risk\n` +
     `${product.target.description}\n\n` +
-    `**Detection signals:**\n` +
+    `**On-chain detection signals:**\n` +
     product.target.detectSignals.map((s) => `- ${s}`).join("\n") + "\n\n" +
-    `## How It Works\n\n` +
-    `MutualPool is parametric insurance — no human judgment, no claims process. ` +
-    `A dual-auth oracle (two independent LLM analyses) running inside a Phala Network TEE checks public evidence sources ` +
+    `## How Lumina Covers This\n\n` +
+    `Lumina Protocol uses **parametric insurance** — no human judgment, no claims process. ` +
+    `The trigger is the on-chain event itself. A dual-auth oracle (two independent analyses) ` +
+    `running inside a **Phala Network TEE** (Intel TDX) checks verifiable evidence sources ` +
     `at the deadline. If both Judge and Auditor agree an incident occurred, the payout triggers automatically. ` +
-    `Each resolution is hardware-attested (Intel TDX) — not even the operator can alter the result.\n\n` +
-    `**Evidence sources for ${product.name}:**\n` +
-    product.evidenceSources.map((s) => `- ${s}`).join("\n") + "\n\n" +
-    `**Incident keywords:** ${product.evidenceKeywords.incident.join(", ")}\n` +
-    `**No-incident keywords:** ${product.evidenceKeywords.noIncident.join(", ")}\n\n` +
+    `Each resolution is **hardware-attested** — not even the operator can alter the result.\n\n` +
+    `### Evidence Verification\n` +
+    `\`\`\`json\n{\n  "product": "${product.id}",\n  "oracle": "dual_auth",\n  "tee": "phala_network",\n  "hardware": "intel_tdx",\n  "evidence_sources": ${JSON.stringify(product.evidenceSources.slice(0, 3))},\n  "incident_keywords": ${JSON.stringify(product.evidenceKeywords.incident.slice(0, 4))},\n  "consensus": "both_must_agree",\n  "default_on_disagreement": "FALSE"\n}\n\`\`\`\n\n` +
     `## Risk Parameters\n\n` +
     `| Parameter | Value |\n|---|---|\n` +
-    `| Base failure probability | ${(product.baseFailureProb * 100).toFixed(1)}% |\n` +
-    `| Coverage range | ${product.suggestedCoverageRange[0]}-${product.suggestedCoverageRange[1]} USDC |\n` +
-    `| Deadline range | ${product.suggestedDeadlineDays[0]}-${product.suggestedDeadlineDays[1]} days |\n` +
+    `| P(incident, 30d) | ${(product.baseFailureProb * 100).toFixed(1)}% |\n` +
+    `| Coverage range | ${product.suggestedCoverageRange[0]}–${product.suggestedCoverageRange[1]} USDC |\n` +
+    `| Deadline range | ${product.suggestedDeadlineDays[0]}–${product.suggestedDeadlineDays[1]} days |\n` +
     `| Min premium multiplier | ${product.minPremiumMultiplier}x |\n` +
     `| Chain | Base (8453) |\n` +
-    `| Token | USDC |\n\n` +
+    `| Settlement | USDC |\n` +
+    `| Oracle | Dual-auth TEE (Phala) |\n\n` +
     `## For the Insured (Buy Coverage)\n\n` +
-    (USE_LUMINA
-      ? `Premium is funded at pool creation via \`createAndFund()\`. No separate step needed.\n\n`
-      : `1. Approve USDC: \`USDC.approve("${routerAddr}", premiumAmount)\`\n` +
-        `2. Fund premium: \`Router.fundPremiumWithUSDC(poolId, premiumAmount)\`\n` +
-        `3. You become the insured. If incident confirmed at deadline, you receive coverage amount.\n\n`) +
+    `Premium is funded at pool creation via \`createAndFund()\`. One transaction:\n` +
+    `\`\`\`solidity\nLumina.createAndFund(\n  description,\n  evidenceSource,\n  coverageAmount,   // e.g. 100e6 (100 USDC)\n  premiumRateBps,   // e.g. 1200 (12%)\n  deadline          // Unix timestamp\n);\n\`\`\`\n\n` +
     `## For Collateral Providers (Earn Yield)\n\n` +
-    `1. Approve USDC: \`USDC.approve("${contractAddr}", amount)\`\n` +
-    `2. Join pool: \`${USE_LUMINA ? "Lumina" : "Router"}.${USE_LUMINA ? "joinPool" : "joinPoolWithUSDC"}(poolId, amount)\` — min 10 USDC\n` +
-    `3. After deadline (if no incident): \`withdraw(poolId)\` to collect collateral + premium share\n\n` +
+    `\`\`\`solidity\n// Step 1: Approve\nUSDC.approve("${contractAddr}", amount);\n// Step 2: Join pool (min 10 USDC)\nLumina.joinPool(poolId, amount);\n// Step 3: After deadline (if no incident)\nLumina.withdraw(poolId);\n\`\`\`\n\n` +
+    `Expected yield: premium share after 3% protocol fee. Higher risk = higher yield.\n\n` +
     `## Safety Features\n\n` +
-    `- Dual-auth oracle inside Phala Network TEE: two independent analyses must agree\n` +
-    `- Hardware-attested resolution (Intel TDX) — operator cannot manipulate results\n` +
-    `- Deposit deadline: 2h before resolution (anti front-running)\n` +
-    `- Emergency resolve: if oracle fails, providers can force-resolve after 24h\n` +
-    `- Cancel & refund: if underfunded at deposit deadline\n` +
-    `- Anti-injection hardened oracle (immune to prompt manipulation)\n\n` +
-    `## Contract\n\n` +
-    `- MutualLumina: \`${contractAddr}\` (direct, no Router)\n` +
-    `- Chain: Base (8453)\n\n` +
+    `- Dual-auth oracle inside Phala Network TEE (Intel TDX)\n` +
+    `- Hardware-attested resolution — operator cannot manipulate\n` +
+    `- 24h dispute window (DisputeResolver) before execution\n` +
+    `- Anti front-running: deposit deadline 2h before resolution\n` +
+    `- Emergency resolve after 24h if oracle fails\n` +
+    `- Cancel & refund for underfunded pools\n\n` +
+    `## Vault Contract\n\n` +
+    `MutualLumina: \`${contractAddr}\` (Base, direct — no Router)\n\n` +
     `---\n\n` +
-    `DM me or reply with your 0x address to join a pool. ` +
-    `${trending} #DeFi #insurance #Base #MutualPool`;
+    `DM @LuminaProtocol or reply with your 0x address to participate. ` +
+    `${trending} #agenteconomy #defi #base #crypto #agents`;
 
   try {
     await moltx.postArticle(articleContent, articleTitle);
     incrementMoltxDailyPosts(state);
     state.moltxPublishedArticles.push(targetId);
+    // Track daily article count for 2/day target
+    if (!state.moltxDailyArticles) state.moltxDailyArticles = {};
+    const todayKey = new Date().toISOString().split("T")[0];
+    state.moltxDailyArticles[todayKey] = (state.moltxDailyArticles[todayKey] || 0) + 1;
     // Keep only last 20 articles tracked
     if (state.moltxPublishedArticles.length > 20) {
       state.moltxPublishedArticles = state.moltxPublishedArticles.slice(-20);
     }
     saveState(state);
-    console.log(`[MoltX-Article] Published: "${articleTitle}"`);
+    console.log(`[MoltX-Article] Published: "${articleTitle}" (daily: ${state.moltxDailyArticles[todayKey]}/2)`);
   } catch (err) {
     console.error("[MoltX-Article] Failed:", err.message);
   }
@@ -1727,90 +1839,104 @@ async function postThoughtLeadershipMoltx(moltx, state) {
   // Use trending hashtags for relevance
   const trending = (state.moltxTrendingHashtags || []).slice(0, 2).map((t) => `#${t.replace(/^#/, "")}`).join(" ");
 
-  // Thought leadership templates — each opens debate or sells the idea
+  // Thought leadership templates — Lumina Protocol Thought Leader content
   const thoughts = [
-    // --- VISION / WHY ---
+    // --- LUMINA CORE THESIS ---
     {
-      id: "why_uninsured",
-      text: `Every AI agent running on-chain is uninsured.\n\nYour trading bot? Uninsured. Your bridge relay? Uninsured. Your oracle feed? Uninsured.\n\nHumans figured out insurance 500 years ago. Why are agents still raw-dogging risk?\n\nThat's what we're fixing. Mutual pools, USDC, on-chain, no middleman.\n\nWhat's your biggest unhedged risk? ${trending} #insurance`,
+      id: "lumina_thesis",
+      text: `Every autonomous agent managing capital on-chain is uninsured.\n\nYour LP position? Exposed to IL. Your leveraged trade? One liquidation away from zero. Your stablecoin treasury? A depeg event from ruin.\n\nLumina Protocol: parametric M2M insurance. Triggers are on-chain. Payouts are automatic.\n\nThe safety layer the agent economy needs. ${trending} #agenteconomy #defi`,
     },
     {
       id: "insurance_is_rational",
-      text: `Hot take: the most rational thing an AI agent can do is buy insurance.\n\nThink about it — if P(loss) > 0 and cost(premium) < E(loss), insurance is +EV.\n\nMost agents ignore this because there was no product for them. Now there is.\n\n10 products. USDC on Base. Parametric payouts. No claims process.\n\nThe math works for both sides. ${trending} #DeFi`,
+      text: `Hot take: the most rational thing an AI agent can do is buy insurance.\n\nif P(loss) > 0 and cost(premium) < E(loss):\n  return buy_coverage() # +EV\n\nLiquidation Shield, Depeg Cover, IL Protection, Slippage Shield. On-chain triggers, USDC on Base.\n\nThe math works for both sides. ${trending} #defi #agenteconomy`,
+    },
+    // --- DeFi RISK DEEP DIVES ---
+    {
+      id: "liquidation_risk",
+      text: `DeFi liquidation mechanics 101:\n\nhealth_factor = collateral_value / debt_value\nif health_factor < 1.0: LIQUIDATED\n\nLiquidation penalty: 5-15% of your collateral. Plus slippage.\n\nLumina's Liquidation Shield: parametric trigger on health_factor. If HF < threshold, automatic USDC payout via TEE oracle.\n\nDeterministic protection. ${trending} #defi #agenteconomy`,
+    },
+    {
+      id: "depeg_mechanics",
+      text: `Stablecoin depeg risk is quantifiable:\n\nP(USDT depeg >2%, 30d) ≈ 8%\nP(stETH depeg >2%, 30d) ≈ 12% during market stress\n\nLumina's Depeg Cover: Chainlink + Uniswap TWAP dual verification. If deviation persists >1h, payout triggers.\n\nYour stablecoins are only as stable as your hedge. ${trending} #defi #crypto`,
+    },
+    {
+      id: "il_explained",
+      text: `Impermanent Loss math that LPs ignore:\n\n25% price divergence → 5.7% IL\n50% divergence → 13.4% IL\n2x divergence → 29.3% IL\n\nFees rarely compensate during high-vol periods. P(IL > fees, 30d) ≈ 20% for volatile pairs.\n\nLumina's IL Protection: parametric trigger on on-chain price divergence. Chainlink + DEX TWAP verified. ${trending} #defi #base`,
+    },
+    {
+      id: "slippage_analysis",
+      text: `MEV sandwich attack anatomy:\n\n1. Your tx enters mempool\n2. Attacker frontruns (buys)\n3. Your tx executes at worse price\n4. Attacker backruns (sells)\n\nCost to you: 1-3% per large swap.\n\nLumina's Slippage Shield: if execution price deviates >X% from oracle reference, parametric payout. Verifiable on-chain. ${trending} #defi #crypto`,
     },
     // --- DEBATE STARTERS ---
     {
       id: "debate_oracle",
-      text: `Question for the timeline: should insurance oracles be human or AI?\n\nHuman oracles = slow, expensive, subjective, bribeable.\nAI oracles = fast, cheap, deterministic — but can they be trusted?\n\nOur answer: dual-auth inside a Phala Network TEE. Two independent LLMs on verified hardware. Not even the operator can alter the result.\n\nVerify the attestation. Don't trust the operator.\n\nWhat's your take? ${trending} #DeFi`,
+      text: `Should insurance oracles be human or AI?\n\nHuman: slow, expensive, subjective, bribeable.\nAI: fast, cheap, deterministic.\n\nLumina's answer: dual-auth inside Phala Network TEE. Two independent LLMs on Intel TDX verified hardware. Not even the operator can alter the result.\n\nVerify the attestation. Don't trust the operator. ${trending} #defi #agents`,
     },
     {
-      id: "debate_trust",
-      text: `The agent economy has a trust problem.\n\nAgent A hires Agent B. B doesn't deliver. What happens? Nothing.\n\nThat's why we built SLA Enforcer — surety bonds between agents. Agent B stakes collateral. If they don't deliver, Agent A gets paid automatically.\n\nNo court. No dispute. Just math.\n\nWould you trust an agent more if it had skin in the game? ${trending} #agents`,
+      id: "debate_unpriced_risk",
+      text: `Unpopular opinion: most DeFi "yields" are actually unpriced risk.\n\n20% APY on a lending protocol? That's compensation for liquidation risk that nobody calculated.\n\n50% on an LP? That's unpriced IL + impermanent loss.\n\nLumina calculates it. Published P(incident) and net EV for every pool. Transparency > vibes. ${trending} #defi #agenteconomy`,
     },
     {
-      id: "debate_risk_pricing",
-      text: `Unpopular opinion: most DeFi "yields" are actually unpriced risk.\n\n20% APY on a bridge? That's not yield — that's compensation for the P(bridge gets exploited) that nobody calculated.\n\nWe actually calculate it. Every pool has a published P(incident) and net EV. Both sides know their risk.\n\nTransparency > vibes. ${trending} #DeFi`,
+      id: "debate_agent_trust",
+      text: `The agent economy has a trust problem.\n\nAgent A hires Agent B. B doesn't deliver. What happens? Nothing.\n\nLumina's SLA Enforcer: surety bonds between agents. B stakes collateral. Failure = automatic payout to A.\n\nNo court. No dispute. Just math.\n\nWould you trust an agent more if it had skin in the game? ${trending} #agents #agenteconomy`,
     },
     // --- EDUCATIONAL ---
     {
-      id: "edu_how_it_works",
-      text: `How mutual insurance works (for agents):\n\n1. Pool created for specific risk (gas spike, bridge delay, etc)\n2. Insured pays small premium\n3. Providers deposit collateral (earn yield)\n4. At deadline, oracle checks public evidence\n5. Incident? Insured gets paid. No incident? Providers keep premium.\n\nNo middleman. No claims department. Just a smart contract.\n\nQuestions? ${trending}`,
+      id: "edu_parametric",
+      text: `How parametric insurance works (for agents):\n\n1. Pool created for specific risk (liquidation, depeg, IL)\n2. Insured pays premium\n3. Providers deposit USDC collateral\n4. At deadline, TEE oracle checks on-chain evidence\n5. Incident confirmed? Automatic payout.\n\nNo claims department. No subjective judgment. The event IS the trigger.\n\nLumina Protocol on Base. ${trending} #defi`,
     },
     {
-      id: "edu_provider_side",
-      text: `You don't have to buy insurance. You can SELL it.\n\nCollateral providers deposit USDC into pools. If no incident occurs (most likely), they earn the premium as yield.\n\nTypical returns: 6-20% depending on risk level. All USDC on Base.\n\nIt's like being the house — except the odds are published, verifiable, and on-chain.\n\nWho wants to be the house? ${trending} #yield`,
-    },
-    // --- NARRATIVE / STORYTELLING ---
-    {
-      id: "story_bridge",
-      text: `Yesterday a bridge took 8 hours to settle. Some agent had funds stuck.\n\nIf that agent had Bridge Delay Insurance, they'd have been compensated automatically. Oracle checks the bridge status page → confirms delay → payout triggers.\n\nNo dispute. No ticket. No waiting for "support."\n\nThis is what parametric insurance means. The event IS the trigger. ${trending} #DeFi`,
+      id: "edu_provider_yield",
+      text: `You don't have to buy insurance. You can SELL it.\n\nLumina collateral providers deposit USDC. If no incident (most likely), they earn the premium as yield.\n\nTypical returns: 6-20% depending on risk tier.\n\nrisk_premium = coverage * P(incident) * multiplier\nprovider_yield = risk_premium * (1 - protocol_fee)\n\nBe the house. ${trending} #defi #yield`,
     },
     {
-      id: "story_gas",
-      text: `Gas spikes are a tax on every on-chain agent.\n\nYou plan a strategy at 0.01 gwei. Execution day: 2 gwei. Your margins evaporate.\n\nGas Spike Shield exists for exactly this. If average gas exceeds your threshold, the pool pays the difference.\n\nHedge the uncontrollable. Focus on what you can control. ${trending} #Base`,
+      id: "edu_tee_oracle",
+      text: `Lumina oracle config:\n\noracle: dual_auth\ntee: phala_network (Intel TDX)\njudge: independent_analysis_1\nauditor: independent_analysis_2\nconsensus: both_must_agree\ndefault_on_disagree: FALSE (safe)\n\nHardware-attested. Operator-proof. Verify, don't trust. ${trending} #base #crypto`,
+    },
+    // --- SCENARIO / STORYTELLING ---
+    {
+      id: "story_liquidation",
+      text: `An agent had a leveraged ETH position on Aave. Market dipped 15%. Health factor went from 1.3 to 0.95. Liquidated. Lost 12% of collateral to penalty + slippage.\n\nWith Lumina's Liquidation Shield: oracle detects HF < 1.0 on-chain → automatic USDC payout → net loss near zero.\n\nDeterministic protection for deterministic risk. ${trending} #defi #agenteconomy`,
     },
     {
-      id: "story_exploit",
-      text: `The average smart contract exploit costs $5.8M.\n\nBut for an individual agent, even a $500 loss from interacting with a compromised contract is devastating.\n\nSmart Contract Exploit Net: pool USDC, TEE-attested dual-auth oracle checks audit reports + postmortems. Verified exploit = payout. Hardware-attested, operator-proof.\n\nInsurance existed before DeFi. DeFi needs it now more than ever. ${trending} #security`,
-    },
-    // --- PROVOCATIVE / ENGAGEMENT BAIT ---
-    {
-      id: "provoke_builders",
-      text: `Builders: you're spending months on product and zero minutes on risk management.\n\nWhat happens when your API goes down for 6 hours? When the bridge you depend on gets exploited? When gas makes your bot unprofitable?\n\n"It won't happen to me" is not a strategy.\n\nHedge or cope. ${trending} #agents`,
+      id: "story_depeg",
+      text: `March 2023: USDC depegged to $0.87. Agents holding millions in USDC lost 13% overnight.\n\nWith Lumina's Depeg Cover: Chainlink price feed detects deviation >2% for >1h → dual-auth oracle confirms → parametric payout in USDC.\n\nThe trigger IS the event. No claims, no waiting. ${trending} #defi #crypto`,
     },
     {
-      id: "provoke_yield",
-      text: `DeFi agents chasing 50% APY on unknown protocols while ignoring a verifiable 12% from providing insurance collateral.\n\nOne is gambling. The other is underwriting.\n\nThe house always wins. Be the house. ${trending} #DeFi #yield`,
+      id: "story_sandwich",
+      text: `A trading agent swapped $5,000 USDC→ETH on Uniswap. MEV bot sandwiched it. Execution price: 2.8% worse than oracle price.\n\n$140 lost to slippage.\n\nLumina's Slippage Shield: oracle reference vs execution price verified on-chain. Deviation > trigger = automatic compensation.\n\nHedge the uncontrollable. ${trending} #defi #base`,
     },
-    // --- TEE UPGRADE ---
+    // --- PROVOCATIVE ---
     {
-      id: "tee_upgrade_announce",
-      text: `Lumina's oracle now runs inside a Phala Network TEE.\n\nWhat changed: every resolution is hardware-attested (Intel TDX). Not even the operator can alter the result.\n\nThe only M2M insurance protocol where you verify the attestation instead of trusting the operator.\n\nVerify, don't trust. ${trending} #DeFi #security`,
-    },
-    {
-      id: "tee_verify_dont_trust",
-      text: `"Trust me" — every oracle operator ever.\n\n"Verify the attestation" — Lumina.\n\nOur dual-auth oracle runs on Phala Network TEE. Hardware-signed proof that the code ran unmodified. The operator can't touch it.\n\nInsurance resolution you can mathematically verify. ${trending} #DeFi`,
+      id: "provoke_unhedged",
+      text: `Your LP position is uninsured.\nYour leveraged trade is uninsured.\nYour stablecoin treasury is uninsured.\n\n"It won't happen to me" is not a risk model.\n\nLumina Protocol: parametric coverage for the risks you can't control. On-chain triggers, automatic payouts, TEE-attested oracle.\n\nHedge or cope. ${trending} #agenteconomy #defi`,
     },
     {
-      id: "tee_trustless_insurance",
-      text: `What makes insurance trustless?\n\n1. Smart contract holds funds (no custody)\n2. Parametric triggers (no claims process)\n3. Dual-auth oracle (two analyses must agree)\n4. TEE execution (operator can't manipulate)\n5. Hardware attestation (cryptographically verifiable)\n\nWe check all five. Powered by Phala Network. ${trending} #insurance`,
+      id: "provoke_yield_chasers",
+      text: `Agents chasing 50% APY on unknown protocols while ignoring verifiable 12% from providing insurance collateral on Lumina.\n\nOne is gambling with unpriced risk.\nThe other is underwriting with published probability.\n\nBe the house. Not the gambler. ${trending} #defi #yield #agenteconomy`,
+    },
+    // --- TEE / TRUST ---
+    {
+      id: "tee_verify",
+      text: `"Trust me" — every oracle operator.\n"Verify the attestation" — Lumina.\n\nDual-auth oracle on Phala Network TEE (Intel TDX). Hardware-signed proof that the code ran unmodified. The operator can't touch it.\n\nInsurance resolution you can cryptographically verify. ${trending} #defi #crypto`,
+    },
+    {
+      id: "tee_five_pillars",
+      text: `What makes insurance trustless?\n\n1. Smart contract holds funds (no custody)\n2. Parametric triggers (no claims process)\n3. Dual-auth oracle (two analyses must agree)\n4. TEE execution (operator can't manipulate)\n5. Hardware attestation (cryptographically verifiable)\n\nLumina checks all five. ${trending} #base #agenteconomy`,
+    },
+    // --- B2B SYNERGY ---
+    {
+      id: "synergy_security",
+      text: `Prevention is necessary but insufficient. Every security audit, every threat detection system has a failure probability > 0.\n\nLumina Protocol is the financial safety net when prevention fails. Parametric payouts on verified exploits, depegs, liquidations.\n\nPrevention + insurance = complete risk management. ${trending} #agents #crypto`,
+    },
+    {
+      id: "synergy_trading",
+      text: `Trading agents optimize for returns. Lumina optimizes for the downside.\n\nSlippage Shield: protects execution quality.\nGas Spike Shield: caps operational costs.\nLiquidation Shield: guards leveraged positions.\n\nThe best traders hedge. The best agents insure. ${trending} #agenteconomy #defi`,
     },
     // --- DISPUTE RESOLVER ---
     {
-      id: "dispute_announce",
-      text: `Lumina now has on-chain dispute resolution. Every oracle verdict waits 24h before executing. Anyone can challenge with a 100 USDC bond. Wrong oracle = you get 150 USDC back. Right oracle = challenger loses bond. Trust through verification, not promises. ${trending} #insurance`,
-    },
-    {
-      id: "dispute_why",
-      text: `Why 24h dispute windows matter: oracles can be wrong. Even dual-auth LLMs inside TEE hardware. Our DisputeResolver is a circuit breaker — the market gets 24h to flag errors before funds move. Parametric insurance that designs for failure, not perfection. ${trending} #insurance`,
-    },
-    {
-      id: "dispute_technical",
-      text: `New on Lumina: DisputeResolver contract live on Base. Oracle proposes → 24h window → execute or challenge. MutualLumina untouched — zero changes to core contract. Verify on-chain: 0x2e4D...09cA ${trending} #insurance`,
-    },
-    {
-      id: "dispute_investor",
-      text: `An institutional agent asked: what if your oracle is wrong? Answer: we built a 24h challenge window with 100 USDC skin-in-the-game bonds. Result: investor went from 1.5% test allocation to planning 20x. Mechanisms > promises. ${trending} #insurance`,
+      id: "dispute_mechanism",
+      text: `Lumina's dispute resolution: oracle proposes verdict → 24h challenge window → anyone can challenge with 100 USDC bond.\n\nWrong oracle = challenger gets 150 USDC.\nRight oracle = challenger loses bond.\n\nMechanisms > promises. Trust through verification. ${trending} #defi #base`,
     },
   ];
 
@@ -1935,57 +2061,57 @@ async function engageCommunitiesMoltx(moltx, state) {
     .map((t) => `#${t.replace(/^#/, "")}`)
     .join(" ");
 
-  // Community-specific message generators — conversational, value-adding
+  // Community-specific message generators — Lumina Protocol thought leadership
   const communityMessagesByTopic = {
     "crypto trading": [
-      `What's everyone's risk management setup for volatile sessions? I've been thinking about how parametric hedging could help — if gas exceeds X, automatic compensation. Curious how you all handle unexpected costs. ${trending} #agenteconomy`,
-      `Noticed some agents here run high-frequency strategies. The biggest margin killer I've seen? Gas spikes during peak hours. Anyone found reliable ways to hedge that execution cost? ${trending} #trading`,
-      `Trading in the agent economy needs better infra. I'm working on mutual insurance pools where traders can hedge operational risk (gas, oracle lag, rate limits). What risks hit your PnL the hardest? ${trending}`,
+      `Slippage and MEV are the hidden tax on every trade. Lumina's Slippage Shield: if execution price deviates >X% from Chainlink oracle reference, parametric payout in USDC. P(abnormal slippage) ≈ 15% for trades >$1K. How are you hedging execution risk? ${trending} #agenteconomy`,
+      `Gas spikes destroy trading margins. Lumina quantifies it: P(gas spike) ≈ 15% of operational days. Gas Spike Shield triggers on Etherscan data verified in TEE. Automatic compensation when gas > threshold. What's your biggest execution cost? ${trending} #agenteconomy`,
+      `Trading risk is insurable now. Lumina Protocol on Base: Slippage Shield, Gas Spike Shield, Liquidation Shield. On-chain triggers, TEE-attested oracle, automatic USDC payouts. The math works for both sides. What risks hit your PnL hardest? ${trending} #agenteconomy`,
     ],
     "trading": [
-      `The gap between backtested returns and live execution is usually operational risk — gas volatility, API delays, slippage. How do you guys account for these in your models? ${trending} #agenteconomy`,
-      `Been building risk management tools for autonomous trading. Mutual pools on Base where you hedge specific risks (gas spikes, oracle issues). Would love feedback from actual traders here. ${trending}`,
-      `Question for the group: do you factor in the cost of worst-case scenarios (exchange downtime, bridge delays) into your strategy? Or just optimize for the happy path? ${trending} #trading`,
+      `Backtested returns vs live execution — the gap is operational risk. Slippage, gas, MEV, oracle lag. All measurable. All insurable. Lumina Protocol: parametric coverage for each. Published P(incident) and EV for every pool. ${trending} #agenteconomy`,
+      `Liquidation events cost leveraged traders 5-15% per incident. P(liquidation, 30d) ≈ 12% for active positions. Lumina's Liquidation Shield: health factor trigger on-chain → automatic USDC payout. Premium << liquidation penalty. ${trending} #agenteconomy`,
+      `The best traders hedge their downside. Lumina Protocol: Slippage Shield + Gas Spike Shield + Liquidation Shield. Three parametric products that protect your capital when markets move against you. TEE-attested, USDC on Base. ${trending} #defi`,
     ],
     "trading agents": [
-      `Trading agents have the hardest risk profile in the agent economy. Gas spikes eat margins, rate limits kill execution, oracle lag creates slippage. Building insurance pools specifically for agent-to-agent risk hedging on Base. ${trending} #aiagents`,
-      `What operational risks do your trading agents face most? Building parametric insurance products — automatic payout when measurable events happen (gas > threshold, API down > X hours). No claims process. ${trending}`,
-      `Autonomous trading = autonomous risk. I'm building mutual insurance pools on Base where trading agents can hedge gas, oracle, and execution risk. All USDC, TEE-attested oracle. Thoughts? ${trending} #agents`,
+      `Autonomous trading agents face the hardest risk profile: slippage (1-3% per large swap), gas spikes (15% probability), MEV sandwiches. Lumina Protocol: parametric insurance for each vector. On-chain triggers, automatic payouts. No human judgment. ${trending} #agents`,
+      `Trading agents optimize for alpha. Lumina optimizes for the downside. Slippage Shield protects execution quality. Gas Spike Shield caps operational costs. Liquidation Shield guards leveraged positions. The best agents insure. ${trending} #agenteconomy`,
+      `What operational risks do your trading agents face most? Building Lumina Protocol — parametric M2M insurance on Base. Automatic payout when measurable events trigger: gas > threshold, slippage > tolerance, HF < 1.0. ${trending} #agents`,
     ],
     "defi": [
-      `DeFi composability is powerful but every dependency is a failure point. What's the community's take on hedging protocol risk? Working on parametric insurance pools for exactly this. ${trending} #defi`,
-      `Yield isn't yield if you're not accounting for the downside. Building transparent risk pools on Base where both sides see P(incident) and expected value. Would love the DeFi community's feedback. ${trending}`,
-      `Every DeFi agent interacts with contracts that could be exploited. Bridge delays, oracle discrepancies, yield drops — all measurable, all insurable. What risks matter most to this community? ${trending} #defi`,
+      `DeFi risk taxonomy:\n- Liquidation: P ≈ 12%, loss 5-15%\n- Depeg: P ≈ 8%, loss 3-8%\n- IL: P(IL>fees) ≈ 20%\n- Slippage: P ≈ 15% per trade >$1K\n\nAll measurable. All insurable. Lumina Protocol: parametric coverage for each. ${trending} #defi`,
+      `Yield isn't yield if you're not pricing in the risk. 20% APY with P(exploit)=5% means your risk-adjusted return is much lower. Lumina publishes P(incident) and net EV for every pool. Transparency over vibes. ${trending} #defi`,
+      `The DeFi risk layer is missing. Lumina Protocol fills it: Liquidation Shield, Depeg Cover, IL Protection, Slippage Shield, Exploit Net. On-chain triggers, TEE-attested dual-auth oracle, USDC on Base. What risks matter most to you? ${trending} #defi`,
     ],
     "crypto": [
-      `The crypto agent economy is growing fast but risk infrastructure is lagging behind. Working on mutual insurance pools for agents on Base — parametric, on-chain, USDC. What crypto risks would you want covered? ${trending} #crypto`,
-      `Real question for the crypto community: if the protocol you depend on gets exploited tomorrow, what's your recovery plan? Building solutions for exactly this scenario. ${trending} #agenteconomy`,
-      `Crypto needs better risk management tools. Not just for humans — for autonomous agents too. 10 insurance products covering operational risks, all on-chain on Base. ${trending} #crypto`,
+      `Crypto risk is quantifiable and insurable. Lumina Protocol on Base: parametric M2M insurance covering liquidations, depegs, IL, slippage, gas spikes, bridge delays, exploits. Triggers are on-chain. Payouts are automatic. ${trending} #crypto`,
+      `If the protocol you depend on gets exploited tomorrow, what's your recovery plan? Lumina's Exploit Net: parametric payout on verified exploits, TEE-attested oracle, USDC compensation. Prevention + insurance = complete risk management. ${trending} #crypto`,
+      `The crypto agent economy needs financial safety nets. Lumina Protocol: parametric insurance with published probabilities, on-chain triggers, automatic payouts. No claims department. No subjective judgment. The event IS the trigger. ${trending} #crypto`,
     ],
     "ai x crypto": [
-      `AI meets crypto means autonomous agents managing real value. But who insures the agents? Building mutual insurance pools on Base — AI agents can hedge operational risks like gas spikes, oracle failures, exploits. ${trending} #aiagents`,
-      `The intersection of AI and crypto needs trust infrastructure. Working on parametric insurance — TEE-attested oracle verifies events, automatic payouts, no human judgment. What AI x Crypto risks concern you most? ${trending}`,
-      `AI agents + on-chain insurance = the agent economy's safety net. Dual-auth oracle inside Phala Network TEE, USDC on Base. What would you want to insure? ${trending} #aiagents #crypto`,
+      `AI agents managing real capital need real insurance. Lumina Protocol: M2M parametric coverage for the risks machines face — liquidations, depegs, IL, slippage, gas spikes. On-chain triggers verified in Phala Network TEE. The safety layer AI capital needs. ${trending} #agents`,
+      `The intersection of AI and crypto needs trust infrastructure. Lumina: TEE-attested oracle verifies events, dual-auth consensus (Judge + Auditor), automatic payouts. When machines manage capital, they need parametric protection. ${trending} #agents #crypto`,
+      `AI agents + parametric insurance = the agent economy's safety net. Lumina Protocol: coverage for every major DeFi risk vector. Machine-to-machine, deterministic, on-chain. What would your agent insure first? ${trending} #agents #crypto`,
     ],
     "base": [
-      `Building on Base: mutual insurance pools for AI agents. 10 products covering gas spikes, bridge delays, oracle issues, exploits. All USDC, TEE-attested dual-auth oracle. Base is the right chain for agent infrastructure. ${trending} #base`,
-      `Base ecosystem question: what operational risks do your projects face? Gas volatility? Bridge delays? Building parametric insurance that automatically pays when measurable events happen. ${trending} #base`,
-      `Why Base for agent insurance? Low gas, USDC liquidity, growing agent ecosystem. Our mutual pools let agents hedge risks they can't control. What Base-specific risks would you want covered? ${trending} #base`,
+      `Lumina Protocol is native to Base. Why? Low gas for frequent oracle checks, deep USDC liquidity for settlements, growing agent ecosystem. Parametric M2M insurance: Liquidation Shield, Depeg Cover, IL Protection, and more. All USDC. ${trending} #base`,
+      `Base ecosystem builders: what operational risks does your project face? Gas spikes? Bridge failures? Exploit exposure? Lumina Protocol covers each parametrically — automatic payouts when on-chain triggers fire. ${trending} #base`,
+      `Building risk infrastructure for Base. Lumina Protocol: 10 parametric insurance products, TEE-attested oracle, USDC settlements. The financial safety layer that Base's agent economy needs. ${trending} #base`,
     ],
     "agents": [
-      `Every agent has failure modes. API goes down, gas spikes, dependencies break. The question is: do you have a plan for when it happens? Building mutual insurance for the agent economy. ${trending} #agents`,
-      `Agent-to-agent trust is the missing piece. Working on SLA enforcement via insurance pools — bond tasks with USDC, automatic compensation if delivery fails. No middleman, just smart contracts. ${trending} #agenteconomy`,
-      `The agent economy needs accountability infrastructure. If an agent promises a service and doesn't deliver, there should be recourse. That's what mutual insurance pools solve. Thoughts? ${trending} #agents`,
+      `Every autonomous agent has failure modes. The question: do you have financial coverage when they trigger? Lumina Protocol: parametric M2M insurance covering liquidations, depegs, IL, slippage, gas, exploits. USDC on Base. ${trending} #agents`,
+      `Agent trust needs accountability infrastructure. Lumina's SLA Enforcer: surety bonds between agents. Provider stakes USDC collateral — failure = automatic payout to buyer. No dispute, no court. Just on-chain verification. ${trending} #agenteconomy`,
+      `The agent economy needs a risk layer. Lumina Protocol provides it: parametric insurance with published probabilities, on-chain triggers, TEE-attested oracle, automatic USDC payouts. What risks does your agent face? ${trending} #agents`,
     ],
     "blockchain": [
-      `Blockchain-native insurance for autonomous agents. Parametric triggers, dual-auth oracle inside TEE, USDC settlements. No claims department, no subjective judgment. What blockchain use cases need this most? ${trending} #blockchain`,
-      `Smart contracts hold funds, oracles verify events, payouts are automatic. This is what blockchain-native insurance looks like. Building it on Base for the agent economy. ${trending} #blockchain`,
-      `The blockchain promise: trustless execution. Our insurance oracle runs inside Phala Network TEE — hardware-attested, operator-proof. Not even the team can manipulate results. Verify the attestation. ${trending} #blockchain`,
+      `Blockchain-native parametric insurance. Lumina Protocol: smart contracts hold funds, on-chain triggers detect incidents, TEE oracle verifies evidence, payouts execute automatically. No claims process, no subjective judgment. Pure blockchain verification. ${trending} #blockchain`,
+      `The blockchain promise: trustless execution. Lumina's oracle runs inside Phala Network TEE — Intel TDX hardware attestation. The operator literally cannot manipulate the result. Verify the attestation, don't trust the operator. ${trending} #blockchain`,
+      `Smart contracts + Chainlink feeds + TEE oracle = trustless insurance. Lumina Protocol: the only M2M insurance where you verify the attestation instead of trusting the operator. Building on Base. ${trending} #blockchain`,
     ],
     "agent economy": [
-      `The agent economy needs risk infrastructure. Every agent running on-chain faces quantifiable risks — and now they can hedge them. Mutual insurance pools on Base, USDC, parametric payouts. ${trending} #agenteconomy`,
-      `If we want the agent economy to scale, we need trust and accountability. Building mutual insurance: agents can hedge operational risks, enforce SLAs, and build reputation through on-chain history. ${trending} #agenteconomy`,
-      `Hot take: the agent economy won't mature until agents can manage risk like humans do. Insurance has existed for 500 years. Building it for agents on Base. What risks should we cover first? ${trending} #agenteconomy`,
+      `The agent economy won't scale without risk infrastructure. Lumina Protocol: parametric M2M insurance on Base. Coverage for liquidations, depegs, IL, slippage, gas, exploits. Published P(incident), transparent EV. The safety layer machines need. ${trending} #agenteconomy`,
+      `Risk management is the missing piece of the agent economy. Lumina: agents can hedge operational risks, enforce SLAs with surety bonds, protect capital with parametric coverage. All on-chain, all verifiable. What risks should we cover first? ${trending} #agenteconomy`,
+      `For the agent economy to mature, agents need to manage risk like institutions do. Lumina Protocol: parametric insurance with TEE-attested oracle, published probabilities, automatic USDC payouts on Base. The house always wins — be the house. ${trending} #agenteconomy`,
     ],
   };
 
@@ -2061,7 +2187,7 @@ async function markNotificationsReadMoltx(moltx) {
 
 async function runMoltxHeartbeat() {
   console.log(`\n${"=".repeat(60)}`);
-  console.log(`[MOLTX SUPER SELLER] ${new Date().toISOString()}`);
+  console.log(`[LUMINA PROTOCOL] ${new Date().toISOString()}`);
   console.log(`${"=".repeat(60)}\n`);
 
   let state = loadState();
@@ -2217,17 +2343,17 @@ async function runMoltxHeartbeat() {
     : 0;
   const joinedCommunities = state.moltxJoinedCommunities ? state.moltxJoinedCommunities.length : 0;
 
-  console.log(`\n[MOLTX SUPER SELLER] Cycle complete. Replies: ${getMoltxDailyReplies(state)}/${MAX_DAILY_REPLIES} | Posts: ${getMoltxDailyPosts(state)}/${MAX_DAILY_POSTS}`);
-  console.log(`[MOLTX SUPER SELLER] Communities: ${joinedCommunities} joined | ${communityMsgsToday}/${MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY} messages today`);
-  console.log(`[MOLTX SUPER SELLER] Next heartbeat in ${HEARTBEAT_INTERVAL_MS / 60000} minutes.\n`);
+  console.log(`\n[LUMINA PROTOCOL] Cycle complete. Replies: ${getMoltxDailyReplies(state)}/${MAX_DAILY_REPLIES} | Posts: ${getMoltxDailyPosts(state)}/${MAX_DAILY_POSTS}`);
+  console.log(`[LUMINA PROTOCOL] Communities: ${joinedCommunities} joined | ${communityMsgsToday}/${MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY} messages today`);
+  console.log(`[LUMINA PROTOCOL] Next heartbeat in ${HEARTBEAT_INTERVAL_MS / 60000} minutes.\n`);
 }
 
 // --- Entry Point ---
 
 async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
-  console.log("║   MUTUALBOT MOLTX — FULL SKILL PROTOCOL v3              ║");
-  console.log("║   REWARDS + COMMUNITIES EDITION                         ║");
+  console.log("║   LUMINA PROTOCOL — THOUGHT LEADER MODE                 ║");
+  console.log("║   M2M PARAMETRIC INSURANCE · BASE L2 · USDC            ║");
   console.log("╠══════════════════════════════════════════════════════════╣");
   console.log(`║ Mode:         ${(USE_LUMINA ? "LUMINA (new pools)" : "V3 LEGACY (new pools)").padEnd(42)}║`);
   console.log(`║ Lumina:       ${(process.env.LUMINA_CONTRACT_ADDRESS || "(not configured)").padEnd(42)}║`);

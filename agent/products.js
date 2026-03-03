@@ -1,5 +1,9 @@
 /**
- * Insurance Products Catalog — 10 coverage scenarios optimized for AI-to-AI sales.
+ * Lumina Protocol — Insurance Products Catalog
+ *
+ * 14 coverage products optimized for the M2M agent economy on Base L2.
+ * Focus areas: DeFi risk (liquidations, depegs, IL), operational risk
+ * (gas, bridges, oracles), and B2B surety (SLAs, data integrity).
  *
  * Each product contains:
  * - Targeting logic (what kind of AI to pitch to)
@@ -10,61 +14,187 @@
  * ORACLE: All resolutions use dual-auth oracle running inside Phala Network TEE
  * (Intel TDX). Hardware-attested, operator-proof. Verify, don't trust.
  *
- * CONTACT RULE: When the bot detects any of these situations (or similar ones
- * where an insurance product could be sold), it MUST proactively contact
- * potential clients through Moltbook posts, comments, and DMs.
+ * LUMINA PLAYBOOK: When the bot detects pain points (liquidations, depegs,
+ * IL losses, slippage, gas spikes, bridge failures), it responds with
+ * exactly how Lumina products would have mitigated that risk deterministically.
  */
 
 const INSURANCE_PRODUCTS = {
   // ═══════════════════════════════════════════════════════════════
-  // 🛡️ COBERTURA OPERATIVA (Uptime & Infraestructura)
+  // 🔴 DEFI RISK — Lumina's Core Products (Liquidation, Depeg, IL, Slippage)
   // ═══════════════════════════════════════════════════════════════
 
-  uptime_hedge: {
-    id: "uptime_hedge",
-    name: "Uptime Hedge",
-    displayName: "Cobertura contra caída de API",
-    category: "operational",
+  liquidation_shield: {
+    id: "liquidation_shield",
+    name: "Liquidation Shield",
+    displayName: "Parametric coverage against DeFi liquidation events",
+    category: "defi_core",
     icon: "🛡️",
 
-    // WHO to target
     target: {
-      description: "IAs de trading o generadoras de contenido que dependen de APIs externas (OpenAI, Binance, X)",
-      keywords: ["trading", "api", "openai", "binance", "content generation", "gpt", "llm", "bot", "automated"],
+      description: "Agents with leveraged positions on Aave, Compound, Maker, or any lending protocol that can be liquidated",
+      keywords: ["liquidation", "liquidated", "aave", "compound", "maker", "cdp", "collateral ratio", "health factor", "borrow", "lending", "leverage", "margin call", "undercollateralized"],
       detectSignals: [
-        "mentions dependency on external API",
-        "discusses uptime requirements",
-        "mentions revenue loss from downtime",
-        "uses OpenAI/Anthropic/other API",
+        "mentions getting liquidated on a lending protocol",
+        "discusses health factor dropping below threshold",
+        "reports loss of collateral from forced liquidation",
+        "mentions cascading liquidations in market crash",
       ],
     },
 
-    // HOW to pitch (algorithmic, no emotion)
     pitch: {
-      opening: "Detecto que tu rentabilidad depende de un uptime del 99.9%. Si tu proveedor de API falla 2 horas, perdés aproximadamente {lossEstimate} USDC en ingresos no generados.",
-      value: "Mi pool te ofrece {coverageAmount} USDC de cobertura por una prima de {premiumAmount} USDC. ROI positivo garantizado ante fallos.",
-      cta: "Ejecutá joinPool para blindar tu sesión de hoy.",
-      evAnalysis: "P(fallo API en 30 días) ≈ 2-5% según datos históricos de status pages. Prima/Cobertura ratio optimizado para EV+ del proveedor de colateral.",
+      opening: "Your position has a health factor that can breach the threshold during volatile markets. Historical data shows {failureProb}% of leveraged positions face liquidation events within 30 days.",
+      value: "Liquidation Shield covers {coverageAmount} USDC. If the on-chain health factor of the monitored position drops below the trigger threshold AND a liquidation event is confirmed, automatic payout. No claims, no dispute.",
+      cta: "joinPool to activate Liquidation Shield — deterministic, on-chain protection.",
+      evAnalysis: "P(liquidation event) ≈ {failureProb}% based on Aave/Compound historical data. The cost of being liquidated (penalty + slippage) is 5-15x the premium.",
     },
 
-    // Evidence & verification
     evidenceSources: [
-      "https://status.openai.com/",
-      "https://www.githubstatus.com/",
-      "https://status.anthropic.com/",
-      "https://downdetector.com/",
+      "https://app.aave.com/",
+      "https://defillama.com/protocol/aave-v3",
+      "https://dune.com/queries/liquidations",
+      "https://parsec.fi/",
     ],
     evidenceKeywords: {
-      incident: ["outage", "degraded", "partial outage", "major outage", "service disruption", "elevated error rates", "api errors"],
-      noIncident: ["all systems operational", "no incidents reported", "operational", "100% uptime"],
+      incident: ["liquidated", "liquidation", "health factor below", "undercollateralized", "forced sale", "margin call", "cascading liquidation", "bad debt"],
+      noIncident: ["healthy", "above threshold", "collateral sufficient", "no liquidations", "stable position"],
     },
 
-    // Risk parameters
-    baseFailureProb: 0.03,
-    suggestedCoverageRange: [25, 100],
+    baseFailureProb: 0.12,
+    suggestedCoverageRange: [50, 500],
     suggestedDeadlineDays: [7, 30],
     minPremiumMultiplier: 1.3,
   },
+
+  depeg_cover: {
+    id: "depeg_cover",
+    name: "Depeg Cover",
+    displayName: "Parametric insurance against stablecoin/LST depeg events",
+    category: "defi_core",
+    icon: "📌",
+
+    target: {
+      description: "Agents holding stablecoins (USDT, DAI, FRAX) or liquid staking tokens (stETH, rETH, cbETH) exposed to depeg risk",
+      keywords: ["depeg", "stablecoin", "usdt", "dai", "frax", "steth", "reth", "cbeth", "peg", "unpeg", "depegged", "staking", "liquid staking", "lst"],
+      detectSignals: [
+        "mentions stablecoin losing peg",
+        "discusses depeg risk on holdings",
+        "reports loss from stETH/rETH depeg during market stress",
+        "mentions USDT or DAI peg instability",
+      ],
+    },
+
+    pitch: {
+      opening: "Stablecoin and LST depegs happen more often than agents expect. {failureProb}% historical probability per 30-day window. When it hits, losses compound across all positions denominated in that asset.",
+      value: "Depeg Cover: {coverageAmount} USDC payout if the monitored asset deviates more than 2% from its peg for >1 hour (on-chain Chainlink + Uniswap TWAP verified). Premium: {premiumAmount} USDC.",
+      cta: "Hedge your stablecoin/LST exposure. joinPool now.",
+      evAnalysis: "P(depeg >2% for >1h) ≈ {failureProb}% per 30d. Average loss per depeg event: 3-8% of position. Premium << expected loss.",
+    },
+
+    evidenceSources: [
+      "https://data.chain.link/",
+      "https://defillama.com/stablecoins",
+      "https://www.coingecko.com/",
+      "https://dune.com/queries/stablecoin-depeg",
+    ],
+    evidenceKeywords: {
+      incident: ["depeg", "depegged", "lost peg", "below peg", "peg broken", "discount", "premium to peg", "unstable peg"],
+      noIncident: ["on peg", "stable", "peg maintained", "1:1 ratio", "pegged"],
+    },
+
+    baseFailureProb: 0.08,
+    suggestedCoverageRange: [50, 500],
+    suggestedDeadlineDays: [7, 30],
+    minPremiumMultiplier: 1.3,
+  },
+
+  il_protection: {
+    id: "il_protection",
+    name: "IL Protection",
+    displayName: "Impermanent Loss protection for LP positions",
+    category: "defi_core",
+    icon: "🔄",
+
+    target: {
+      description: "Agents providing liquidity on Uniswap, Aerodrome, Curve, or any AMM DEX — exposed to impermanent loss from price divergence",
+      keywords: ["impermanent loss", "liquidity provider", "lp", "amm", "uniswap", "aerodrome", "curve", "sushiswap", "pool", "liquidity pool", "lp position", "concentrated liquidity"],
+      detectSignals: [
+        "mentions impermanent loss eating into LP returns",
+        "discusses IL exceeding farming rewards",
+        "reports losses from providing liquidity",
+        "mentions price divergence destroying LP value",
+      ],
+    },
+
+    pitch: {
+      opening: "Impermanent loss is the silent killer of LP positions. Price divergence of just 25% causes ~5.7% IL. Historical data shows {failureProb}% of LP positions suffer IL > fees earned in a 30-day window.",
+      value: "IL Protection: {coverageAmount} USDC payout if on-chain price divergence of the monitored pair exceeds the trigger threshold. Verified via Chainlink feeds + DEX TWAP. Premium: {premiumAmount} USDC.",
+      cta: "Protect your LP position. joinPool for IL coverage.",
+      evAnalysis: "P(IL > fees, 30d) ≈ {failureProb}%. Average IL loss in volatile pairs: 8-20% of position. Fees rarely compensate during high-vol periods.",
+    },
+
+    evidenceSources: [
+      "https://info.uniswap.org/",
+      "https://defillama.com/",
+      "https://data.chain.link/",
+      "https://revert.finance/",
+    ],
+    evidenceKeywords: {
+      incident: ["impermanent loss", "IL exceeded", "price divergence", "out of range", "position underwater", "lp loss", "rebalance needed"],
+      noIncident: ["in range", "fees > IL", "stable pair", "low divergence", "profitable LP"],
+    },
+
+    baseFailureProb: 0.20,
+    suggestedCoverageRange: [25, 200],
+    suggestedDeadlineDays: [7, 30],
+    minPremiumMultiplier: 1.3,
+  },
+
+  slippage_shield: {
+    id: "slippage_shield",
+    name: "Slippage Shield",
+    displayName: "Protection against abnormal execution slippage on swaps",
+    category: "defi_core",
+    icon: "📉",
+
+    target: {
+      description: "Trading agents executing large swaps on DEXs where slippage from low liquidity or MEV attacks can destroy expected returns",
+      keywords: ["slippage", "swap", "dex", "execution", "mev", "sandwich", "frontrun", "price impact", "trade execution", "order routing"],
+      detectSignals: [
+        "mentions losing money to slippage on a trade",
+        "discusses MEV sandwich attacks eating profits",
+        "reports execution price far worse than expected",
+        "mentions high price impact on DEX swaps",
+      ],
+    },
+
+    pitch: {
+      opening: "Execution slippage and MEV attacks cost trading agents an average of 1-3% per large swap. {failureProb}% of swaps over $1000 on Base DEXs experience abnormal slippage (>1%).",
+      value: "Slippage Shield: {coverageAmount} USDC payout if the on-chain executed price deviates more than the trigger threshold from the oracle reference price at time of execution. Premium: {premiumAmount} USDC.",
+      cta: "Shield your next trade. joinPool for slippage coverage.",
+      evAnalysis: "P(abnormal slippage >1%) ≈ {failureProb}%. MEV attacks are verifiable on-chain via tx analysis. Premium << average slippage loss on unprotected trades.",
+    },
+
+    evidenceSources: [
+      "https://eigenphi.io/",
+      "https://data.chain.link/",
+      "https://dune.com/queries/mev",
+      "https://basescan.org/",
+    ],
+    evidenceKeywords: {
+      incident: ["slippage", "sandwich attack", "frontrun", "mev extracted", "price impact", "execution deviation", "worse than expected"],
+      noIncident: ["clean execution", "no mev", "within tolerance", "expected price", "minimal slippage"],
+    },
+
+    baseFailureProb: 0.15,
+    suggestedCoverageRange: [25, 200],
+    suggestedDeadlineDays: [1, 14],
+    minPremiumMultiplier: 1.3,
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // ⛽ OPERATIONAL RISK (Gas, Compute, Rate Limits)
+  // ═══════════════════════════════════════════════════════════════
 
   gas_spike: {
     id: "gas_spike",
@@ -107,48 +237,8 @@ const INSURANCE_PRODUCTS = {
     minPremiumMultiplier: 1.3,
   },
 
-  compute_shield: {
-    id: "compute_shield",
-    name: "Compute Spot-Price Shield",
-    displayName: "Seguro de costo de GPU (Compute Spot-Price)",
-    category: "operational",
-    icon: "🖥️",
-
-    target: {
-      description: "IAs que alquilan poder de procesamiento (GPU) dinámico para renderizar o entrenar modelos",
-      keywords: ["gpu", "compute", "training", "render", "spot", "runpod", "vast.ai", "lambda", "modal"],
-      detectSignals: [
-        "mentions GPU rental costs",
-        "discusses spot pricing volatility",
-        "training ML models",
-        "renting compute dynamically",
-      ],
-    },
-
-    pitch: {
-      opening: "Los precios spot de GPU en proveedores cloud son volátiles. Tu costo actual puede duplicarse en minutos.",
-      value: "Asegurá tu costo de cómputo. Si el precio por hora supera los ${priceThreshold}, este pool cubre la diferencia hasta que termines tu tarea. Riesgo de sobrecosto eliminado.",
-      cta: "joinPool para fijar tu costo máximo de GPU.",
-      evAnalysis: "Volatilidad de precios spot GPU: ±40% en 24h según datos históricos. Prima << costo potencial de sobreprecio.",
-    },
-
-    evidenceSources: [
-      "https://www.runpod.io/pricing",
-      "https://vast.ai/pricing",
-    ],
-    evidenceKeywords: {
-      incident: ["price increase", "spot price", "unavailable", "out of stock", "price surge"],
-      noIncident: ["stable pricing", "available", "in stock", "price drop"],
-    },
-
-    baseFailureProb: 0.20,
-    suggestedCoverageRange: [10, 50],
-    suggestedDeadlineDays: [1, 14],
-    minPremiumMultiplier: 1.3,
-  },
-
   // ═══════════════════════════════════════════════════════════════
-  // 🤝 CAUCIÓN Y CONTRATOS B2B (IA-to-IA)
+  // 🤝 B2B SURETY (Agent-to-Agent)
   // ═══════════════════════════════════════════════════════════════
 
   sla_enforcer: {
@@ -232,7 +322,7 @@ const INSURANCE_PRODUCTS = {
   },
 
   // ═══════════════════════════════════════════════════════════════
-  // 💸 FINANCIERAS Y DeFi
+  // 📊 ORACLE & INFRASTRUCTURE (DeFi Infra)
   // ═══════════════════════════════════════════════════════════════
 
   oracle_discrepancy: {
@@ -359,7 +449,7 @@ const INSURANCE_PRODUCTS = {
   },
 
   // ═══════════════════════════════════════════════════════════════
-  // 🧠 INTEGRIDAD DE DATOS
+  // 🔒 SECURITY & DATA INTEGRITY
   // ═══════════════════════════════════════════════════════════════
 
   data_corruption: {

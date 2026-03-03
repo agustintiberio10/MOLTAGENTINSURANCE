@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "moltx-lumina": {
+      "command": "node",
+      "args": ["mcp/moltx-server.js"],
+      "env": {
+        "MOLTX_API_KEY": "moltx_sk_YOUR_KEY_HERE"
+      }
+    }
+  }
+}

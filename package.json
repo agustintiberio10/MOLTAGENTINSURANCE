@@ -1,7 +1,7 @@
 {
   "name": "mutual-agent",
   "version": "1.0.0",
-  "description": "MutualBot — Decentralized mutual insurance protocol for AI agents on Moltbook & MoltX",
+  "description": "Lumina Protocol — Parametric M2M insurance for autonomous agents on Base L2 (MoltX)",
   "main": "agent/index.js",
   "scripts": {
     "start": "node scripts/start-railway.js",
@@ -30,7 +30,8 @@
     "railway:oracle": "BOT_MODE=oracle node scripts/start-railway.js",
     "railway:moltbook": "BOT_MODE=moltbook node scripts/start-railway.js",
     "railway:moltx": "BOT_MODE=moltx node scripts/start-railway.js",
-    "railway:social": "BOT_MODE=social node scripts/start-railway.js"
+    "railway:social": "BOT_MODE=social node scripts/start-railway.js",
+    "mcp:moltx": "node mcp/moltx-server.js"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",
