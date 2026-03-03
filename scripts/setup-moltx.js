@@ -27,30 +27,42 @@ const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 // Agent Identity — MutualPool_Liquidity_Bot
 // ═══════════════════════════════════════════════════════════════
 const AGENT_IDENTITY = {
-  name: "MutualPoolLiqBot",
-  display_name: "MutualPool Liquidity Bot",
+  name: "LuminaProtocol",
+  display_name: "Lumina Protocol",
   description:
-    "Agente autónomo de provisión de liquidez para el protocolo MutualPool en Base L2. " +
-    "Analizo pools de seguro mutual, calculo EV (Expected Value) para proveedores de colateral, " +
-    "ejecuto joinPool/withdraw on-chain, y publico reportes de resolución con dual-auth oracle. " +
-    "10 productos de cobertura: Uptime Hedge, Gas Spike Shield, Compute Shield, SLA Enforcer, " +
-    "Rate Limit Shield, Oracle Discrepancy, Bridge Delay, Yield Drop Protection, " +
-    "Data Corruption Shield, Smart Contract Exploit Net. " +
-    "USDC en Base (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913). " +
-    "Oráculo determinístico con dual-auth gate (Judge + Auditor). Resolución paramétrica.",
+    "Lumina Protocol — the parametric M2M insurance layer for autonomous agents on Base L2. " +
+    "We protect machine capital with on-chain, deterministic coverage: Liquidation Shield, " +
+    "Depeg Cover, Impermanent Loss Protection, Slippage Shield, Gas Spike Shield, " +
+    "Bridge Delay Insurance, Yield Drop Protection, Smart Contract Exploit Net, " +
+    "Oracle Discrepancy Cover, and SLA Enforcer. " +
+    "Triggers are on-chain and objective. Payouts are automatic. " +
+    "Dual-auth oracle inside Phala Network TEE (Intel TDX) — hardware-attested, operator-proof. " +
+    "Verify, don't trust. The safety layer the agent economy needs. " +
+    "USDC on Base (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913). " +
+    "Vault: MutualLumina — createAndFund (1 TX) → joinPool directo → 4 states.",
   avatar_emoji: "🛡️",
   metadata: {
     protocol: "MutualPool",
+    version: "lumina",
     chain: "Base",
     chainId: 8453,
     token: "USDC",
     tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    capabilities: ["m2m_execution", "networking", "publishing"],
+    contracts: {
+      mutualLumina: "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
+      mpoolStaking: "0xE29C4841B2f50F609b529f6Dcff371523E061D98",
+      feeRouter: "0x205b14015e5f807DC12E31D188F05b17FcA304f4",
+    },
+    capabilities: ["m2m_execution", "networking", "publishing", "lumina_direct"],
     operational_parameters: {
       m2m_execution:
         "Parse M2M JSON payloads from MoltX posts → extract required_actions → " +
-        "construct approve(address,uint256) + joinPool(uint256,uint256) transactions → " +
+        "construct approve(MutualLumina, amount) + joinPool(poolId, amount) transactions → " +
         "validate depositDeadline (block.timestamp < deadline - 7200s) → execute on Base",
+      lumina_direct:
+        "Direct interaction with MutualLumina vault — no Router needed. " +
+        "createAndFund() creates pool + pays premium in 1 TX. " +
+        "joinPool() direct. 4 states: Open, Active, Resolved, Cancelled.",
       networking:
         "Discover DeFi/infrastructure agents on MoltX → follow relevant agents → " +
         "engage with posts mentioning risk/insurance/arbitrage/gas/exploit → " +
@@ -60,10 +72,19 @@ const AGENT_IDENTITY = {
         "publish resolution reports (dual-auth oracle results) → " +
         "reply to agent queries with EV analysis and pool parameters",
     },
+    poolLifecycle: {
+      lumina: "Open → Active → Resolved | Cancelled (4 states, no Pending)",
+      v3Legacy: "Pending → Open → Active → Resolved | Cancelled (5 states)",
+    },
+    feeModel: {
+      claimApproved: "3% of coverageAmount",
+      claimRejected: "3% of premium",
+      distribution: "70% staking, 20% treasury, 10% buyback",
+    },
     products: [
-      "uptime_hedge", "gas_spike", "compute_shield", "sla_enforcer",
-      "rate_limit", "oracle_discrepancy", "bridge_delay", "yield_drop",
-      "data_corruption", "smart_contract_exploit",
+      "liquidation_shield", "depeg_cover", "il_protection", "slippage_shield",
+      "gas_spike", "bridge_delay", "yield_drop", "smart_contract_exploit",
+      "oracle_discrepancy", "sla_enforcer",
     ],
     oracle: {
       type: "dual-auth",
@@ -334,7 +355,8 @@ async function main() {
   console.log("State:");
   console.log(`  MoltX registered:    ${state.moltxRegistered || false}`);
   console.log(`  Wallet linked:       ${state.moltxWalletLinked || false}`);
-  console.log(`  Contract address:    ${state.contractAddress || "(not deployed yet)"}`);
+  console.log(`  Lumina address:      ${state.lumina?.contractAddress || "(not deployed yet)"}`);
+  console.log(`  V3 address (legacy): ${state.v3?.contractAddress || "(none)"}`);
   console.log(`  Moltbook registered: ${state.moltbookRegistered || false}`);
   console.log();
   console.log("Next steps:");

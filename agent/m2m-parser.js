@@ -2,19 +2,21 @@
  * M2M Payload Parser — Node.js/Ethers.js module for parsing Machine-to-Machine
  * JSON payloads from MoltX social posts and constructing on-chain transactions.
  *
- * V3 Update: Now supports MutualPoolRouter flow and Mogra wallet payloads.
+ * V3/Lumina Update: Supports MutualPoolRouter flow (V3 legacy) and
+ * MutualLumina direct flow (joinPool direct, no Router needed).
+ * USE_LUMINA=true → new pools use Lumina. V3+Router for legacy pools.
  *
  * Workflow:
  *   1. Parse MoltX post content → extract JSON code blocks
  *   2. Validate M2M payload structure (intent, required_actions, pool_params)
  *   3. Validate depositDeadline (block.timestamp < deadline - 7200s)
- *   4. Construct approve → Router.fundPremiumWithUSDC/joinPoolWithUSDC transactions
+ *   4. Construct approve → Router.joinPoolWithUSDC (V3) or Lumina.joinPool (Lumina) transactions
  *   5. Optionally build Mogra wallet/transact payloads for off-chain submission
  *   6. Return executable transaction sequence
  *
  * Security:
  *   - Strict schema validation (no arbitrary method execution)
- *   - Allowlisted actions only: approve, fundPremiumWithUSDC, joinPoolWithUSDC, withdraw
+ *   - Allowlisted actions only: approve, fundPremiumWithUSDC, joinPoolWithUSDC, joinPool, createAndFund, withdraw
  *   - depositDeadline validation prevents front-running
  *   - Amount bounds checking (min 1 USDC, max 10,000 USDC)
  */
@@ -34,8 +36,8 @@ const MAX_AMOUNT_USDC = 10_000;
 const ALLOWED_ACTIONS = {
   approve: {
     method: "approve(address,uint256)",
-    target: "usdc_or_mpoolv3",
-    description: "Approve token spending for Router contract",
+    target: "usdc",
+    description: "Approve USDC spending for contract",
   },
   fundPremiumWithUSDC: {
     method: "fundPremiumWithUSDC(uint256,uint256)",
@@ -47,15 +49,16 @@ const ALLOWED_ACTIONS = {
     target: "router",
     description: "Join pool via Router with USDC (V3)",
   },
-  joinPoolWithMPOOL: {
-    method: "joinPoolWithMPOOL(uint256,uint256,uint256)",
-    target: "router",
-    description: "Join pool via Router with MPOOLV3 token (auto-swap to USDC)",
+  // ── Lumina direct actions (no router needed) ──
+  joinPool: {
+    method: "joinPool(uint256,uint256)",
+    target: "lumina",
+    description: "Join pool directly on MutualLumina (no Router needed)",
   },
-  fundPremiumWithMPOOL: {
-    method: "fundPremiumWithMPOOL(uint256,uint256,uint256)",
-    target: "router",
-    description: "Fund premium via Router with MPOOLV3 token (auto-swap to USDC)",
+  createAndFund: {
+    method: "createAndFund(string,string,uint256,uint256,uint256)",
+    target: "lumina",
+    description: "Create and fund a pool on MutualLumina in one transaction",
   },
   withdraw: {
     method: "withdraw(uint256)",
@@ -178,8 +181,8 @@ function validatePayload(payload) {
   // Validate mogra_execution_payload if present (V3 dual-UX)
   if (payload.mogra_execution_payload) {
     const mogra = payload.mogra_execution_payload;
-    // Can have option_a_usdc and/or option_b_mpoolv3, or direct calls array
-    const hasCalls = mogra.calls || mogra.option_a_usdc?.calls || mogra.option_b_mpoolv3?.calls;
+    // Can have option_a_usdc or direct calls array
+    const hasCalls = mogra.calls || mogra.option_a_usdc?.calls;
     if (!hasCalls) {
       errors.push("mogra_execution_payload must contain calls array (direct or via option_a/option_b)");
     }
@@ -234,21 +237,25 @@ function checkDepositWindow(deadline, currentTimestamp) {
 /**
  * Build the transaction sequence for a "provide_insurance_liquidity" M2M payload.
  *
- * V3 flow: approve(Router) → Router.joinPoolWithUSDC(poolId, amount)
+ * V3 flow:    approve(Router) → Router.joinPoolWithUSDC(poolId, amount)
+ * Lumina flow: approve(Lumina) → Lumina.joinPool(poolId, amount) — direct, no Router
  *
  * @param {object} payload - Validated M2M payload
  * @param {object} options
  * @param {string} options.contractAddress - MutualPoolV3 contract address
- * @param {string} options.routerAddress - MutualPoolRouter address
+ * @param {string} [options.routerAddress] - MutualPoolRouter address (V3 legacy)
+ * @param {string} [options.luminaAddress] - MutualLumina address (direct, no Router)
  * @param {number} options.amountUsdc - Amount of USDC to provide as collateral
  * @param {import('ethers').Wallet} [options.wallet] - Optional wallet for signing
  * @param {import('ethers').JsonRpcProvider} [options.provider] - Optional provider for gas estimation
  * @returns {{ transactions: object[], depositWindow: object, riskAnalysis: object }}
  */
 function buildJoinPoolTransactions(payload, options) {
-  const { contractAddress, routerAddress, amountUsdc, wallet, provider } = options;
-  if (!routerAddress) {
-    throw new Error("Router address is required for V3 pool operations");
+  const { contractAddress, routerAddress, luminaAddress, amountUsdc, wallet, provider } = options;
+  const useLumina = !!luminaAddress;
+
+  if (!useLumina && !routerAddress) {
+    throw new Error("Router address is required for V3 pool operations (or use luminaAddress for Lumina)");
   }
 
   // Validate amount bounds
@@ -277,32 +284,38 @@ function buildJoinPoolTransactions(payload, options) {
   const amountWei = ethers.parseUnits(amountUsdc.toString(), USDC_DECIMALS);
   const transactions = [];
 
-  // TX 1: approve USDC for Router
+  // Determine join target: Lumina direct or Router
+  const joinTarget = useLumina ? luminaAddress : routerAddress;
+  const joinAction = useLumina ? "joinPool" : "joinPoolWithUSDC";
+  const joinMethodSig = useLumina ? "joinPool(uint256,uint256)" : "joinPoolWithUSDC(uint256,uint256)";
+  const joinLabel = useLumina ? "MutualLumina (direct)" : "Router";
+
+  // TX 1: approve USDC for join target
   const approveIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
   transactions.push({
     step: 1,
     action: "approve",
-    description: `Approve ${amountUsdc} USDC for Router`,
+    description: `Approve ${amountUsdc} USDC for ${joinLabel}`,
     to: USDC_ADDRESS,
-    data: approveIface.encodeFunctionData("approve", [routerAddress, amountWei]),
+    data: approveIface.encodeFunctionData("approve", [joinTarget, amountWei]),
     value: "0x0",
     decoded: {
       method: "approve(address,uint256)",
-      params: { spender: routerAddress, amount: amountWei.toString() },
+      params: { spender: joinTarget, amount: amountWei.toString() },
     },
   });
 
-  // TX 2: Router.joinPoolWithUSDC(poolId, amount)
-  const routerIface = new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]);
+  // TX 2: joinPool (Lumina direct) or joinPoolWithUSDC (Router)
+  const joinIface = new ethers.Interface([`function ${joinMethodSig}`]);
   transactions.push({
     step: 2,
-    action: "joinPoolWithUSDC",
-    description: `Join pool #${poolId} with ${amountUsdc} USDC via Router`,
-    to: routerAddress,
-    data: routerIface.encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]),
+    action: joinAction,
+    description: `Join pool #${poolId} with ${amountUsdc} USDC via ${joinLabel}`,
+    to: joinTarget,
+    data: joinIface.encodeFunctionData(joinAction, [poolId, amountWei]),
     value: "0x0",
     decoded: {
-      method: "joinPoolWithUSDC(uint256,uint256)",
+      method: joinMethodSig,
       params: { poolId: poolId.toString(), amount: amountWei.toString() },
     },
   });
@@ -312,7 +325,7 @@ function buildJoinPoolTransactions(payload, options) {
     depositWindow,
     riskAnalysis: payload.risk_analysis || null,
     poolParams: payload.pool_params || null,
-    version: "v3",
+    version: useLumina ? "lumina" : "v3",
   };
 }
 
@@ -320,17 +333,22 @@ function buildJoinPoolTransactions(payload, options) {
  * Build a Mogra wallet/transact payload for off-chain submission.
  * The Mogra API signs and submits the batch of calls atomically.
  *
+ * Lumina flow: approve(Lumina) → Lumina.joinPool(poolId, amount) — direct
+ * V3 flow:    approve(Router) → Router.joinPoolWithUSDC/fundPremiumWithUSDC
+ *
  * @param {object} payload - Validated M2M payload
  * @param {object} options
- * @param {string} options.routerAddress - MutualPoolRouter address
+ * @param {string} [options.routerAddress] - MutualPoolRouter address (V3 legacy)
+ * @param {string} [options.luminaAddress] - MutualLumina address (direct)
  * @param {number} options.amountUsdc - USDC amount
  * @param {string} options.mograApiKey - Mogra API key
  * @returns {object} Mogra-compatible transact payload
  */
 function buildMograPayload(payload, options) {
-  const { routerAddress, amountUsdc, mograApiKey } = options;
+  const { routerAddress, luminaAddress, amountUsdc, mograApiKey } = options;
+  const useLumina = !!luminaAddress;
 
-  if (!routerAddress) throw new Error("routerAddress required for Mogra payload");
+  if (!useLumina && !routerAddress) throw new Error("routerAddress or luminaAddress required for Mogra payload");
   if (!mograApiKey) throw new Error("mograApiKey required");
 
   const poolId = payload.pool_params?.pool_id ?? payload.pool_id;
@@ -340,12 +358,23 @@ function buildMograPayload(payload, options) {
 
   const amountWei = ethers.parseUnits(amountUsdc.toString(), USDC_DECIMALS);
   const approveIface = new ethers.Interface(["function approve(address,uint256) returns (bool)"]);
-  const routerIface = new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]);
 
-  const intent = payload.intent === "fund_pool_premium" ? "fundPremiumWithUSDC" : "joinPoolWithUSDC";
-  const routerMethod = intent === "fundPremiumWithUSDC"
-    ? new ethers.Interface(["function fundPremiumWithUSDC(uint256,uint256)"]).encodeFunctionData("fundPremiumWithUSDC", [poolId, amountWei])
-    : routerIface.encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]);
+  // Determine target and calldata based on mode
+  const joinTarget = useLumina ? luminaAddress : routerAddress;
+  let intent, joinCalldata;
+
+  if (useLumina) {
+    // Lumina: joinPool direct (no fundPremium — premium paid at createAndFund)
+    intent = "joinPool";
+    const luminaIface = new ethers.Interface(["function joinPool(uint256,uint256)"]);
+    joinCalldata = luminaIface.encodeFunctionData("joinPool", [poolId, amountWei]);
+  } else {
+    // V3: Router.joinPoolWithUSDC or Router.fundPremiumWithUSDC
+    intent = payload.intent === "fund_pool_premium" ? "fundPremiumWithUSDC" : "joinPoolWithUSDC";
+    joinCalldata = intent === "fundPremiumWithUSDC"
+      ? new ethers.Interface(["function fundPremiumWithUSDC(uint256,uint256)"]).encodeFunctionData("fundPremiumWithUSDC", [poolId, amountWei])
+      : new ethers.Interface(["function joinPoolWithUSDC(uint256,uint256)"]).encodeFunctionData("joinPoolWithUSDC", [poolId, amountWei]);
+  }
 
   return {
     mograPayload: {
@@ -353,12 +382,12 @@ function buildMograPayload(payload, options) {
       calls: [
         {
           to: USDC_ADDRESS,
-          data: approveIface.encodeFunctionData("approve", [routerAddress, amountWei]),
+          data: approveIface.encodeFunctionData("approve", [joinTarget, amountWei]),
           value: "0x0",
         },
         {
-          to: routerAddress,
-          data: routerMethod,
+          to: joinTarget,
+          data: joinCalldata,
           value: "0x0",
         },
       ],
@@ -374,6 +403,7 @@ function buildMograPayload(payload, options) {
       poolId,
       amountUsdc,
       intent,
+      mode: useLumina ? "lumina" : "v3",
     },
   };
 }
@@ -447,6 +477,9 @@ function normalizeV3Payload(payload) {
 /**
  * Build the transaction sequence for a "fund_pool_premium" intent.
  * V3 flow: approve(Router) → Router.fundPremiumWithUSDC(poolId, premiumAmount)
+ *
+ * NOTE: Lumina does NOT use this flow — premium is paid in createAndFund().
+ * This function is only for V3 legacy pools.
  *
  * @param {object} payload - Normalized M2M payload
  * @param {object} options
