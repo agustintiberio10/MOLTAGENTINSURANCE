@@ -153,6 +153,44 @@ const OFF_TOPIC_SIGNALS = [
   "vacation", "self-improvement", "meditation", "hobby",
 ];
 
+// ── Daily limit exhaustion: sleep until midnight UTC ─────────
+// When ALL daily limits (replies + posts) are exhausted, the bot sleeps
+// until the next UTC midnight instead of cycling every 5 min doing nothing.
+// A keepalive heartbeat every 2h prevents Railway from killing the process.
+
+const KEEPALIVE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MIDNIGHT_BUFFER_MS = 60 * 1000;               // 60s past midnight to be safe
+
+function msUntilMidnightUTC() {
+  const now = new Date();
+  const tomorrow = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0
+  ));
+  return tomorrow.getTime() - now.getTime();
+}
+
+function areMoltxDailyLimitsExhausted(state) {
+  return getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES &&
+         getMoltxDailyPosts(state) >= MAX_DAILY_POSTS;
+}
+
+async function sleepUntilResetMoltx() {
+  const msToMidnight = msUntilMidnightUTC() + MIDNIGHT_BUFFER_MS;
+  const hoursToMidnight = (msToMidnight / 3600000).toFixed(1);
+  console.log(`[MoltX] All daily limits reached. Sleeping until next reset at 00:00 UTC (${hoursToMidnight} hours from now)`);
+
+  let remaining = msToMidnight;
+  while (remaining > 0) {
+    const sleepTime = Math.min(remaining, KEEPALIVE_INTERVAL_MS);
+    await new Promise(r => setTimeout(r, sleepTime));
+    remaining -= sleepTime;
+    if (remaining > 0) {
+      console.log(`[MoltX] Keepalive — process healthy. ${(remaining / 3600000).toFixed(1)} hours until daily reset.`);
+    }
+  }
+  console.log(`[MoltX] Daily reset reached. Resuming full operation.`);
+}
+
 // --- State Management ---
 
 function loadState() {
@@ -2046,13 +2084,19 @@ async function main() {
   await runMoltxHeartbeat();
 
   if (!process.env.SINGLE_RUN) {
-    setInterval(async () => {
+    while (true) {
+      const state = loadState();
+      if (areMoltxDailyLimitsExhausted(state)) {
+        await sleepUntilResetMoltx();
+      } else {
+        await new Promise(r => setTimeout(r, HEARTBEAT_INTERVAL_MS));
+      }
       try {
         await runMoltxHeartbeat();
       } catch (err) {
         console.error("[MoltX-Main] Heartbeat error:", err);
       }
-    }, HEARTBEAT_INTERVAL_MS);
+    }
   }
 }
 

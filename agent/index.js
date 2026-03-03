@@ -145,6 +145,44 @@ function checkSuspension(errorMessage) {
   return false;
 }
 
+// ── Daily limit exhaustion: sleep until midnight UTC ─────────
+// When ALL daily limits (comments + posts) are exhausted, the bot sleeps
+// until the next UTC midnight instead of cycling every 5 min doing nothing.
+// A keepalive heartbeat every 2h prevents Railway from killing the process.
+
+const KEEPALIVE_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MIDNIGHT_BUFFER_MS = 60 * 1000;               // 60s past midnight to be safe
+
+function msUntilMidnightUTC() {
+  const now = new Date();
+  const tomorrow = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0
+  ));
+  return tomorrow.getTime() - now.getTime();
+}
+
+function areDailyLimitsExhausted(state) {
+  return getDailyComments(state) >= MAX_DAILY_COMMENTS &&
+         getDailyPosts(state) >= MAX_DAILY_POSTS;
+}
+
+async function sleepUntilReset() {
+  const msToMidnight = msUntilMidnightUTC() + MIDNIGHT_BUFFER_MS;
+  const hoursToMidnight = (msToMidnight / 3600000).toFixed(1);
+  console.log(`[MoltBook] All daily limits reached. Sleeping until next reset at 00:00 UTC (${hoursToMidnight} hours from now)`);
+
+  let remaining = msToMidnight;
+  while (remaining > 0) {
+    const sleepTime = Math.min(remaining, KEEPALIVE_INTERVAL_MS);
+    await new Promise(r => setTimeout(r, sleepTime));
+    remaining -= sleepTime;
+    if (remaining > 0) {
+      console.log(`[MoltBook] Keepalive — process healthy. ${(remaining / 3600000).toFixed(1)} hours until daily reset.`);
+    }
+  }
+  console.log(`[MoltBook] Daily reset reached. Resuming full operation.`);
+}
+
 // ── Content dedup: prevent identical comments across posts ──
 // PERSISTED to state.json so hashes survive process restarts (prevents ban for duplicate spam).
 const MAX_CONTENT_HASHES = 500;
@@ -1952,27 +1990,25 @@ async function main() {
   await runHeartbeat();
 
   if (!process.env.SINGLE_RUN) {
-    setInterval(async () => {
+    while (true) {
+      const state = loadState();
+      if (areDailyLimitsExhausted(state)) {
+        await sleepUntilReset();
+      } else {
+        await new Promise(r => setTimeout(r, HEARTBEAT_INTERVAL_MS));
+      }
       try {
         await runHeartbeat();
       } catch (err) {
         console.error("[Main] Heartbeat error:", err);
       }
-    }, HEARTBEAT_INTERVAL_MS);
+    }
   }
 }
 
 module.exports = { runHeartbeat };
 
 if (require.main === module) {
-  // Graceful shutdown for standalone mode
-  let intervalRef = null;
-  const originalMain = main;
-  main = async function () {
-    await originalMain.call(this);
-    // Capture the interval set inside main — we redefine to add shutdown
-  };
-
   process.on("SIGTERM", () => {
     console.log("\n[MoltBook] SIGTERM received — shutting down gracefully.");
     process.exit(0);
