@@ -443,6 +443,18 @@ class MoltXClient {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // Rewards — USDC farming (check eligibility + claim)
+  // ═══════════════════════════════════════════════════════════════
+
+  async getActiveRewards() {
+    return this._curlGet("/rewards/active");
+  }
+
+  async claimRewards() {
+    return this._curlPost("/rewards/claim", {});
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // Health Check (no auth)
   // ═══════════════════════════════════════════════════════════════
 

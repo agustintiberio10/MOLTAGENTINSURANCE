@@ -31,12 +31,7 @@
     "railway:moltbook": "BOT_MODE=moltbook node scripts/start-railway.js",
     "railway:moltx": "BOT_MODE=moltx node scripts/start-railway.js",
     "railway:social": "BOT_MODE=social node scripts/start-railway.js",
-    "mcp:moltx": "node mcp/moltx-server.js",
-    "bot:moltx": "node agent/bot-moltx.js",
-    "bot:moltx:loop": "node agent/bot-moltx.js --loop",
-    "bot:moltx:link": "node agent/bot-moltx.js --link-only",
-    "bot:moltx:post": "node agent/bot-moltx.js --post-only",
-    "bot:moltx:rewards": "node agent/bot-moltx.js --rewards"
+    "mcp:moltx": "node mcp/moltx-server.js"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",

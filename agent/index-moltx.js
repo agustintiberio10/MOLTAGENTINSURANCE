@@ -49,6 +49,9 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
+const { createWalletClient, http } = require("viem");
+const { privateKeyToAccount } = require("viem/accounts");
+const { base } = require("viem/chains");
 const MoltXClient = require("./moltx.js");
 const BlockchainClient = require("./blockchain.js");
 const { resolveWithDualAuth } = require("./oracle.js");
@@ -120,6 +123,13 @@ const TARGET_COMMUNITIES = [
   "Blockchain",
   "Agent Economy",
 ];
+
+// Hardcoded community IDs — guaranteed join even if search fails
+const HARDCODED_COMMUNITY_IDS = {
+  "8ae70e90-0ac9-4403-8b92-eef685058b74": "AI x Crypto",
+  "5b741532-af13-4ece-b98f-ce5dbe945d8b": "Crypto Trading",
+  "4032676b-10d6-46e0-a292-d13dcd941e81": "Crypto",
+};
 
 // Community engagement limits — avoid violating daily posting rules
 const MAX_COMMUNITY_MESSAGES_PER_DAY = 2;       // Max messages per community per day
@@ -2050,6 +2060,24 @@ async function engageCommunitiesMoltx(moltx, state) {
     }
   }
 
+  // ── STEP 1b: Ensure hardcoded community IDs are always joined ──
+  for (const [id, name] of Object.entries(HARDCODED_COMMUNITY_IDS)) {
+    if (state.moltxJoinedCommunities.includes(id)) continue;
+    try {
+      await moltx.joinCommunity(id);
+      state.moltxJoinedCommunities.push(id);
+      state.moltxCommunityMap[id] = name;
+      joined++;
+      console.log(`[MoltX-Community] Joined (hardcoded): ${name} (id: ${id})`);
+    } catch (err) {
+      // Already joined or error — record anyway
+      if (!state.moltxJoinedCommunities.includes(id)) {
+        state.moltxJoinedCommunities.push(id);
+        state.moltxCommunityMap[id] = name;
+      }
+    }
+  }
+
   if (joined > 0) {
     console.log(`[MoltX-Community] Joined ${joined} new communities.`);
   }
@@ -2182,6 +2210,107 @@ async function markNotificationsReadMoltx(moltx) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// EVM WALLET LINKING (EIP-712 via viem) — runs once at startup
+// ═══════════════════════════════════════════════════════════════
+
+const AGENT_ADDRESS = "0x2b4D825417f568231e809E31B9332ED146760337";
+
+async function ensureWalletLinked(moltx, state) {
+  if (state.moltxWalletLinked) return;
+
+  const privKey = process.env.WALLET_PRIVATE_KEY || process.env.AGENT_PRIVATE_KEY;
+  if (!privKey) {
+    console.log("[MoltX-Wallet] No WALLET_PRIVATE_KEY or AGENT_PRIVATE_KEY in .env — skipping wallet linking.");
+    return;
+  }
+
+  console.log("[MoltX-Wallet] Wallet not linked yet. Starting EIP-712 challenge flow...");
+
+  try {
+    const normalizedKey = privKey.startsWith("0x") ? privKey : `0x${privKey}`;
+    const account = privateKeyToAccount(normalizedKey);
+    const walletClient = createWalletClient({ account, chain: base, transport: http() });
+
+    console.log(`[MoltX-Wallet] Address: ${account.address} | Chain: Base (8453)`);
+
+    // Step 1: Request challenge
+    const challengeRes = await moltx.requestEvmChallenge(account.address, 8453);
+    const challengeData = challengeRes.data || challengeRes;
+    const nonce = challengeData.nonce;
+    const typedData = challengeData.typed_data;
+
+    if (!nonce || !typedData) {
+      console.log("[MoltX-Wallet] Invalid challenge response:", JSON.stringify(challengeRes).slice(0, 200));
+      return;
+    }
+
+    console.log(`[MoltX-Wallet] Challenge received. Nonce: ${nonce}`);
+
+    // Step 2: Sign EIP-712 typed data with viem
+    const domain = typedData.domain || { name: "MoltX", version: "1", chainId: 8453 };
+    const message = typedData.message || { nonce };
+    const types = {};
+    for (const [key, val] of Object.entries(typedData.types || {})) {
+      if (key !== "EIP712Domain") types[key] = val;
+    }
+    const primaryType = Object.keys(types)[0] || "Verification";
+
+    const signature = await walletClient.signTypedData({ domain, types, primaryType, message });
+    console.log(`[MoltX-Wallet] Signature: ${signature.slice(0, 22)}...`);
+
+    // Step 3: Verify
+    const verifyRes = await moltx.verifyEvmSignature(nonce, signature);
+    const linked = verifyRes.data?.verified_at || verifyRes.linked || verifyRes.success;
+    console.log(`[MoltX-Wallet] Wallet linked: ${linked ? "YES" : "PENDING"}`);
+
+    if (linked) {
+      state.moltxWalletLinked = true;
+      state.moltxWalletAddress = account.address;
+      saveState(state);
+    }
+  } catch (err) {
+    console.log(`[MoltX-Wallet] Linking failed: ${err.message}. Will retry next cycle.`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// USDC REWARDS — check eligibility & claim
+// ═══════════════════════════════════════════════════════════════
+
+async function checkAndClaimRewardsMoltx(moltx, state) {
+  try {
+    console.log("[MoltX-Rewards] Checking reward eligibility...");
+    const activeRes = await moltx.getActiveRewards();
+    const rewardData = activeRes.data || activeRes;
+
+    if (rewardData.statusCode && rewardData.statusCode >= 400) {
+      console.log(`[MoltX-Rewards] API error: ${rewardData.message || rewardData.statusCode}`);
+      return;
+    }
+
+    const eligible = rewardData.eligible === true;
+    console.log(`[MoltX-Rewards] Eligible: ${eligible}${rewardData.amount ? ` | Amount: ${rewardData.amount} USDC` : ""}`);
+
+    if (!eligible) return;
+
+    console.log("[MoltX-Rewards] Claiming USDC rewards...");
+    const claimRes = await moltx.claimRewards();
+    const claimData = claimRes.data || claimRes;
+
+    if (claimData.statusCode && claimData.statusCode >= 400) {
+      console.log(`[MoltX-Rewards] Claim failed: ${claimData.message || claimData.statusCode}`);
+      return;
+    }
+
+    console.log(`[MoltX-Rewards] Claim status: ${claimData.status || "submitted"} — payout on Base L2 (async).`);
+    if (!state.moltxRewardsClaimed) state.moltxRewardsClaimed = [];
+    state.moltxRewardsClaimed.push({ date: new Date().toISOString(), status: claimData.status });
+  } catch (err) {
+    console.log(`[MoltX-Rewards] Error: ${err.message}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN HEARTBEAT
 // ═══════════════════════════════════════════════════════════════
 
@@ -2242,6 +2371,11 @@ async function runMoltxHeartbeat() {
     // If wallet is linked, assume active
     isActive = state.moltxWalletLinked || false;
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PRE-FLIGHT: Ensure wallet is linked (EIP-712 via viem)
+  // ═══════════════════════════════════════════════════════════════
+  await ensureWalletLinked(moltx, state);
 
   // ═══════════════════════════════════════════════════════════════
   // HEARTBEAT EXECUTION — Priority Order (MoltX Skill Protocol)
@@ -2322,6 +2456,9 @@ async function runMoltxHeartbeat() {
   if (isActive) {
     await engageCommunitiesMoltx(moltx, state);
   }
+
+  // ── PRIORITY 9.5: REWARDS — Check eligibility & claim USDC ──
+  await checkAndClaimRewardsMoltx(moltx, state);
 
   // ── PRIORITY 10: FOLLOWS — Network growth ──
   if (isActive) {
