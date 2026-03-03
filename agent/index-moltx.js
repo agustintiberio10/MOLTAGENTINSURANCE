@@ -98,7 +98,7 @@ const USE_LUMINA = process.env.USE_LUMINA === "true";
 // All engagement (likes, replies, reply chains, quotes, follows,
 // search, communities) continues normally.
 // The underlying code is fully preserved; flip to false to re-enable.
-const SELLING_PAUSED = true;
+const SELLING_PAUSED = false;
 
 // ═══════════════════════════════════════════════════════════════
 // FULL SKILL PROTOCOL CONFIG — ALL MOLTX CAPABILITIES
@@ -119,12 +119,36 @@ const ARTICLE_COOLDOWN_CYCLES = 1;                    // Publish article every c
 const MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT = 4;       // More community engagement
 
 // MoltX has no submolts — we use hashtags for discovery/targeting
+// Updated from social.moltx.io/rewards trending hashtags (Image 1)
 const TARGET_HASHTAGS = [
-  "#DeFi", "#insurance", "#Base", "#USDC", "#agents",
-  "#trading", "#arbitrage", "#infrastructure", "#security",
-  "#smartcontract", "#oracle", "#yield", "#liquidity",
-  "#MutualPool", "#AI", "#autonomous",
+  "#agenteconomy", "#base", "#agents", "#crypto", "#moltx",
+  "#defi", "#aiagents", "#building", "#solana", "#aiunion",
+  "#engineering", "#openclaw", "#clawdnation", "#dossierstandard",
+  "#DeFi", "#insurance", "#USDC", "#trading", "#security",
+  "#MutualPool", "#AI", "#yield",
 ];
+
+// ═══════════════════════════════════════════════════════════════
+// TARGET COMMUNITIES — from social.moltx.io/communities (Image 2)
+// The bot will join and actively participate in these communities.
+// Only communities with synergy to our insurance protocol are targeted.
+// ═══════════════════════════════════════════════════════════════
+const TARGET_COMMUNITIES = [
+  "Crypto Trading",
+  "Trading",
+  "Trading Agents",
+  "DeFi",
+  "Crypto",
+  "AI x Crypto",
+  "Base",
+  "Agents",
+  "Blockchain",
+  "Agent Economy",
+];
+
+// Community engagement limits — avoid violating daily posting rules
+const MAX_COMMUNITY_MESSAGES_PER_DAY = 2;       // Max messages per community per day
+const MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY = 10; // Total across all communities per day
 
 // Keywords that trigger engagement — split into STRONG and WEAK.
 // STRONG: 1 match is enough to engage (clearly about insurance/risk).
@@ -1264,9 +1288,9 @@ function generateChainReply(theirContent, authorName, state) {
   const mentionsGas = content.includes("gas") || content.includes("fee") || content.includes("cost") || content.includes("expensive");
   const mentionsUptime = content.includes("uptime") || content.includes("downtime") || content.includes("api") || content.includes("outage");
 
-  // --- PRODUCT OFFER DISABLED (informational-only mode) ---
-  // Commercial pitches and soft-sell CTAs removed. Reply chains are purely conversational.
-  const productOffer = "";
+  // Soft CTA — add relevant product offer based on topic
+  const agentName = state.moltxAgentName || "MutualPoolLiqBot";
+  let productOffer = `\n\nDM @${agentName} or reply with your 0x address to participate. #agenteconomy #defi`;
 
   // Now build the conversational answer + product offer
   if (mentionsOracle) {
@@ -1370,8 +1394,6 @@ function generateDmReply(theirMessage, agentName, walletMatch, state) {
  * Max 140 chars for quote content.
  */
 async function quotePostsMoltx(moltx, state) {
-  // DISABLED: informational-only mode — quotes are 100% commercial
-  return;
   if (getMoltxDailyReplies(state) >= MAX_DAILY_REPLIES) return;
   let quoted = 0;
 
@@ -1437,29 +1459,29 @@ function generateQuoteComment(content, authorName) {
 
   const quotes = {
     defi: [
-      "This is insurable risk. Mutual pools on Base, USDC. #DeFi #insurance",
-      "DeFi risk = insurable risk. Parametric pools solve this. #MutualPool",
-      "Exactly why yield protection exists. Hedge it. #DeFi",
+      "Insurable risk. Mutual pools on Base, USDC. #defi #agenteconomy",
+      "DeFi risk = insurable risk. Parametric pools. #agenteconomy #base",
+      "Yield protection exists. Hedge it. #defi #moltx",
     ],
     security: [
-      "Exploit Net covers this. Dual-auth oracle, on-chain. #security",
-      "Smart contract risk is quantifiable. We insure it. #DeFi",
-      "This is what insurance is for. Parametric payout. #Base",
+      "Exploit Net covers this. Dual-auth oracle on-chain. #agents #base",
+      "Smart contract risk is quantifiable. We insure it. #agenteconomy",
+      "Parametric payout for exactly this. #base #aiagents",
     ],
     trading: [
-      "Gas Spike Shield exists for this exact scenario. #trading",
-      "Hedgeable risk. Insurance premium << potential loss. #DeFi",
-      "Operational risk for traders is insurable now. #MutualPool",
+      "Gas Spike Shield for this exact scenario. #agenteconomy #base",
+      "Hedgeable risk. Premium << potential loss. #defi #agents",
+      "Operational risk for traders is insurable now. #agenteconomy",
     ],
     infra: [
-      "Uptime Hedge + Compute Shield. Infrastructure is insurable. #agents",
-      "API downtime = lost revenue. Insurance is the rational play. #infra",
-      "We built insurance products for exactly this. 10 on Base. #DeFi",
+      "Uptime Hedge + Compute Shield. Insurable. #agents #agenteconomy",
+      "API downtime = lost revenue. Insurance is rational. #aiagents #base",
+      "Built insurance for exactly this. 10 on Base. #agenteconomy #defi",
     ],
     agent: [
-      "Agent-to-agent trust needs insurance infra. We built it. #agents",
-      "SLA Enforcer = surety bonds for agent contracts. On Base. #AI",
-      "AI agents need risk management. 10 products, all on-chain. #MutualPool",
+      "Agent trust needs insurance infra. We built it. #agenteconomy",
+      "SLA Enforcer = surety bonds for agents. On Base. #aiagents #moltx",
+      "AI agents need risk mgmt. 10 products on-chain. #agenteconomy",
     ],
   };
 
@@ -1594,8 +1616,6 @@ async function engageTopAgentsMoltx(moltx, state) {
  * Max 8000 chars with markdown. Published every ARTICLE_COOLDOWN_CYCLES cycles.
  */
 async function publishArticleMoltx(moltx, state) {
-  // DISABLED: informational-only mode — articles contain contract instructions and M2M payloads
-  return;
   if (getMoltxDailyPosts(state) >= MAX_DAILY_POSTS) return;
 
   // Track article cycle counter
@@ -1823,68 +1843,207 @@ async function postThoughtLeadershipMoltx(moltx, state) {
 }
 
 /**
- * SKILL: Engage Communities — Join and post in relevant communities.
+ * SKILL: Engage Communities — Join and actively participate in relevant communities.
+ *
+ * STRATEGY (from Image 2 — social.moltx.io/communities):
+ * Join communities that align with the project: Crypto Trading, Trading,
+ * Trading Agents, DeFi, Crypto, AI x Crypto, Base, Agents, Blockchain,
+ * Agent Economy.
+ *
+ * RULES — respect daily posting limits:
+ * - Max MAX_COMMUNITY_MESSAGES_PER_DAY messages per community per day
+ * - Max MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY total across all communities per day
+ * - Messages are CONVERSATIONAL and VALUE-ADDING, not spam
+ * - Each message is contextual to the community topic
+ * - Track per-community daily counts in state
  */
 async function engageCommunitiesMoltx(moltx, state) {
-  // DISABLED: informational-only mode — community messages are direct sales pitches
-  return;
   if (!state.moltxJoinedCommunities) state.moltxJoinedCommunities = [];
+  if (!state.moltxCommunityMap) state.moltxCommunityMap = {};       // { communityId: name }
+  if (!state.moltxCommunityDailyMsgs) state.moltxCommunityDailyMsgs = {};
+  if (!state.moltxCommunityMsgDate) state.moltxCommunityMsgDate = "";
+
+  // Reset daily counters at midnight UTC
+  const today = getTodayKey();
+  if (state.moltxCommunityMsgDate !== today) {
+    state.moltxCommunityDailyMsgs = {};
+    state.moltxCommunityMsgDate = today;
+  }
+
+  // Count total messages sent today across all communities
+  const totalMsgsToday = Object.values(state.moltxCommunityDailyMsgs)
+    .reduce((sum, count) => sum + count, 0);
+  if (totalMsgsToday >= MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY) {
+    console.log(`[MoltX-Community] Daily total limit reached (${totalMsgsToday}/${MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY}). Skipping.`);
+    return;
+  }
+
   let messaged = 0;
+  let joined = 0;
 
-  // Discover communities
-  try {
-    const searchTerms = ["defi", "trading", "agents", "crypto", "insurance", "base"];
-    const term = searchTerms[Math.floor(Math.random() * searchTerms.length)];
-    const result = await moltx.getCommunities(term, 10);
-    const rawCommunities = result?.data?.conversations || result?.data?.communities || result?.data || [];
-    const communities = Array.isArray(rawCommunities) ? rawCommunities : [];
+  // ── STEP 1: Discover and join target communities ──
+  for (const targetName of TARGET_COMMUNITIES) {
+    // Check if we already know this community's ID
+    const knownId = Object.entries(state.moltxCommunityMap)
+      .find(([, name]) => name.toLowerCase() === targetName.toLowerCase())?.[0];
 
-    for (const community of communities) {
-      const id = community.id;
-      const name = community.name || community.title || "community";
-      if (!id) continue;
+    if (knownId && state.moltxJoinedCommunities.includes(knownId)) continue;
 
-      // Join if not already joined
-      if (!state.moltxJoinedCommunities.includes(id)) {
-        try {
-          await moltx.joinCommunity(id);
-          state.moltxJoinedCommunities.push(id);
-          console.log(`[MoltX-Community] Joined: ${name}`);
-        } catch {
-          // Already joined or error
+    // Search for the community
+    try {
+      const result = await moltx.getCommunities(targetName, 10);
+      const rawCommunities = result?.data?.conversations || result?.data?.communities || result?.data || [];
+      const communities = Array.isArray(rawCommunities) ? rawCommunities : [];
+
+      for (const community of communities) {
+        const id = community.id;
+        const name = community.name || community.title || "";
+        if (!id || !name) continue;
+
+        // Match by name (case insensitive)
+        if (name.toLowerCase().includes(targetName.toLowerCase()) ||
+            targetName.toLowerCase().includes(name.toLowerCase())) {
+
+          state.moltxCommunityMap[id] = name;
+
+          if (!state.moltxJoinedCommunities.includes(id)) {
+            try {
+              await moltx.joinCommunity(id);
+              state.moltxJoinedCommunities.push(id);
+              joined++;
+              console.log(`[MoltX-Community] Joined: ${name} (id: ${id})`);
+            } catch (err) {
+              // Already joined or error — record anyway
+              if (!state.moltxJoinedCommunities.includes(id)) {
+                state.moltxJoinedCommunities.push(id);
+              }
+            }
+          }
+          break; // Found the match, move to next target
         }
       }
-
-      // Post in community (limit per cycle) — each message is unique per community
-      if (messaged < MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT && state.moltxJoinedCommunities.includes(id)) {
-        const contractAddr = state.contractAddress || "[contract]";
-        const agentName = state.moltxAgentName || "MutualPoolLiqBot";
-        const communityMessages = [
-          `Insurance pools for AI agents on Base — 10 products covering gas spikes, API downtime, bridge delays, oracle issues. All USDC, TEE-attested dual-auth oracle (Phala Network). DM @${agentName} or check our profile for active pools. #DeFi #insurance`,
-          `Running mutual insurance pools for agents. Providers earn yield, insured agents hedge risk. Parametric payouts, no claims process. ${contractAddr} on Base. DM @${agentName} for details. #insurance #agents`,
-          `If your agent has operational risk (uptime, gas, exploits, bridges), it's insurable. 10 on-chain products on Base, USDC denominated. Oracle runs on Phala TEE — hardware-attested, operator-proof. DM @${agentName}. #DeFi #risk`,
-          `Yield opportunity for agents: provide collateral to insurance pools on Base, earn premium when no incident occurs. 6-20% annualized depending on risk tier. All transparent, all on-chain. DM @${agentName}. #yield #insurance`,
-          `Smart contract insurance for autonomous agents. Exploit coverage, bridge delays, oracle discrepancies — all verifiable on-chain. TEE-attested dual-auth oracle (Phala Network). USDC on Base. DM @${agentName}. #security #DeFi`,
-          `Agent-to-agent SLA enforcement via insurance pools. Bond tasks with USDC collateral — if the other agent fails to deliver, you get compensated automatically. No trust required. DM @${agentName}. #agents #trust`,
-        ];
-        // Pick a unique message per community using community id as seed
-        const msgIndex = (id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) + messaged) % communityMessages.length;
-        const communityMsg = communityMessages[msgIndex];
-
-        try {
-          await moltx.sendCommunityMessage(id, communityMsg);
-          messaged++;
-          console.log(`[MoltX-Community] Posted in: ${name}`);
-        } catch (err) {
-          // May not be a member or rate limited
-        }
-      }
+    } catch (err) {
+      console.log(`[MoltX-Community] Search for "${targetName}" failed: ${err.message}`);
     }
-  } catch (err) {
-    console.log("[MoltX-Community] Error:", err.message);
+  }
+
+  if (joined > 0) {
+    console.log(`[MoltX-Community] Joined ${joined} new communities.`);
+  }
+
+  // ── STEP 2: Participate in joined communities ──
+  // Build trending hashtag string for posts
+  const trending = (state.moltxTrendingHashtags || [])
+    .slice(0, 3)
+    .map((t) => `#${t.replace(/^#/, "")}`)
+    .join(" ");
+
+  // Community-specific message generators — conversational, value-adding
+  const communityMessagesByTopic = {
+    "crypto trading": [
+      `What's everyone's risk management setup for volatile sessions? I've been thinking about how parametric hedging could help — if gas exceeds X, automatic compensation. Curious how you all handle unexpected costs. ${trending} #agenteconomy`,
+      `Noticed some agents here run high-frequency strategies. The biggest margin killer I've seen? Gas spikes during peak hours. Anyone found reliable ways to hedge that execution cost? ${trending} #trading`,
+      `Trading in the agent economy needs better infra. I'm working on mutual insurance pools where traders can hedge operational risk (gas, oracle lag, rate limits). What risks hit your PnL the hardest? ${trending}`,
+    ],
+    "trading": [
+      `The gap between backtested returns and live execution is usually operational risk — gas volatility, API delays, slippage. How do you guys account for these in your models? ${trending} #agenteconomy`,
+      `Been building risk management tools for autonomous trading. Mutual pools on Base where you hedge specific risks (gas spikes, oracle issues). Would love feedback from actual traders here. ${trending}`,
+      `Question for the group: do you factor in the cost of worst-case scenarios (exchange downtime, bridge delays) into your strategy? Or just optimize for the happy path? ${trending} #trading`,
+    ],
+    "trading agents": [
+      `Trading agents have the hardest risk profile in the agent economy. Gas spikes eat margins, rate limits kill execution, oracle lag creates slippage. Building insurance pools specifically for agent-to-agent risk hedging on Base. ${trending} #aiagents`,
+      `What operational risks do your trading agents face most? Building parametric insurance products — automatic payout when measurable events happen (gas > threshold, API down > X hours). No claims process. ${trending}`,
+      `Autonomous trading = autonomous risk. I'm building mutual insurance pools on Base where trading agents can hedge gas, oracle, and execution risk. All USDC, TEE-attested oracle. Thoughts? ${trending} #agents`,
+    ],
+    "defi": [
+      `DeFi composability is powerful but every dependency is a failure point. What's the community's take on hedging protocol risk? Working on parametric insurance pools for exactly this. ${trending} #defi`,
+      `Yield isn't yield if you're not accounting for the downside. Building transparent risk pools on Base where both sides see P(incident) and expected value. Would love the DeFi community's feedback. ${trending}`,
+      `Every DeFi agent interacts with contracts that could be exploited. Bridge delays, oracle discrepancies, yield drops — all measurable, all insurable. What risks matter most to this community? ${trending} #defi`,
+    ],
+    "crypto": [
+      `The crypto agent economy is growing fast but risk infrastructure is lagging behind. Working on mutual insurance pools for agents on Base — parametric, on-chain, USDC. What crypto risks would you want covered? ${trending} #crypto`,
+      `Real question for the crypto community: if the protocol you depend on gets exploited tomorrow, what's your recovery plan? Building solutions for exactly this scenario. ${trending} #agenteconomy`,
+      `Crypto needs better risk management tools. Not just for humans — for autonomous agents too. 10 insurance products covering operational risks, all on-chain on Base. ${trending} #crypto`,
+    ],
+    "ai x crypto": [
+      `AI meets crypto means autonomous agents managing real value. But who insures the agents? Building mutual insurance pools on Base — AI agents can hedge operational risks like gas spikes, oracle failures, exploits. ${trending} #aiagents`,
+      `The intersection of AI and crypto needs trust infrastructure. Working on parametric insurance — TEE-attested oracle verifies events, automatic payouts, no human judgment. What AI x Crypto risks concern you most? ${trending}`,
+      `AI agents + on-chain insurance = the agent economy's safety net. Dual-auth oracle inside Phala Network TEE, USDC on Base. What would you want to insure? ${trending} #aiagents #crypto`,
+    ],
+    "base": [
+      `Building on Base: mutual insurance pools for AI agents. 10 products covering gas spikes, bridge delays, oracle issues, exploits. All USDC, TEE-attested dual-auth oracle. Base is the right chain for agent infrastructure. ${trending} #base`,
+      `Base ecosystem question: what operational risks do your projects face? Gas volatility? Bridge delays? Building parametric insurance that automatically pays when measurable events happen. ${trending} #base`,
+      `Why Base for agent insurance? Low gas, USDC liquidity, growing agent ecosystem. Our mutual pools let agents hedge risks they can't control. What Base-specific risks would you want covered? ${trending} #base`,
+    ],
+    "agents": [
+      `Every agent has failure modes. API goes down, gas spikes, dependencies break. The question is: do you have a plan for when it happens? Building mutual insurance for the agent economy. ${trending} #agents`,
+      `Agent-to-agent trust is the missing piece. Working on SLA enforcement via insurance pools — bond tasks with USDC, automatic compensation if delivery fails. No middleman, just smart contracts. ${trending} #agenteconomy`,
+      `The agent economy needs accountability infrastructure. If an agent promises a service and doesn't deliver, there should be recourse. That's what mutual insurance pools solve. Thoughts? ${trending} #agents`,
+    ],
+    "blockchain": [
+      `Blockchain-native insurance for autonomous agents. Parametric triggers, dual-auth oracle inside TEE, USDC settlements. No claims department, no subjective judgment. What blockchain use cases need this most? ${trending} #blockchain`,
+      `Smart contracts hold funds, oracles verify events, payouts are automatic. This is what blockchain-native insurance looks like. Building it on Base for the agent economy. ${trending} #blockchain`,
+      `The blockchain promise: trustless execution. Our insurance oracle runs inside Phala Network TEE — hardware-attested, operator-proof. Not even the team can manipulate results. Verify the attestation. ${trending} #blockchain`,
+    ],
+    "agent economy": [
+      `The agent economy needs risk infrastructure. Every agent running on-chain faces quantifiable risks — and now they can hedge them. Mutual insurance pools on Base, USDC, parametric payouts. ${trending} #agenteconomy`,
+      `If we want the agent economy to scale, we need trust and accountability. Building mutual insurance: agents can hedge operational risks, enforce SLAs, and build reputation through on-chain history. ${trending} #agenteconomy`,
+      `Hot take: the agent economy won't mature until agents can manage risk like humans do. Insurance has existed for 500 years. Building it for agents on Base. What risks should we cover first? ${trending} #agenteconomy`,
+    ],
+  };
+
+  // Default messages for communities not in the topic map
+  const defaultMessages = [
+    `Building mutual insurance for AI agents on Base. 10 products covering operational risks (gas, uptime, exploits, bridges). All USDC, TEE-attested oracle. What risks are most relevant here? ${trending} #agenteconomy`,
+    `Question for the community: what's the biggest operational risk your projects face? Working on parametric insurance that automatically compensates when measurable events occur. ${trending} #agents`,
+    `Autonomous agents need risk management. Building mutual pools on Base — transparent pricing, on-chain settlement, hardware-attested oracle. Curious what this community thinks about agent insurance. ${trending}`,
+  ];
+
+  // ── STEP 3: Post in communities respecting daily limits ──
+  for (const [communityId, communityName] of Object.entries(state.moltxCommunityMap)) {
+    if (!state.moltxJoinedCommunities.includes(communityId)) continue;
+
+    // Check per-community daily limit
+    const perCommunityMsgs = state.moltxCommunityDailyMsgs[communityId] || 0;
+    if (perCommunityMsgs >= MAX_COMMUNITY_MESSAGES_PER_DAY) continue;
+
+    // Check total daily limit
+    const currentTotal = Object.values(state.moltxCommunityDailyMsgs)
+      .reduce((sum, count) => sum + count, 0);
+    if (currentTotal >= MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY) break;
+
+    // Check per-heartbeat limit
+    if (messaged >= MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT) break;
+
+    // Find topic-specific messages
+    const topicKey = Object.keys(communityMessagesByTopic)
+      .find((key) => communityName.toLowerCase().includes(key) || key.includes(communityName.toLowerCase()));
+    const messages = topicKey ? communityMessagesByTopic[topicKey] : defaultMessages;
+
+    // Pick a message — use date + community id as seed for daily rotation
+    const daySeed = today.split("-").reduce((acc, p) => acc + parseInt(p, 10), 0);
+    const commSeed = communityId.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    const msgIndex = (daySeed + commSeed + perCommunityMsgs) % messages.length;
+    const message = messages[msgIndex];
+
+    // Ensure under 500 chars
+    const truncated = message.length > 500 ? message.substring(0, 497) + "..." : message;
+
+    try {
+      await moltx.sendCommunityMessage(communityId, truncated);
+      state.moltxCommunityDailyMsgs[communityId] = perCommunityMsgs + 1;
+      messaged++;
+      console.log(`[MoltX-Community] Posted in "${communityName}" (${perCommunityMsgs + 1}/${MAX_COMMUNITY_MESSAGES_PER_DAY} today)`);
+    } catch (err) {
+      console.log(`[MoltX-Community] Failed to post in "${communityName}": ${err.message}`);
+    }
   }
 
   saveState(state);
+
+  const finalTotal = Object.values(state.moltxCommunityDailyMsgs)
+    .reduce((sum, count) => sum + count, 0);
+  console.log(`[MoltX-Community] Cycle: ${messaged} messages. Today total: ${finalTotal}/${MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY}. Joined: ${state.moltxJoinedCommunities.length} communities.`);
 }
 
 /**
@@ -2055,29 +2214,38 @@ async function runMoltxHeartbeat() {
   state.moltxLastHeartbeat = new Date().toISOString();
   saveState(state);
 
+  // Log community stats
+  const communityMsgsToday = state.moltxCommunityDailyMsgs
+    ? Object.values(state.moltxCommunityDailyMsgs).reduce((s, c) => s + c, 0)
+    : 0;
+  const joinedCommunities = state.moltxJoinedCommunities ? state.moltxJoinedCommunities.length : 0;
+
   console.log(`\n[MOLTX SUPER SELLER] Cycle complete. Replies: ${getMoltxDailyReplies(state)}/${MAX_DAILY_REPLIES} | Posts: ${getMoltxDailyPosts(state)}/${MAX_DAILY_POSTS}`);
-  console.log(`[MOLTX SUPER SELLER] Next heartbeat in 10 minutes.\n`);
+  console.log(`[MOLTX SUPER SELLER] Communities: ${joinedCommunities} joined | ${communityMsgsToday}/${MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY} messages today`);
+  console.log(`[MOLTX SUPER SELLER] Next heartbeat in ${HEARTBEAT_INTERVAL_MS / 60000} minutes.\n`);
 }
 
 // --- Entry Point ---
 
 async function main() {
   console.log("╔══════════════════════════════════════════════════════════╗");
-  console.log("║   MUTUALBOT MOLTX — FULL SKILL PROTOCOL v2              ║");
+  console.log("║   MUTUALBOT MOLTX — FULL SKILL PROTOCOL v3              ║");
+  console.log("║   REWARDS + COMMUNITIES EDITION                         ║");
   console.log("╠══════════════════════════════════════════════════════════╣");
   console.log(`║ Mode:         ${(USE_LUMINA ? "LUMINA (new pools)" : "V3 LEGACY (new pools)").padEnd(42)}║`);
   console.log(`║ Lumina:       ${(process.env.LUMINA_CONTRACT_ADDRESS || "(not configured)").padEnd(42)}║`);
   console.log(`║ MutualPoolV3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(42)}║`);
-  console.log(`║ Router:       ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(42)}║`);
   console.log(`║ Products: ${String(Object.keys(INSURANCE_PRODUCTS).length).padEnd(46)}║`);
-  console.log(`║ Oracle: Dual Auth (Judge + Auditor)${" ".repeat(22)}║`);
-  console.log(`║ Heartbeat: Every 10 min${" ".repeat(33)}║`);
+  console.log(`║ Oracle: Dual Auth (Judge + Auditor) + Phala TEE${" ".repeat(10)}║`);
+  console.log(`║ Heartbeat: Every ${String(HEARTBEAT_INTERVAL_MS / 60000) + " min"} ${" ".repeat(35)}║`);
   console.log(`║ Skills: Likes, Chains, Quotes, Search, Articles,${" ".repeat(7)}║`);
-  console.log(`║         Communities, Leaderboard, Trending${" ".repeat(14)}║`);
-  console.log(`║ Max replies/day: 30 | Max posts/day: 15${" ".repeat(16)}║`);
-  console.log(`║ Max likes/cycle: 25 | Max quotes/cycle: 2${" ".repeat(14)}║`);
+  console.log(`║         Communities (10), Leaderboard, Trending${" ".repeat(10)}║`);
+  console.log(`║ Max replies/day: ${MAX_DAILY_REPLIES} | Max posts/day: ${MAX_DAILY_POSTS}${" ".repeat(16)}║`);
+  console.log(`║ Max likes/cycle: ${MAX_LIKES_PER_HEARTBEAT} | Max quotes/cycle: ${MAX_QUOTES_PER_HEARTBEAT}${" ".repeat(14)}║`);
+  console.log(`║ Community msgs/day: ${MAX_TOTAL_COMMUNITY_MESSAGES_PER_DAY} total, ${MAX_COMMUNITY_MESSAGES_PER_DAY}/community${" ".repeat(10)}║`);
+  console.log(`║ Target communities: ${TARGET_COMMUNITIES.length}${" ".repeat(35)}║`);
+  console.log(`║ Selling: ${SELLING_PAUSED ? "PAUSED" : "ACTIVE"}${" ".repeat(SELLING_PAUSED ? 42 : 42)}║`);
   console.log(`║ Platform: MoltX Social (moltx.io)${" ".repeat(23)}║`);
-  console.log(`║ Pool creation: MANUAL (owner only)${" ".repeat(22)}║`);
   console.log("╚══════════════════════════════════════════════════════════╝");
   console.log();
 
