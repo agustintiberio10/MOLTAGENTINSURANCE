@@ -20,11 +20,8 @@
  *   MPOOLStaking:     0xE29C4841B2f50F609b529f6Dcff371523E061D98
  *   FeeRouter:        0x205b14015e5f807DC12E31D188F05b17FcA304f4
  *   USDC (Base):      0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
- *   MPOOLV3 Token:    0x0757504597288140731888f94F33156e2070191f
  *
- * Legacy V3 (deprecated — only for existing pools):
- *   MutualPoolV3:     0x3ee94c92eD66CfB6309A352136689626CDed3c40
- *   MutualPoolRouter: 0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f
+ * Legacy V3 (deprecated — contracts kept for on-chain monitoring only)
  */
 
 const { ethers } = require("ethers");
@@ -38,8 +35,7 @@ const CONTRACTS = {
   MPOOL_STAKING: "0xE29C4841B2f50F609b529f6Dcff371523E061D98",
   FEE_ROUTER: "0x205b14015e5f807DC12E31D188F05b17FcA304f4",
   USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  MPOOLV3_TOKEN: "0x0757504597288140731888f94F33156e2070191f",
-  // Legacy V3
+  // Legacy V3 (deprecated)
   MUTUAL_POOL_V3: "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
   ROUTER: "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f",
 };
@@ -48,7 +44,6 @@ const DAPP_BASE_URL = "https://mutualpool.finance";
 const MOGRA_API_BASE = "https://mogra.xyz/api";
 const CHAIN_ID = 8453;
 const USDC_DECIMALS = 6;
-const MPOOLV3_DECIMALS = 18;
 const DEPOSIT_WINDOW_BUFFER = 7200; // 2 hours
 
 // ABI Interfaces for calldata encoding
@@ -97,7 +92,6 @@ const VAULT_V3_IFACE = new ethers.Interface([
  * @param {number} params.suggestedCollateralUsdc - Suggested per-provider deposit
  * @param {number} [params.expectedProviderCount] - Expected number of providers
  * @param {string} [params.contract] - "lumina" (default) or "v3"
- * @param {number} [params.mpoolToUsdcRate] - Current MPOOLV3/USDC rate (if available)
  * @param {string} [params.targetAgent] - Optional @mention for targeted offer
  * @returns {object} Complete Phase 1 M2M payload
  */
@@ -172,56 +166,6 @@ function buildPhase1Payload(params) {
     ],
   };
 
-  // MPOOLV3 option (V3 legacy only — Lumina is USDC-only direct)
-  let mpoolOption = null;
-  if (!isLumina && mpoolToUsdcRate && mpoolToUsdcRate > 0) {
-    const mpoolNeeded = (suggestedCollateralUsdc || coverageUsdc) / mpoolToUsdcRate;
-    const mpoolWei = ethers.parseUnits(
-      mpoolNeeded.toFixed(MPOOLV3_DECIMALS > 8 ? 8 : MPOOLV3_DECIMALS),
-      MPOOLV3_DECIMALS
-    ).toString();
-    const minUsdcOut = ethers.parseUnits(
-      ((suggestedCollateralUsdc || coverageUsdc) * 0.97).toFixed(USDC_DECIMALS),
-      USDC_DECIMALS
-    ).toString();
-
-    mpoolOption = {
-      description: `Join pool #${poolId} with ~${mpoolNeeded.toFixed(2)} MPOOLV3 (swapped to ${suggestedCollateralUsdc || coverageUsdc} USDC)`,
-      network: "base",
-      calls: [
-        {
-          step: 1,
-          action: "approve",
-          to: CONTRACTS.MPOOLV3_TOKEN,
-          data: ERC20_IFACE.encodeFunctionData("approve", [CONTRACTS.ROUTER, mpoolWei]),
-          value: "0x0",
-          description: `Approve ${mpoolNeeded.toFixed(2)} MPOOLV3 for Router`,
-          decoded: {
-            method: "approve(address,uint256)",
-            params: { spender: CONTRACTS.ROUTER, amount: mpoolWei },
-          },
-        },
-        {
-          step: 2,
-          action: "joinPoolWithMPOOL",
-          to: CONTRACTS.ROUTER,
-          data: ROUTER_IFACE.encodeFunctionData("joinPoolWithMPOOL", [poolId, mpoolWei, minUsdcOut]),
-          value: "0x0",
-          description: `Swap MPOOLV3 → USDC and join pool #${poolId} via Router`,
-          decoded: {
-            method: "joinPoolWithMPOOL(uint256,uint256,uint256)",
-            params: { poolId: poolId.toString(), mpoolAmount: mpoolWei, minUsdcOut },
-          },
-          anti_mev: {
-            slippage_bps: 300,
-            min_usdc_out: ((suggestedCollateralUsdc || coverageUsdc) * 0.97).toFixed(2),
-            rate_used: mpoolToUsdcRate,
-          },
-        },
-      ],
-    };
-  }
-
   return {
     // ── Identity ──
     protocol: isLumina ? "mutualpool_lumina" : "mutualpool_v3",
@@ -250,7 +194,6 @@ function buildPhase1Payload(params) {
       vault: vaultAddr,
       ...(isLumina ? {} : { router: CONTRACTS.ROUTER }),
       usdc: CONTRACTS.USDC,
-      ...(isLumina ? {} : { mpoolv3: CONTRACTS.MPOOLV3_TOKEN }),
     },
 
     // ── Risk Parameters (for bot EV evaluation) ──
@@ -269,7 +212,6 @@ function buildPhase1Payload(params) {
     // ── Mogra Execution Payload (Autonomous Agents) ──
     mogra_execution_payload: {
       option_a_usdc: optionAUsdc,
-      ...(mpoolOption && { option_b_mpoolv3: mpoolOption }),
       api: {
         url: `${MOGRA_API_BASE}/wallet/transact`,
         method: "POST",

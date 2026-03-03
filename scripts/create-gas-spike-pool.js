@@ -80,19 +80,17 @@ async function main() {
   const V3 = process.env.V3_CONTRACT_ADDRESS;
   const ROUTER = process.env.ROUTER_ADDRESS;
   const USDC = process.env.USDC_ADDRESS;
-  const MPOOLV3 = process.env.MPOOLV3_TOKEN_ADDRESS;
   const depositDeadlineTs = deadlineTimestamp - 2 * 60 * 60;
 
   const m2mPayload = {
-    protocol: "mutualpool_v3",
-    version: "3.0.0",
+    protocol: "mutualpool_lumina",
+    version: "4.0.0",
     intent: "mutual_insurance_pool",
     chainId: 8453,
     contracts: {
       vault: V3,
       router: ROUTER,
       usdc: USDC,
-      mpoolv3: MPOOLV3,
     },
     pool: {
       id: onchainId,

@@ -213,9 +213,6 @@ const MUTUAL_LUMINA_ABI = [
 const ROUTER_ABI = [
   "function fundPremiumWithUSDC(uint256 poolId, uint256 amount) external",
   "function joinPoolWithUSDC(uint256 poolId, uint256 amount) external",
-  "function fundPremiumWithMPOOL(uint256 poolId, uint256 mpoolAmount, uint256 minUsdcOut) external",
-  "function joinPoolWithMPOOL(uint256 poolId, uint256 mpoolAmount, uint256 minUsdcOut) external",
-  "function quoteMpoolToUsdc(uint256 mpoolAmount) external view returns (uint256)",
   "function paused() external view returns (bool)",
 ];
 
@@ -635,16 +632,6 @@ class BlockchainClient {
     if (!this.v3) throw new Error("V3 contract not configured");
     const amount = await executeWithBackoff(() => this.v3.getRequiredPremium(poolId));
     return ethers.formatUnits(amount, 6);
-  }
-
-  /**
-   * V3: Quote MPOOLV3 → USDC via Router's swap handler.
-   */
-  async quoteMpoolToUsdc(mpoolAmount) {
-    if (!this.router) throw new Error("Router not configured");
-    const amountWei = ethers.parseUnits(mpoolAmount.toString(), 18);
-    const usdcOut = await this.router.quoteMpoolToUsdc(amountWei);
-    return ethers.formatUnits(usdcOut, 6);
   }
 
   // ═══════════════════════════════════════════════════════════

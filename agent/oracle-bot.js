@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * ORACLE BOT — Dual-Mode Lifecycle Engine (V3 legacy + MutualLumina)
+ * ORACLE BOT — MutualLumina Lifecycle Engine
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * El bot oráculo es el único actor con permiso on-chain para:
  *   1. createPool()   — Crear pools
  *   2. resolvePool()  — Resolver pools con veredicto dual-auth
  *
- * DUAL-MODE:
- *   USE_LUMINA=true  → Nuevos pools van a MutualLumina (1 TX, oracle paga premium)
- *   USE_LUMINA=false → Nuevos pools van a MutualPoolV3 (legacy, zero-funded)
- *   Pools V3 existentes siempre se monitorean independientemente del flag.
+ * Nuevos pools van a MutualLumina (1 TX, oracle paga premium).
+ * Pools V3 existentes siguen siendo monitoreados para resolución.
  *
  * HEARTBEAT (cada 5 minutos):
  *
@@ -19,11 +17,9 @@
  *   │ 1. CREAR POOLS                                              │
  *   │    → Evalúa riesgo (risk.js)                                │
  *   │    → Lumina: createAndFund() (1 TX, oracle paga premium)    │
- *   │    → V3:    createPoolV3() (zero-funded, gas only)          │
- *   │    → Publica Phase 1 Molt (seek insured/collateral)        │
+ *   │    → Publica Phase 1 Molt (seek collateral)                │
  *   │                                                              │
  *   │ 2. MONITOREAR TRANSICIONES                                  │
- *   │    → V3: Pending → Open (premium funded) → Phase 3 Molt    │
  *   │    → Open → Active (collateral filled)                      │
  *   │    → Deadline pasado + underfunded → cancelAndRefund         │
  *   │                                                              │
@@ -662,17 +658,6 @@ async function monitorTransitions(blockchain, moltx, state) {
  */
 async function publishPhase3(blockchain, moltx, pool, onchainData) {
   try {
-    // Try to get MPOOLV3/USDC rate for option_b (V3 Router only)
-    let mpoolToUsdcRate = null;
-    if (!isLumina(pool) && blockchain.hasV3) {
-      try {
-        const quote = await blockchain.quoteMpoolToUsdc("1");
-        mpoolToUsdcRate = parseFloat(quote);
-      } catch {
-        // Rate not available — option_b_mpoolv3 will be omitted
-      }
-    }
-
     const moltContent = generatePhase3Molt({
       poolId: pool.onchainId,
       productId: pool.productId,
@@ -686,7 +671,6 @@ async function publishPhase3(blockchain, moltx, pool, onchainData) {
       suggestedCollateralUsdc: Math.min(pool.coverageAmount, 100),
       currentCollateralUsdc: parseFloat(onchainData.totalCollateral),
       expectedProviderCount: 3,
-      mpoolToUsdcRate,
     });
 
     // Publish as article (full payload exceeds 500 chars)

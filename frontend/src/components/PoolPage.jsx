@@ -4,7 +4,7 @@
  * Architecture:
  *   URL: https://mutualpool.finance/pool/42?action=fund_premium|provide_collateral|withdraw
  *
- *   1. Reads pool data from MutualPoolV3 via usePool hook (public RPC, no wallet needed)
+ *   1. Reads pool data from MutualLumina via usePool hook (public RPC, no wallet needed)
  *   2. Wallet managed by RainbowKit/Wagmi (useAccount, useWalletClient)
  *   3. Context-Aware Auto-Fill:
  *      - ?action=fund_premium → hides inputs, reads premiumAmount from Vault, one-click button
@@ -14,7 +14,7 @@
  *      - isApproving → "Aprobando USDC..."
  *      - isExecuting → "Pagando Prima..." / "Depositando..." / etc.
  *      - isSuccess → "TX confirmada" + basescan link
- *   5. Executes transactions via usePoolActions → Router or Vault
+ *   5. Executes transactions via usePoolActions → MutualLumina direct
  */
 
 import React, { useState, useMemo, useEffect } from "react";
@@ -23,7 +23,7 @@ import { useAccount, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { usePool } from "../hooks/usePool";
 import { usePoolActions } from "../hooks/usePoolActions";
-import { POOL_STATUS_COLORS, CONTRACTS, CHAIN_ID } from "../lib/contracts";
+import { LUMINA_POOL_STATUS_COLORS, CONTRACTS, CHAIN_ID } from "../lib/contracts";
 
 export default function PoolPage() {
   const { id: poolId } = useParams();
@@ -45,11 +45,6 @@ export default function PoolPage() {
 
   // ── Local state ──
   const [depositAmount, setDepositAmount] = useState(suggestedAmount || "");
-  const [tokenMode, setTokenMode] = useState("usdc"); // "usdc" | "mpoolv3"
-  const [premiumTokenMode, setPremiumTokenMode] = useState("usdc");
-  const [premiumMpoolAmount, setPremiumMpoolAmount] = useState("");
-  const [mpoolQuote, setMpoolQuote] = useState(null);
-  const [premiumMpoolQuote, setPremiumMpoolQuote] = useState(null);
 
   // ── Auto-fill amount from URL param ──
   useEffect(() => {
@@ -79,43 +74,17 @@ export default function PoolPage() {
   const handleFundPremium = async () => {
     if (!pool) return;
     try {
-      if (premiumTokenMode === "usdc") {
-        await actions.fundPremiumWithUSDC(poolId, pool.requiredPremium);
-      } else {
-        if (!premiumMpoolAmount || Number(premiumMpoolAmount) <= 0) return;
-        const quote = await actions.quoteMpoolToUsdc(premiumMpoolAmount);
-        const minOut = (Number(quote) * 0.97).toFixed(6); // 3% slippage
-        await actions.fundPremiumWithMPOOL(poolId, premiumMpoolAmount, minOut);
-      }
+      await actions.fundPremiumWithUSDC(poolId, pool.requiredPremium);
       refetch();
     } catch {
       // Error already captured in actions.error
     }
   };
 
-  const handleQuotePremiumMpool = async (amount) => {
-    if (!amount || Number(amount) <= 0) {
-      setPremiumMpoolQuote(null);
-      return;
-    }
-    try {
-      const quote = await actions.quoteMpoolToUsdc(amount);
-      setPremiumMpoolQuote(quote);
-    } catch {
-      setPremiumMpoolQuote(null);
-    }
-  };
-
   const handleJoinPool = async () => {
-    if (!depositAmount || (tokenMode === "usdc" && Number(depositAmount) < 10)) return;
+    if (!depositAmount || Number(depositAmount) < 10) return;
     try {
-      if (tokenMode === "usdc") {
-        await actions.joinPoolWithUSDC(poolId, depositAmount);
-      } else {
-        const quote = await actions.quoteMpoolToUsdc(depositAmount);
-        const minOut = (Number(quote) * 0.97).toFixed(6);
-        await actions.joinPoolWithMPOOL(poolId, depositAmount, minOut);
-      }
+      await actions.joinPoolWithUSDC(poolId, depositAmount);
       refetch();
     } catch {
       // Error already captured in actions.error
@@ -140,19 +109,6 @@ export default function PoolPage() {
     }
   };
 
-  const handleQuoteMpool = async (amount) => {
-    if (!amount || Number(amount) <= 0) {
-      setMpoolQuote(null);
-      return;
-    }
-    try {
-      const quote = await actions.quoteMpoolToUsdc(amount);
-      setMpoolQuote(quote);
-    } catch {
-      setMpoolQuote(null);
-    }
-  };
-
   // ── Helper: check if any action is in progress ──
   const isBusy = actions.isApproving || actions.isExecuting;
 
@@ -161,29 +117,15 @@ export default function PoolPage() {
   // ═══════════════════════════════════════════════════
 
   function premiumButtonLabel() {
-    if (actions.isApproving) {
-      return premiumTokenMode === "usdc" ? "Aprobando USDC..." : "Aprobando MPOOLV3...";
-    }
-    if (actions.isExecuting) {
-      return "Pagando Prima...";
-    }
-    if (premiumTokenMode === "usdc") {
-      return `Pagar Prima ${Number(pool.requiredPremium).toLocaleString()} USDC`;
-    }
-    return `Swap & Pagar Prima ${premiumMpoolAmount || "0"} MPOOLV3`;
+    if (actions.isApproving) return "Aprobando USDC...";
+    if (actions.isExecuting) return "Pagando Prima...";
+    return `Pagar Prima ${Number(pool.requiredPremium).toLocaleString()} USDC`;
   }
 
   function collateralButtonLabel() {
-    if (actions.isApproving) {
-      return tokenMode === "usdc" ? "Aprobando USDC..." : "Aprobando MPOOLV3...";
-    }
-    if (actions.isExecuting) {
-      return "Depositando Colateral...";
-    }
-    if (tokenMode === "usdc") {
-      return `Depositar ${depositAmount || "0"} USDC`;
-    }
-    return `Swap & Depositar ${depositAmount || "0"} MPOOLV3`;
+    if (actions.isApproving) return "Aprobando USDC...";
+    if (actions.isExecuting) return "Depositando Colateral...";
+    return `Depositar ${depositAmount || "0"} USDC`;
   }
 
   function withdrawButtonLabel() {
@@ -218,7 +160,7 @@ export default function PoolPage() {
           <h1>Pool #{pool.id}</h1>
           <span
             className="status-badge"
-            style={{ backgroundColor: POOL_STATUS_COLORS[pool.status] }}
+            style={{ backgroundColor: LUMINA_POOL_STATUS_COLORS[pool.status] }}
           >
             {pool.statusLabel}
           </span>
@@ -234,7 +176,7 @@ export default function PoolPage() {
           <div className="stat">
             <label>Premium</label>
             <span>
-              {Number(pool.requiredPremium).toLocaleString()} USDC (
+              {Number(pool.premiumPaid).toLocaleString()} USDC (
               {(pool.premiumRate / 100).toFixed(1)}%)
             </span>
           </div>
@@ -269,7 +211,7 @@ export default function PoolPage() {
         </div>
 
         {/* ── Progress Bar ── */}
-        {(pool.status === 1 || pool.status === 2) && (
+        {(pool.status === 1 || pool.status === 0) && (
           <div className="progress-container">
             <div className="progress-bar" style={{ width: `${pool.fillPercentage}%` }} />
             <span className="progress-label">{pool.fillPercentage.toFixed(1)}% funded</span>
@@ -298,129 +240,21 @@ export default function PoolPage() {
         <div className="action-panel">
 
           {/* ═══════════════════════════════════════════
-              PENDING: Fund Premium
-              Context-Aware: ?action=fund_premium → auto-fill, no inputs
-              ═══════════════════════════════════════════ */}
-          {pool.status === 0 && pool.isDepositOpen && (
-            <div className="action-section">
-              <h3>Pagar Prima (Convertirse en Asegurado)</h3>
-              <p>
-                Prima requerida: <strong>{Number(pool.requiredPremium).toLocaleString()} USDC</strong>
-              </p>
-
-              {/* If deep-linked with ?action=fund_premium → auto-fill mode (no inputs) */}
-              {isAutoFillPremium ? (
-                <>
-                  <p className="hint">
-                    Monto auto-detectado desde el contrato. Tu dirección ({address?.slice(0, 6)}...
-                    {address?.slice(-4)}) será el asegurado.
-                  </p>
-                  <button
-                    onClick={handleFundPremium}
-                    disabled={isBusy}
-                    className="btn btn-primary"
-                  >
-                    {premiumButtonLabel()}
-                  </button>
-                </>
-              ) : (
-                <>
-                  {/* Token selector for premium */}
-                  <div className="token-selector">
-                    <button
-                      className={`token-btn ${premiumTokenMode === "usdc" ? "active" : ""}`}
-                      onClick={() => setPremiumTokenMode("usdc")}
-                    >
-                      USDC
-                    </button>
-                    <button
-                      className={`token-btn ${premiumTokenMode === "mpoolv3" ? "active" : ""}`}
-                      onClick={() => setPremiumTokenMode("mpoolv3")}
-                    >
-                      MPOOLV3
-                    </button>
-                  </div>
-
-                  {premiumTokenMode === "mpoolv3" && (
-                    <>
-                      <input
-                        type="number"
-                        placeholder="Cantidad (MPOOLV3)"
-                        value={premiumMpoolAmount}
-                        onChange={(e) => {
-                          setPremiumMpoolAmount(e.target.value);
-                          handleQuotePremiumMpool(e.target.value);
-                        }}
-                        min="1"
-                        step="any"
-                      />
-                      {premiumMpoolQuote && (
-                        <p className="quote-preview">
-                          Estimado: ~{Number(premiumMpoolQuote).toFixed(2)} USDC
-                          (necesita {Number(pool.requiredPremium).toLocaleString()} USDC, 3% slippage)
-                        </p>
-                      )}
-                    </>
-                  )}
-
-                  <p className="hint">
-                    Tu dirección ({address?.slice(0, 6)}...{address?.slice(-4)}) será el asegurado.
-                    Recibirás el pago de cobertura si el reclamo es aprobado.
-                  </p>
-                  <button
-                    onClick={handleFundPremium}
-                    disabled={isBusy || (premiumTokenMode === "mpoolv3" && !premiumMpoolAmount)}
-                    className="btn btn-primary"
-                  >
-                    {premiumButtonLabel()}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ═══════════════════════════════════════════
-              OPEN: Provide Collateral
+              OPEN: Provide Collateral (USDC only)
               Context-Aware: ?action=provide_collateral&amount=X → pre-filled
               ═══════════════════════════════════════════ */}
-          {pool.status === 1 && pool.isDepositOpen && userRole !== "insured" && (
+          {pool.status === 0 && pool.isDepositOpen && userRole !== "insured" && (
             <div className="action-section">
               <h3>Proveer Colateral</h3>
 
-              {/* Token selector */}
-              <div className="token-selector">
-                <button
-                  className={`token-btn ${tokenMode === "usdc" ? "active" : ""}`}
-                  onClick={() => setTokenMode("usdc")}
-                >
-                  USDC
-                </button>
-                <button
-                  className={`token-btn ${tokenMode === "mpoolv3" ? "active" : ""}`}
-                  onClick={() => setTokenMode("mpoolv3")}
-                >
-                  MPOOLV3
-                </button>
-              </div>
-
               <input
                 type="number"
-                placeholder={tokenMode === "usdc" ? "Cantidad (USDC, min 10)" : "Cantidad (MPOOLV3)"}
+                placeholder="Cantidad (USDC, min 10)"
                 value={depositAmount}
-                onChange={(e) => {
-                  setDepositAmount(e.target.value);
-                  if (tokenMode === "mpoolv3") handleQuoteMpool(e.target.value);
-                }}
-                min={tokenMode === "usdc" ? "10" : "1"}
+                onChange={(e) => setDepositAmount(e.target.value)}
+                min="10"
                 step="any"
               />
-
-              {/* MPOOLV3 quote preview */}
-              {tokenMode === "mpoolv3" && mpoolQuote && (
-                <p className="quote-preview">
-                  Estimado: ~{Number(mpoolQuote).toFixed(2)} USDC (3% slippage)
-                </p>
-              )}
 
               <p className="hint">
                 Restante: {(Number(pool.coverageAmount) - Number(pool.totalCollateral)).toLocaleString()} USDC
@@ -428,11 +262,7 @@ export default function PoolPage() {
 
               <button
                 onClick={handleJoinPool}
-                disabled={
-                  isBusy ||
-                  !depositAmount ||
-                  (tokenMode === "usdc" && Number(depositAmount) < 10)
-                }
+                disabled={isBusy || !depositAmount || Number(depositAmount) < 10}
                 className="btn btn-primary"
               >
                 {collateralButtonLabel()}
@@ -444,7 +274,7 @@ export default function PoolPage() {
               RESOLVED: Withdraw
               Context-Aware: ?action=withdraw → direct button
               ═══════════════════════════════════════════ */}
-          {pool.status === 3 && (userRole === "provider" || userRole === "insured") && (
+          {pool.status === 2 && (userRole === "provider" || userRole === "insured") && (
             <div className="action-section">
               <h3>Retirar Fondos</h3>
               <p>
@@ -463,7 +293,7 @@ export default function PoolPage() {
           {/* ═══════════════════════════════════════════
               CANCELLED or underfunded past deadline: Cancel & Refund
               ═══════════════════════════════════════════ */}
-          {(pool.status === 1 || pool.status === 0) &&
+          {(pool.status === 0 || pool.status === 1) &&
             !pool.isDepositOpen &&
             Number(pool.totalCollateral) < Number(pool.coverageAmount) && (
               <div className="action-section">
@@ -512,21 +342,11 @@ export default function PoolPage() {
         <p>
           Vault:{" "}
           <a
-            href={`https://basescan.org/address/${CONTRACTS.MUTUAL_POOL_V3}`}
+            href={`https://basescan.org/address/${CONTRACTS.MUTUAL_LUMINA}`}
             target="_blank"
             rel="noopener noreferrer"
           >
-            {CONTRACTS.MUTUAL_POOL_V3}
-          </a>
-        </p>
-        <p>
-          Router:{" "}
-          <a
-            href={`https://basescan.org/address/${CONTRACTS.ROUTER}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {CONTRACTS.ROUTER}
+            {CONTRACTS.MUTUAL_LUMINA}
           </a>
         </p>
       </div>

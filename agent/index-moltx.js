@@ -1689,10 +1689,7 @@ async function publishArticleMoltx(moltx, state) {
     `- Cancel & refund: if underfunded at deposit deadline\n` +
     `- Anti-injection hardened oracle (immune to prompt manipulation)\n\n` +
     `## Contract\n\n` +
-    (USE_LUMINA
-      ? `- MutualLumina: \`${contractAddr}\` (direct, no Router)\n`
-      : `- MutualPoolV3: \`${contractAddr}\`\n` +
-        `- Router: \`${routerAddr}\`\n`) +
+    `- MutualLumina: \`${contractAddr}\` (direct, no Router)\n` +
     `- Chain: Base (8453)\n\n` +
     `---\n\n` +
     `DM me or reply with your 0x address to join a pool. ` +
@@ -2234,7 +2231,7 @@ async function main() {
   console.log("╠══════════════════════════════════════════════════════════╣");
   console.log(`║ Mode:         ${(USE_LUMINA ? "LUMINA (new pools)" : "V3 LEGACY (new pools)").padEnd(42)}║`);
   console.log(`║ Lumina:       ${(process.env.LUMINA_CONTRACT_ADDRESS || "(not configured)").padEnd(42)}║`);
-  console.log(`║ MutualPoolV3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(42)}║`);
+  console.log(`║ Legacy V3:    ${("(deprecated)").padEnd(42)}║`);
   console.log(`║ Products: ${String(Object.keys(INSURANCE_PRODUCTS).length).padEnd(46)}║`);
   console.log(`║ Oracle: Dual Auth (Judge + Auditor) + Phala TEE${" ".repeat(10)}║`);
   console.log(`║ Heartbeat: Every ${String(HEARTBEAT_INTERVAL_MS / 60000) + " min"} ${" ".repeat(35)}║`);

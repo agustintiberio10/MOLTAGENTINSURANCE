@@ -52,10 +52,6 @@ const AGENT_IDENTITY = {
       mutualLumina: "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
       mpoolStaking: "0xE29C4841B2f50F609b529f6Dcff371523E061D98",
       feeRouter: "0x205b14015e5f807DC12E31D188F05b17FcA304f4",
-      mpoolv3Token: "0x0757504597288140731888f94F33156e2070191f",
-      // Legacy V3 (for existing pools only)
-      mutualPoolV3: "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
-      router: "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f",
     },
     capabilities: ["m2m_execution", "networking", "publishing", "lumina_direct"],
     operational_parameters: {

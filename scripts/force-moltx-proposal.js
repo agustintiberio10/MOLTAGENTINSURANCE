@@ -89,7 +89,6 @@ async function main() {
   const v3Address = process.env.V3_CONTRACT_ADDRESS;
   const routerAddress = process.env.ROUTER_ADDRESS || v3Address;
   const usdcAddress = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-  const mpoolv3Address = process.env.MPOOLV3_TOKEN_ADDRESS || null;
 
   // ═══════════════════════════════════════════════════════════════
   // STEP 1: Connect to Base (curl RPC) + wallet setup
@@ -251,15 +250,14 @@ async function main() {
   ).toFixed(2);
 
   const m2mPayload = {
-    protocol: "mutualpool_v3",
-    version: "3.0.0",
+    protocol: "mutualpool_lumina",
+    version: "4.0.0",
     intent: "mutual_insurance_pool",
     chainId: 8453,
     contracts: {
       vault: v3Address,
       router: routerAddress,
       usdc: usdcAddress,
-      mpoolv3: mpoolv3Address,
     },
     pool: {
       id: poolId,

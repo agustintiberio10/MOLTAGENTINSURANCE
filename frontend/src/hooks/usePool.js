@@ -1,17 +1,17 @@
 /**
- * usePool — React hook for reading MutualPoolV3 pool data.
+ * usePool — React hook for reading MutualLumina pool data.
  *
  * Usage:
  *   const { pool, loading, error, refetch } = usePool(poolId);
  *
  * Architecture:
  *   Always uses public RPC (read-only). No wallet connection required.
- *   Provides all pool data including requiredPremium and participants.
+ *   Provides all pool data including participants.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
-import { CONTRACTS, VAULT_ABI, RPC_URL, POOL_STATUS } from "../lib/contracts";
+import { CONTRACTS, LUMINA_ABI, RPC_URL, LUMINA_POOL_STATUS } from "../lib/contracts";
 
 /**
  * @param {number|string} poolId
@@ -32,10 +32,9 @@ export function usePool(poolId) {
       // Always use public RPC for reads — no wallet dependency
       const provider = new ethers.JsonRpcProvider(RPC_URL);
 
-      const vault = new ethers.Contract(CONTRACTS.MUTUAL_POOL_V3, VAULT_ABI, provider);
-      const data = await vault.getPool(poolId);
-      const requiredPremium = await vault.getRequiredPremium(poolId);
-      const participants = await vault.getPoolParticipants(poolId);
+      const lumina = new ethers.Contract(CONTRACTS.MUTUAL_LUMINA, LUMINA_ABI, provider);
+      const data = await lumina.getPool(poolId);
+      const participants = await lumina.getPoolParticipants(poolId);
 
       setPool({
         id: Number(poolId),
@@ -52,12 +51,10 @@ export function usePool(poolId) {
         totalCollateral: ethers.formatUnits(data.totalCollateral, 6),
         totalCollateralRaw: data.totalCollateral,
         status: Number(data.status),
-        statusLabel: POOL_STATUS[Number(data.status)] || "Unknown",
+        statusLabel: LUMINA_POOL_STATUS[Number(data.status)] || "Unknown",
         claimApproved: data.claimApproved,
         participantCount: Number(data.participantCount),
         participants,
-        requiredPremium: ethers.formatUnits(requiredPremium, 6),
-        requiredPremiumRaw: requiredPremium,
         // Derived
         isDepositOpen: Date.now() / 1000 < Number(data.depositDeadline),
         isDeadlinePassed: Date.now() / 1000 >= Number(data.deadline),

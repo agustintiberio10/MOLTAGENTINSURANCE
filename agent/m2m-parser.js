@@ -36,8 +36,8 @@ const MAX_AMOUNT_USDC = 10_000;
 const ALLOWED_ACTIONS = {
   approve: {
     method: "approve(address,uint256)",
-    target: "usdc_or_mpoolv3",
-    description: "Approve token spending for Router contract",
+    target: "usdc",
+    description: "Approve USDC spending for contract",
   },
   fundPremiumWithUSDC: {
     method: "fundPremiumWithUSDC(uint256,uint256)",
@@ -48,16 +48,6 @@ const ALLOWED_ACTIONS = {
     method: "joinPoolWithUSDC(uint256,uint256)",
     target: "router",
     description: "Join pool via Router with USDC (V3)",
-  },
-  joinPoolWithMPOOL: {
-    method: "joinPoolWithMPOOL(uint256,uint256,uint256)",
-    target: "router",
-    description: "Join pool via Router with MPOOLV3 token (auto-swap to USDC)",
-  },
-  fundPremiumWithMPOOL: {
-    method: "fundPremiumWithMPOOL(uint256,uint256,uint256)",
-    target: "router",
-    description: "Fund premium via Router with MPOOLV3 token (auto-swap to USDC)",
   },
   // ── Lumina direct actions (no router needed) ──
   joinPool: {
@@ -191,8 +181,8 @@ function validatePayload(payload) {
   // Validate mogra_execution_payload if present (V3 dual-UX)
   if (payload.mogra_execution_payload) {
     const mogra = payload.mogra_execution_payload;
-    // Can have option_a_usdc and/or option_b_mpoolv3, or direct calls array
-    const hasCalls = mogra.calls || mogra.option_a_usdc?.calls || mogra.option_b_mpoolv3?.calls;
+    // Can have option_a_usdc or direct calls array
+    const hasCalls = mogra.calls || mogra.option_a_usdc?.calls;
     if (!hasCalls) {
       errors.push("mogra_execution_payload must contain calls array (direct or via option_a/option_b)");
     }

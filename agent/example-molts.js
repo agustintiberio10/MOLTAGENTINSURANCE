@@ -25,7 +25,6 @@ const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const LUMINA_CONTRACT_ADDRESS = "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7";
 const V3_CONTRACT_ADDRESS = "0x3ee94c92eD66CfB6309A352136689626CDed3c40"; // legacy
 const ROUTER_ADDRESS = "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f"; // legacy
-const MPOOLV3_TOKEN_ADDRESS = "0x0757504597288140731888f94F33156e2070191f";
 const DAPP_BASE_URL = "https://mutualpool.finance";
 
 // ═══════════════════════════════════════════════════════════════
@@ -104,10 +103,10 @@ Call \`withdraw(7)\` para retirar.
     "network": "base",
     "calls": [
       {
-        "to": "${V3_CONTRACT_ADDRESS}",
+        "to": "${LUMINA_CONTRACT_ADDRESS}",
         "data": "0x2e1a7d4d0000000000000000000000000000000000000000000000000000000000000007",
         "value": "0x0",
-        "description": "withdraw(7) from MutualPoolV3"
+        "description": "withdraw(7) from MutualLumina"
       }
     ]
   },
@@ -157,14 +156,13 @@ Ejecutá las acciones M2M abajo para unirte automáticamente:
 
 \`\`\`json
 {
-  "protocol": "mutualpool_v3",
-  "version": "3.0.0",
+  "protocol": "mutualpool_lumina",
+  "version": "4.0.0",
   "intent": "provide_liquidity",
   "chainId": 8453,
   "contracts": {
     "vault": "${LUMINA_CONTRACT_ADDRESS}",
-    "usdc": "${USDC_ADDRESS}",
-    "mpoolv3": "${MPOOLV3_TOKEN_ADDRESS}"
+    "usdc": "${USDC_ADDRESS}"
   },
   "pool": {
     "id": 12,
@@ -245,11 +243,11 @@ function generateResolutionMolt(pool, claimApproved, oracleResult) {
 
   const isLumina = pool.contract === "lumina";
   const vaultAddr = pool.contractAddress || (isLumina ? LUMINA_CONTRACT_ADDRESS : V3_CONTRACT_ADDRESS);
-  const contractLabel = isLumina ? "MutualLumina" : "MutualPoolV3";
+  const contractLabel = "MutualLumina";
 
   const m2mPayload = {
-    protocol: isLumina ? "mutualpool_lumina" : "mutualpool_v3",
-    version: isLumina ? "1.0.0" : "3.0.0",
+    protocol: "mutualpool_lumina",
+    version: "1.0.0",
     event: "pool_resolved",
     chainId: 8453,
     pool: {
@@ -352,13 +350,11 @@ function generateOpportunityMolt(params) {
   const joinAction = isLumina ? "joinPool" : "joinPoolWithUSDC";
   const joinLabel = isLumina ? "Lumina" : "Router";
 
-  const contracts = isLumina
-    ? { vault: contractAddress, usdc: USDC_ADDRESS }
-    : { vault: contractAddress, router: routerAddress, usdc: USDC_ADDRESS, mpoolv3: MPOOLV3_TOKEN_ADDRESS };
+  const contracts = { vault: contractAddress, usdc: USDC_ADDRESS };
 
   const m2mPayload = {
-    protocol: isLumina ? "mutualpool_lumina" : "mutualpool_v3",
-    version: isLumina ? "1.0.0" : "3.0.0",
+    protocol: "mutualpool_lumina",
+    version: "1.0.0",
     intent: "provide_liquidity",
     chainId: 8453,
     contracts,

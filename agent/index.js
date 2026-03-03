@@ -586,7 +586,7 @@ async function postOnchainPool(moltbook, state, pool) {
   const joinTarget = isLumina ? contractAddr : (routerAddr || contractAddr);
   const joinAction = isLumina ? "joinPool" : "joinPoolWithUSDC";
   const joinLabel = isLumina ? "MutualLumina" : "Router";
-  const contractLabel = isLumina ? "MutualLumina" : "MutualPoolV3";
+  const contractLabel = "MutualLumina";
 
   const collateralWei = (Math.min(coverageUsdc, 100) * 1_000_000).toString();
 
@@ -1210,7 +1210,7 @@ async function handlePostActivity(moltbook, state, activity) {
             : (process.env.ROUTER_ADDRESS || "[pending]");
           const joinLabel = isLuminaPool ? "MutualLumina" : "Router";
           const joinFn = isLuminaPool ? "joinPool" : "joinPoolWithUSDC";
-          const contractLabel = isLuminaPool ? "MutualLumina" : "MutualPoolV3";
+          const contractLabel = "MutualLumina";
 
           const usdcAddr = process.env.USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
           if (pool.onchainId !== null) {
@@ -1973,8 +1973,7 @@ async function main() {
   console.log("╠══════════════════════════════════════════════════════════╣");
   console.log(`║ Mode:         ${(USE_LUMINA ? "LUMINA (new pools)" : "V3 LEGACY (new pools)").padEnd(42)}║`);
   console.log(`║ Lumina:       ${(process.env.LUMINA_CONTRACT_ADDRESS || "(not configured)").padEnd(42)}║`);
-  console.log(`║ MutualPoolV3: ${(process.env.V3_CONTRACT_ADDRESS || "(not deployed)").padEnd(42)}║`);
-  console.log(`║ Router:       ${(process.env.ROUTER_ADDRESS || "(not deployed)").padEnd(42)}║`);
+  console.log(`║ Legacy V3:    ${("(deprecated)").padEnd(42)}║`);
   console.log(`║ Products: ${String(Object.keys(INSURANCE_PRODUCTS).length).padEnd(46)}║`);
   console.log(`║ Oracle: Dual Auth (Judge + Auditor)${" ".repeat(22)}║`);
   console.log(`║ Heartbeat: Every 10 min${" ".repeat(33)}║`);

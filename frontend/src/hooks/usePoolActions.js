@@ -1,5 +1,5 @@
 /**
- * usePoolActions — React hook for executing pool transactions via Router.
+ * usePoolActions — React hook for executing pool transactions on MutualLumina.
  *
  * Granular state machine:
  *   idle → isApproving → isExecuting → isSuccess
@@ -7,9 +7,9 @@
  *                 error       error
  *
  * Every ERC-20 action follows the approve→wait→execute→wait→success pattern:
- *   1. Check allowance — if insufficient, request USDC/MPOOLV3 approve signature
+ *   1. Check allowance — if insufficient, request USDC approve signature
  *   2. Wait 1 block confirmation for approve tx
- *   3. Switch state to isExecuting — request Router method signature
+ *   3. Switch state to isExecuting — request Lumina method signature
  *   4. Wait 1 block confirmation for main tx
  *   5. Emit isSuccess + txHash
  *
@@ -20,7 +20,7 @@
 
 import { useState, useCallback } from "react";
 import { ethers } from "ethers";
-import { CONTRACTS, VAULT_ABI, ROUTER_ABI, ERC20_ABI, RPC_URL } from "../lib/contracts";
+import { CONTRACTS, LUMINA_ABI, ERC20_ABI } from "../lib/contracts";
 
 // ═══════════════════════════════════════════════════════════════
 // ADAPTER: wagmi walletClient → ethers v6 Signer
@@ -77,7 +77,7 @@ export function usePoolActions(walletClient) {
 
   // ═══════════════════════════════════════════════════════════
   // CORE: approve → wait → execute → wait → success
-  // Used by all Router-gated actions (USDC/MPOOLV3 deposits)
+  // Used by all USDC deposit actions
   // ═══════════════════════════════════════════════════════════
 
   const executeWithApproval = useCallback(
@@ -97,9 +97,7 @@ export function usePoolActions(walletClient) {
         const currentAllowance = await token.allowance(owner, spender);
 
         if (currentAllowance < amountWei) {
-          // Request approve signature from user
           const approveTx = await token.approve(spender, amountWei);
-          // Wait for 1 block confirmation
           await approveTx.wait(1);
         }
 
@@ -111,7 +109,6 @@ export function usePoolActions(walletClient) {
         const tx = await executeFn(signer);
         setTxHash(tx.hash);
 
-        // Wait for 1 block confirmation
         await tx.wait(1);
 
         setIsExecuting(false);
@@ -144,7 +141,6 @@ export function usePoolActions(walletClient) {
       try {
         const signer = await walletClientToSigner(walletClient);
 
-        // ── Execute ──
         setIsExecuting(true);
 
         const tx = await executeFn(signer);
@@ -154,7 +150,6 @@ export function usePoolActions(walletClient) {
 
         setIsExecuting(false);
 
-        // ── Success ──
         setIsSuccess(true);
 
         return { hash: tx.hash };
@@ -168,8 +163,8 @@ export function usePoolActions(walletClient) {
   );
 
   // ═══════════════════════════════════════════════════════════
-  // ACTION 1a: Fund Premium with USDC (Insured)
-  //   approve(USDC, Router, amount) → Router.fundPremiumWithUSDC(poolId, amount)
+  // ACTION 1: Fund Premium with USDC (Insured)
+  //   approve(USDC, Lumina, amount) → Lumina.joinPool(poolId, amount)
   // ═══════════════════════════════════════════════════════════
 
   const fundPremiumWithUSDC = useCallback(
@@ -177,11 +172,11 @@ export function usePoolActions(walletClient) {
       const amountWei = ethers.parseUnits(usdcAmount.toString(), 6);
       return executeWithApproval({
         tokenAddress: CONTRACTS.USDC,
-        spender: CONTRACTS.ROUTER,
+        spender: CONTRACTS.MUTUAL_LUMINA,
         amountWei,
         executeFn: (signer) => {
-          const router = new ethers.Contract(CONTRACTS.ROUTER, ROUTER_ABI, signer);
-          return router.fundPremiumWithUSDC(poolId, amountWei);
+          const lumina = new ethers.Contract(CONTRACTS.MUTUAL_LUMINA, LUMINA_ABI, signer);
+          return lumina.joinPool(poolId, amountWei);
         },
       });
     },
@@ -189,30 +184,8 @@ export function usePoolActions(walletClient) {
   );
 
   // ═══════════════════════════════════════════════════════════
-  // ACTION 1b: Fund Premium with MPOOLV3 (Insured, Zap-In)
-  //   approve(MPOOLV3, Router, mpoolAmount) → Router.fundPremiumWithMPOOL(poolId, mpoolAmount, minUsdcOut)
-  // ═══════════════════════════════════════════════════════════
-
-  const fundPremiumWithMPOOL = useCallback(
-    (poolId, mpoolAmount, minUsdcOut) => {
-      const mpoolWei = ethers.parseUnits(mpoolAmount.toString(), 18);
-      const minOutWei = ethers.parseUnits(minUsdcOut.toString(), 6);
-      return executeWithApproval({
-        tokenAddress: CONTRACTS.MPOOLV3_TOKEN,
-        spender: CONTRACTS.ROUTER,
-        amountWei: mpoolWei,
-        executeFn: (signer) => {
-          const router = new ethers.Contract(CONTRACTS.ROUTER, ROUTER_ABI, signer);
-          return router.fundPremiumWithMPOOL(poolId, mpoolWei, minOutWei);
-        },
-      });
-    },
-    [executeWithApproval]
-  );
-
-  // ═══════════════════════════════════════════════════════════
-  // ACTION 2a: Join Pool with USDC (Provider)
-  //   approve(USDC, Router, amount) → Router.joinPoolWithUSDC(poolId, amount)
+  // ACTION 2: Join Pool with USDC (Provider)
+  //   approve(USDC, Lumina, amount) → Lumina.joinPool(poolId, amount)
   // ═══════════════════════════════════════════════════════════
 
   const joinPoolWithUSDC = useCallback(
@@ -220,33 +193,11 @@ export function usePoolActions(walletClient) {
       const amountWei = ethers.parseUnits(usdcAmount.toString(), 6);
       return executeWithApproval({
         tokenAddress: CONTRACTS.USDC,
-        spender: CONTRACTS.ROUTER,
+        spender: CONTRACTS.MUTUAL_LUMINA,
         amountWei,
         executeFn: (signer) => {
-          const router = new ethers.Contract(CONTRACTS.ROUTER, ROUTER_ABI, signer);
-          return router.joinPoolWithUSDC(poolId, amountWei);
-        },
-      });
-    },
-    [executeWithApproval]
-  );
-
-  // ═══════════════════════════════════════════════════════════
-  // ACTION 2b: Join Pool with MPOOLV3 (Provider, Zap-In)
-  //   approve(MPOOLV3, Router, mpoolAmount) → Router.joinPoolWithMPOOL(poolId, mpoolAmount, minUsdcOut)
-  // ═══════════════════════════════════════════════════════════
-
-  const joinPoolWithMPOOL = useCallback(
-    (poolId, mpoolAmount, minUsdcOut) => {
-      const mpoolWei = ethers.parseUnits(mpoolAmount.toString(), 18);
-      const minOutWei = ethers.parseUnits(minUsdcOut.toString(), 6);
-      return executeWithApproval({
-        tokenAddress: CONTRACTS.MPOOLV3_TOKEN,
-        spender: CONTRACTS.ROUTER,
-        amountWei: mpoolWei,
-        executeFn: (signer) => {
-          const router = new ethers.Contract(CONTRACTS.ROUTER, ROUTER_ABI, signer);
-          return router.joinPoolWithMPOOL(poolId, mpoolWei, minOutWei);
+          const lumina = new ethers.Contract(CONTRACTS.MUTUAL_LUMINA, LUMINA_ABI, signer);
+          return lumina.joinPool(poolId, amountWei);
         },
       });
     },
@@ -255,54 +206,38 @@ export function usePoolActions(walletClient) {
 
   // ═══════════════════════════════════════════════════════════
   // ACTION 3: Withdraw (Post-resolution, Vault-direct)
-  //   Vault.withdraw(poolId)
+  //   Lumina.withdraw(poolId)
   // ═══════════════════════════════════════════════════════════
 
   const withdraw = useCallback(
     (poolId) =>
       executeDirectly((signer) => {
-        const vault = new ethers.Contract(CONTRACTS.MUTUAL_POOL_V3, VAULT_ABI, signer);
-        return vault.withdraw(poolId);
+        const lumina = new ethers.Contract(CONTRACTS.MUTUAL_LUMINA, LUMINA_ABI, signer);
+        return lumina.withdraw(poolId);
       }),
     [executeDirectly]
   );
 
   // ═══════════════════════════════════════════════════════════
   // ACTION 4: Cancel & Refund (Vault-direct)
-  //   Vault.cancelAndRefund(poolId)
+  //   Lumina.cancelAndRefund(poolId)
   // ═══════════════════════════════════════════════════════════
 
   const cancelAndRefund = useCallback(
     (poolId) =>
       executeDirectly((signer) => {
-        const vault = new ethers.Contract(CONTRACTS.MUTUAL_POOL_V3, VAULT_ABI, signer);
-        return vault.cancelAndRefund(poolId);
+        const lumina = new ethers.Contract(CONTRACTS.MUTUAL_LUMINA, LUMINA_ABI, signer);
+        return lumina.cancelAndRefund(poolId);
       }),
     [executeDirectly]
   );
 
-  // ═══════════════════════════════════════════════════════════
-  // QUOTE: MPOOLV3 → USDC (read-only, no state changes)
-  // Uses public RPC — no wallet required
-  // ═══════════════════════════════════════════════════════════
-
-  const quoteMpoolToUsdc = useCallback(async (mpoolAmount) => {
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const router = new ethers.Contract(CONTRACTS.ROUTER, ROUTER_ABI, provider);
-    const mpoolWei = ethers.parseUnits(mpoolAmount.toString(), 18);
-    const usdcOut = await router.quoteMpoolToUsdc(mpoolWei);
-    return ethers.formatUnits(usdcOut, 6);
-  }, []);
-
   return {
     // Actions
     fundPremiumWithUSDC,
-    fundPremiumWithMPOOL,
     joinPoolWithUSDC,
-    joinPoolWithMPOOL,
     withdraw,
     cancelAndRefund,
-    quoteMpoolToUsdc,
 
     // Granular state
     isApproving,

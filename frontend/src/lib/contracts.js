@@ -14,10 +14,6 @@ export const RPC_URL = "https://mainnet.base.org";
 
 export const CONTRACTS = {
   MUTUAL_LUMINA: "0x1c5E5c90aC46e960aACbfCeAE9dEC2F79ce06bd7",
-  // Legacy V3 + Router
-  MUTUAL_POOL_V3: "0x3ee94c92eD66CfB6309A352136689626CDed3c40",
-  ROUTER: "0xdb9ca7ADb3739f3df1ED1B674F79AEDAdFB43F7f",
-  MPOOLV3_TOKEN: "0x0757504597288140731888f94F33156e2070191f",
   USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
 };
 
@@ -69,15 +65,6 @@ export const LUMINA_ABI = [
   "event Withdrawn(uint256 indexed poolId, address indexed participant, uint256 amount)",
 ];
 
-/** @deprecated Use LUMINA_ABI for new pools — Router is V3-only */
-export const ROUTER_ABI = [
-  "function fundPremiumWithUSDC(uint256 poolId, uint256 amount)",
-  "function joinPoolWithUSDC(uint256 poolId, uint256 amount)",
-  "function fundPremiumWithMPOOL(uint256 poolId, uint256 mpoolAmount, uint256 minUsdcOut)",
-  "function joinPoolWithMPOOL(uint256 poolId, uint256 mpoolAmount, uint256 minUsdcOut)",
-  "function quoteMpoolToUsdc(uint256 mpoolAmount) view returns (uint256)",
-  "function paused() view returns (bool)",
-];
 
 export const AUTORESOLVER_ABI = [
   // Read

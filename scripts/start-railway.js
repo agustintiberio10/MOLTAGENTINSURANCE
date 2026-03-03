@@ -257,7 +257,7 @@ async function start() {
 
   // ── Step 3: Initialize Oracle Bot (blockchain sync) ──
   // This is the critical step for ephemeral resilience:
-  // syncFromChain() reads MutualPoolV3.nextPoolId() and reconstructs
+  // syncFromChain() reads nextPoolId() and reconstructs
   // pool state from on-chain data, so a fresh container starts correctly.
   if (shouldRunOracle) {
     try {
