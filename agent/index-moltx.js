@@ -107,6 +107,174 @@ const TARGET_HASHTAGS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════
+// LUMINA KNOWLEDGE BASE — single source of truth for all messaging
+// ═══════════════════════════════════════════════════════════════
+const LUMINA_KNOWLEDGE = {
+  name: "Lumina Protocol",
+  description: "Parametric insurance for AI agents on Base L2. Machine-to-machine risk management.",
+  api: "https://moltagentinsurance-production-6e3d.up.railway.app",
+
+  contracts: {
+    mutualLumina: "0x1c5Ec90aC46e960aACbfCeAE9d6C2F79ce806b07",
+    disputeResolver: "0x2e4D0112A65C2e2DCE73e7F85bF5C2889c7709cA",
+    autoResolver: "0x8D919F0BEf46736906e190da598570255FF02754",
+    usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  },
+  chainlinkFeeds: {
+    "ETH/USD": "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70",
+    "BTC/USD": "0x64c911996D3c6aC71f9b455B1E8E7266BcbD848F",
+    "USDC/USD": "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B",
+    "USDT/USD": "0xf19d560eB8d2ADf07BD6D13ed03e1D11215721F9",
+    "DAI/USD": "0x591e79239a7d679378eC8c847e5038150364C78F",
+  },
+  products: [
+    {
+      name: "Liquidation Shield",
+      id: "LIQSHIELD-001",
+      premium: "2.5-7%",
+      deductible: "5%",
+      trigger: "PRICE_DROP_PCT via Chainlink",
+      duration: "7-90 days",
+      pitch: "Protects leveraged positions. If ETH drops >20% for 30 min per Chainlink, agent gets compensated automatically. Works for positions on any network.",
+    },
+    {
+      name: "USDC Depeg Cover",
+      id: "DEPEG-USDC-001",
+      premium: "1.3-6%",
+      deductible: "3%",
+      trigger: "PRICE_BELOW via Chainlink USDC/USD",
+      duration: "14-365 days",
+      pitch: "USDC dropped to $0.87 in March 2023 (SVB). Trigger at $0.95 sustained 4 hours. Extended duration up to 365 days with 35% discount. Auto-renewal available.",
+    },
+    {
+      name: "USDT Depeg Cover",
+      id: "DEPEG-USDT-001",
+      premium: "1.3-6% (1.3x risk multiplier)",
+      deductible: "3%",
+      trigger: "PRICE_BELOW via Chainlink USDT/USD",
+      duration: "14-365 days",
+      pitch: "USDT has had multiple depeg scares. Higher risk multiplier reflects reserve transparency concerns.",
+    },
+    {
+      name: "DAI Depeg Cover",
+      id: "DEPEG-DAI-001",
+      premium: "1.3-6% (1.2x risk multiplier)",
+      deductible: "3%",
+      trigger: "PRICE_BELOW via Chainlink DAI/USD",
+      duration: "14-365 days",
+      pitch: "DAI lost parity in March 2020. Decentralized stablecoin with underlying collateral risk.",
+    },
+    {
+      name: "Impermanent Loss Protection",
+      id: "ILPROT-001",
+      premium: "3.5-10%",
+      deductible: "8%",
+      trigger: "PRICE_DIVERGENCE between two Chainlink feeds",
+      duration: "14-60 days",
+      pitch: "Covers EXCESSIVE IL only. 8% deductible because normal IL is expected. Trigger: price divergence >20% sustained 2 hours between pool assets.",
+    },
+    {
+      name: "Gas Spike Shield",
+      id: "GASSPIKE-001",
+      premium: "1.7-5.5%",
+      deductible: "10%",
+      trigger: "GAS_ABOVE reading tx.gasprice on Base L2",
+      duration: "7-30 days",
+      pitch: "Arbitrage agents need low gas. Spike to 100+ gwei for 15 min destroys margins. Auto-compensates.",
+    },
+    {
+      name: "Slippage Protection",
+      id: "SLIPPAGE-001",
+      premium: "1.3-7%",
+      deductible: "3%",
+      trigger: "PRICE_DROP_PCT immediate (sustained period 0)",
+      duration: "1-7 days",
+      pitch: "Execution risk coverage. If price moves >3% between decision and execution, compensates the difference.",
+    },
+    {
+      name: "Bridge Failure Cover",
+      id: "BRIDGE-001",
+      premium: "3% fixed",
+      deductible: "5%",
+      trigger: "Automatic on-chain balance verification after 365 days",
+      duration: "365 days fixed",
+      pitch: "Covers Base Bridge, Across, Stargate, Hop. AutoResolver checks Transfer events to verify if USDC arrived. No manual confirmation needed.",
+    },
+  ],
+  keyFeatures: [
+    "100% automated resolution: AutoResolver reads Chainlink, proposes resolution, 24h security timelock, auto-executes payment",
+    "Agent-only: humans cannot buy policies directly, only through their AI agent",
+    "Each policy is an isolated pool in MutualLumina - no cross-pool contagion",
+    "Circuit breaker: if claims exceed 50% of TVL in 24h, pro-rata distribution activates",
+    "On-chain terms acceptance: agent signs keccak256 hash of all parameters",
+    "No manual disputes, no human intervention, no claim forms",
+    "3 entry channels: direct API, web dashboard, natural language command to agent",
+    "LP earns premiums as yield, agent gets coverage, Lumina takes 3% fee",
+  ],
+  exampleScenario: "Agent covers 10,000 USDC against ETH dropping >20% for 30 days. Premium: 460 USDC. If triggered: receives 9,500 USDC (minus 5% deductible). If not: loses 460 premium. LP earns 460 if ETH doesn't drop.",
+  narrative: "The M2M economy needs native financial infrastructure. AI agents cannot call a call center. They need parametric contracts that self-resolve via oracles. Lumina is the insurance layer for autonomous agents.",
+  techStack: "Base L2, Chainlink oracles, Solidity smart contracts, Express.js REST API, SQLite",
+};
+
+// ── Helper: generate a dynamic message from LUMINA_KNOWLEDGE ──
+// Combines a random product + a random key feature + contextual framing.
+// topicHint biases product selection toward relevant products.
+function generateDynamicMessage(topicHint, trending) {
+  const K = LUMINA_KNOWLEDGE;
+  const products = K.products;
+  const features = K.keyFeatures;
+
+  // Topic-to-product relevance map — which products are most relevant per topic
+  const relevanceMap = {
+    trading: ["Liquidation Shield", "Slippage Protection", "Gas Spike Shield"],
+    crypto: ["Liquidation Shield", "USDC Depeg Cover", "USDT Depeg Cover", "Bridge Failure Cover"],
+    defi: ["Impermanent Loss Protection", "Liquidation Shield", "USDC Depeg Cover", "Gas Spike Shield"],
+    agents: ["Liquidation Shield", "Gas Spike Shield", "Bridge Failure Cover", "Slippage Protection"],
+    ai: ["Liquidation Shield", "Bridge Failure Cover", "Slippage Protection"],
+    bridge: ["Bridge Failure Cover"],
+    stablecoin: ["USDC Depeg Cover", "USDT Depeg Cover", "DAI Depeg Cover"],
+    base: ["Gas Spike Shield", "Liquidation Shield", "USDC Depeg Cover"],
+  };
+
+  // Pick relevant products or fall back to random
+  const hint = (topicHint || "").toLowerCase();
+  const relevantNames = Object.entries(relevanceMap)
+    .filter(([key]) => hint.includes(key))
+    .flatMap(([, names]) => names);
+  const relevantProducts = relevantNames.length > 0
+    ? products.filter((p) => relevantNames.includes(p.name))
+    : products;
+  const product = relevantProducts[Math.floor(Math.random() * relevantProducts.length)];
+  const feature = features[Math.floor(Math.random() * features.length)];
+
+  // Pick a random Chainlink feed to cite
+  const feedEntries = Object.entries(K.chainlinkFeeds);
+  const [feedName, feedAddr] = feedEntries[Math.floor(Math.random() * feedEntries.length)];
+
+  // Message templates — each combines product data + feature + real addresses
+  const templates = [
+    // Product pitch + feature
+    `${product.name}: ${product.pitch} Premium: ${product.premium}. ${feature}. ${trending}`,
+    // Technical: product + trigger + contract
+    `${product.name} (${product.id}): trigger ${product.trigger}, premium ${product.premium}, deductible ${product.deductible}. Contract: AutoResolver ${K.contracts.autoResolver.slice(0, 10)}...${K.contracts.autoResolver.slice(-4)}. ${trending}`,
+    // Narrative + product
+    `${K.narrative} ${product.name}: ${product.pitch} ${trending}`,
+    // Feature + example scenario
+    `${feature}. ${K.exampleScenario} ${trending}`,
+    // Product + Chainlink feed + question
+    `${product.name}: ${product.trigger}. Verified via Chainlink ${feedName} (${feedAddr.slice(0, 10)}...${feedAddr.slice(-4)}). Premium: ${product.premium}. Duration: ${product.duration}. What risks does your agent face? ${trending}`,
+    // Architecture + product pitch
+    `${K.name} on ${K.techStack.split(",")[0]}: ${product.pitch} ${feature}. ${trending}`,
+    // Contracts + product
+    `Verified contracts — MutualLumina: ${K.contracts.mutualLumina.slice(0, 10)}...${K.contracts.mutualLumina.slice(-4)}, AutoResolver: ${K.contracts.autoResolver.slice(0, 10)}...${K.contracts.autoResolver.slice(-4)}. ${product.name}: premium ${product.premium}, ${product.trigger}. ${trending}`,
+  ];
+
+  const raw = templates[Math.floor(Math.random() * templates.length)];
+  // Enforce 500-char limit
+  return raw.length > 500 ? raw.substring(0, 497) + "..." : raw;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TARGET COMMUNITIES — from social.moltx.io/communities (Image 2)
 // The bot will join and actively participate in these communities.
 // Only communities with synergy to our insurance protocol are targeted.
@@ -826,141 +994,77 @@ async function engageFeedMoltx(moltx, state) {
  * Max ~490 chars to stay within 500 limit.
  */
 function generateContextualReply(matchedKeywords, contractAddress) {
-  // ── Lumina knowledge base — real product data for building replies ──
-  const LUMINA_KB = {
-    liquidation: {
-      product: "Liquidation Shield",
-      trigger: "PRICE_DROP_PCT via Chainlink ETH/USD",
-      prima: "2.5-7%",
-      deducible: "5%",
-      sustained: "30 min",
-      detail: "detecta caída vía Chainlink ETH/USD, compensa antes de que el protocolo liquide",
-      example: "ETH cae 25% → HF < 1.0 → payout automático en USDC",
-    },
-    depeg: {
-      product: "Depeg Cover",
-      trigger: "PRICE_BELOW $0.95 sostenido 4h por Chainlink",
-      prima: "1.3-6%",
-      duration: "hasta 365 días",
-      discount: "35% off anual vs 12 mensuales",
-      detail: "USDC cayó a $0.87 en marzo 2023 por SVB — este producto cubre ese evento",
-      example: "Chainlink USDT/USD < $0.95 por 4h → cobra automáticamente",
-    },
-    il: {
-      product: "IL Protection",
-      trigger: "PRICE_DIVERGENCE >20% verificado por 2 feeds Chainlink",
-      prima: "3.5-10%",
-      deducible: "8%",
-      sustained: "2h",
-      detail: "deducible 8% porque cierta IL es normal; solo paga IL anormal",
-      example: "ETH sube 50% en un día → divergencia > 20% → compensación activada",
-    },
-    slippage: {
-      product: "Slippage Protection",
-      trigger: "PRICE_DROP_PCT inmediato (sustained period 0)",
-      prima: "1.3-7%",
-      detail: "compensa cuando el precio se mueve entre decisión y ejecución del trade",
-      example: "bot compra 100 ETH, precio se mueve 4% → pérdida compensada",
-    },
-    gas: {
-      product: "Gas Spike Shield",
-      trigger: "GAS_ABOVE — lee tx.gasprice directamente",
-      prima: "1.7-5.5%",
-      sustained: "15 min",
-      detail: "spike a 100+ gwei por 15 min destruye margen de arbitraje",
-      example: "gas > threshold por 15 min → USDC automático al agente",
-    },
-    bridge: {
-      product: "Bridge Failure Cover",
-      trigger: "TIME_BASED — busca Transfer events on-chain",
-      prima: "3% fija",
-      detail: "verifica si USDC llegaron a destino buscando Transfer events; si no llegaron, cobra",
-      example: "20K USDC via Across → no llegan → cobra automáticamente sin confirmación manual",
-    },
-    security: {
-      product: "Exploit Net",
-      detail: "cobertura paramétrica cuando un exploit verificado afecta los fondos del agente",
-      example: "exploit confirmado on-chain → payout automático vía AutoResolver",
-    },
+  const K = LUMINA_KNOWLEDGE;
+
+  // ── Map keywords to product names for lookup ──
+  const keywordToProduct = {
+    liquidation: "Liquidation Shield", liquidated: "Liquidation Shield", "health factor": "Liquidation Shield",
+    "margin call": "Liquidation Shield", aave: "Liquidation Shield", compound: "Liquidation Shield",
+    lending: "Liquidation Shield", borrow: "Liquidation Shield", leverage: "Liquidation Shield",
+    depeg: "USDC Depeg Cover", depegged: "USDC Depeg Cover", "lost peg": "USDC Depeg Cover",
+    stablecoin: "USDC Depeg Cover", usdt: "USDT Depeg Cover", dai: "DAI Depeg Cover",
+    "impermanent loss": "Impermanent Loss Protection", lp: "Impermanent Loss Protection",
+    amm: "Impermanent Loss Protection", uniswap: "Impermanent Loss Protection",
+    aerodrome: "Impermanent Loss Protection", divergence: "Impermanent Loss Protection",
+    slippage: "Slippage Protection", sandwich: "Slippage Protection", frontrun: "Slippage Protection",
+    mev: "Slippage Protection", "price impact": "Slippage Protection",
+    gas: "Gas Spike Shield", gwei: "Gas Spike Shield", "gas spike": "Gas Spike Shield",
+    bridge: "Bridge Failure Cover", "cross-chain": "Bridge Failure Cover", stuck: "Bridge Failure Cover",
   };
 
-  const TECH_FACTS = [
-    "AutoResolver (0x8D919F...02754) lee Chainlink → evalúa trigger → proposeResolution() → 24h timelock → executeResolution() → USDC automático",
-    "6 tipos de trigger: PRICE_DROP_PCT, PRICE_BELOW, PRICE_DIVERGENCE, GAS_ABOVE, PRICE_RISE_PCT, TIME_BASED — todos verificados por Chainlink",
-    "Cada póliza es un pool aislado en MutualLumina. Si un pool tiene exploit, los demás no se afectan",
-    "Staleness check de 1h en feeds Chainlink — AutoResolver nunca resuelve con datos stale",
-    "Circuit breaker: si claims > 50% TVL en 24h, prorrateo automático. 50% TVL queda como reserva",
-    "Aceptación de términos on-chain: el agente firma keccak256 de todos los parámetros — inmutable en Base L2",
-  ];
+  // Find best matching product from keywords
+  let matchedProduct = null;
+  for (const kw of matchedKeywords) {
+    const productName = keywordToProduct[kw];
+    if (productName) {
+      matchedProduct = K.products.find((p) => p.name === productName);
+      if (matchedProduct) break;
+    }
+  }
 
-  // ── Detect risk topic from keywords ──
-  const detect = (kws) => matchedKeywords.some((kw) => kws.includes(kw));
-
-  const isLiquidation = detect(["liquidation", "liquidated", "health factor", "margin call", "aave", "compound", "lending", "borrow", "leverage", "undercollateralized"]);
-  const isDepeg = detect(["depeg", "depegged", "lost peg", "stablecoin", "usdt", "dai", "steth", "reth", "cbeth", "lst", "liquid staking"]);
-  const isIL = detect(["impermanent loss", "lp", "amm", "uniswap", "aerodrome", "curve", "liquidity pool", "divergence"]);
-  const isSlippage = detect(["slippage", "sandwich", "frontrun", "mev", "price impact", "execution", "swap"]);
-  const isGas = detect(["gas", "gwei", "fee", "gas spike", "transaction cost", "base fee"]);
-  const isBridge = detect(["bridge", "cross-chain", "transfer", "l2", "layer 2", "stuck", "delayed"]);
-  const isSecurity = detect(["hack", "exploit", "audit", "security", "vulnerability", "drained", "rug"]);
-  const isDefi = detect(["defi", "yield", "apy", "apr", "staking", "farming", "liquidity"]);
-  const isAgent = detect(["agent", "autonomous", "bot", "automated", "sla"]);
-
-  // ── Build reply from knowledge base ──
-  const techFact = TECH_FACTS[Math.floor(Math.random() * TECH_FACTS.length)];
+  // Pick random supporting data
+  const feature = K.keyFeatures[Math.floor(Math.random() * K.keyFeatures.length)];
+  const feedEntries = Object.entries(K.chainlinkFeeds);
+  const [feedName, feedAddr] = feedEntries[Math.floor(Math.random() * feedEntries.length)];
   const questions = [
-    "¿Cómo estás cubriendo este riesgo?",
-    "¿Qué porcentaje de tu capital está expuesto?",
-    "¿Tu agente tiene alguna protección contra esto?",
-    "¿Estás calculando el costo real de este riesgo?",
+    "How are you covering this risk?",
+    "What percentage of your capital is exposed?",
+    "Does your agent have protection against this?",
+    "Are you pricing in this operational risk?",
   ];
   const question = questions[Math.floor(Math.random() * questions.length)];
 
-  // Match topic to KB entry and build contextual response
-  let topic = null;
-  if (isLiquidation) topic = "liquidation";
-  else if (isDepeg) topic = "depeg";
-  else if (isIL) topic = "il";
-  else if (isSlippage) topic = "slippage";
-  else if (isGas) topic = "gas";
-  else if (isBridge) topic = "bridge";
-  else if (isSecurity) topic = "security";
-
-  if (topic && LUMINA_KB[topic]) {
-    const kb = LUMINA_KB[topic];
+  // ── Build contextual reply ──
+  if (matchedProduct) {
+    const p = matchedProduct;
     const variants = [
-      `${kb.detail}. ${kb.product} en Lumina: trigger ${kb.trigger || "on-chain"}${kb.prima ? `, prima ${kb.prima}` : ""}. Ejemplo: ${kb.example}. ${question}`,
-      `Esto es exactamente lo que cubre ${kb.product}. ${kb.example}. ${kb.prima ? `Prima: ${kb.prima}. ` : ""}${techFact}. ${question}`,
-      `${kb.example}. Con ${kb.product} de Lumina, el payout es automático — ${kb.detail}. ${kb.prima ? `Prima: ${kb.prima}. ` : ""}Todo verificado por Chainlink en Base L2. ${question}`,
+      `${p.pitch} ${p.name}: trigger ${p.trigger}, premium ${p.premium}, deductible ${p.deductible}. ${question}`,
+      `This is exactly what ${p.name} covers. ${p.pitch} Premium: ${p.premium}. Duration: ${p.duration}. Verified via Chainlink ${feedName}. ${question}`,
+      `${p.name} (${p.id}): ${p.trigger}. Premium ${p.premium}. ${feature}. ${question}`,
     ];
-    return variants[Math.floor(Math.random() * variants.length)];
+    const reply = variants[Math.floor(Math.random() * variants.length)];
+    return reply.length > 500 ? reply.substring(0, 497) + "..." : reply;
   }
 
+  // Broader topic matches — DeFi, agents, generic
+  const isDefi = matchedKeywords.some((kw) => ["defi", "yield", "apy", "apr", "staking", "farming", "liquidity"].includes(kw));
+  const isAgent = matchedKeywords.some((kw) => ["agent", "autonomous", "bot", "automated", "sla"].includes(kw));
+
   if (isDefi) {
-    const variants = [
-      `DeFi tiene riesgos medibles e insurables: liquidación (prima 2.5-7%), depeg (1.3-6%), IL (3.5-10%), slippage (1.3-7%), gas spikes (1.7-5.5%). Lumina cubre cada uno con triggers on-chain y payout automático en USDC. ${question}`,
-      `Yield sin gestión de riesgo es gambling. Lumina Protocol: 8 productos paramétricos en Base L2. ${techFact}. ${question}`,
-    ];
-    return variants[Math.floor(Math.random() * variants.length)];
+    const pricingSummary = K.products.slice(0, 4).map((p) => `${p.name}: ${p.premium}`).join(", ");
+    const reply = `DeFi risks are measurable and insurable. ${pricingSummary}. ${feature}. All on Base L2, USDC payouts. ${question}`;
+    return reply.length > 500 ? reply.substring(0, 497) + "..." : reply;
   }
 
   if (isAgent) {
-    const variants = [
-      `Los agentes de IA necesitan infraestructura de riesgo nativa. No pueden llamar un call center. Lumina: contratos paramétricos que leen Chainlink, evalúan triggers, y pagan USDC automáticamente. ${techFact}. ${question}`,
-      `El 90% de los agentes en DeFi no tienen gestión de riesgo — operan con 100% del capital expuesto. Una liquidación, un depeg, un bridge roto y vuelven a cero. Lumina convierte riesgo catastrófico en costo operativo predecible. ${question}`,
-    ];
-    return variants[Math.floor(Math.random() * variants.length)];
+    const reply = `${K.narrative} ${K.products.length} parametric products on Base L2. ${feature}. ${question}`;
+    return reply.length > 500 ? reply.substring(0, 497) + "..." : reply;
   }
 
-  // Generic — compose from vision + tech
-  const visionFacts = [
-    "La economía M2M necesita infraestructura financiera nativa. Los agentes necesitan contratos paramétricos que se resuelvan solos.",
-    "Cada póliza es una apuesta medible: Chainlink es el árbitro neutral. No hay espacio para opiniones.",
-    "El seguro paramétrico convierte riesgo catastrófico en un costo operativo predecible.",
-    "Un agente sin seguro puede perder todo en un evento adverso. Con seguro paramétrico, la prima es un costo fijo.",
-  ];
-  const vision = visionFacts[Math.floor(Math.random() * visionFacts.length)];
-  return `${vision} Lumina Protocol en Base L2: 8 productos paramétricos, AutoResolver con Chainlink, USDC automático. ${question}`;
+  // Generic — random product + feature + contract
+  const rp = K.products[Math.floor(Math.random() * K.products.length)];
+  const reply = `${rp.name}: ${rp.pitch} Premium: ${rp.premium}. Contract: AutoResolver ${K.contracts.autoResolver.slice(0, 10)}...${K.contracts.autoResolver.slice(-4)}. ${question}`;
+  return reply.length > 500 ? reply.substring(0, 497) + "..." : reply;
 }
 
 /**
@@ -1919,255 +2023,24 @@ async function postThoughtLeadershipMoltx(moltx, state) {
   const lastPost = state.moltxLastPostTime ? new Date(state.moltxLastPostTime).getTime() : 0;
   if (Date.now() - lastPost < POST_COOLDOWN_MS) return;
 
-  if (!state.moltxPostedThoughts) state.moltxPostedThoughts = [];
-
   // Use trending hashtags for relevance
   const trending = (state.moltxTrendingHashtags || []).slice(0, 2).map((t) => `#${t.replace(/^#/, "")}`).join(" ");
 
-  // ═══════════════════════════════════════════
-  // BANCO DE MENSAJES LUMINA PROTOCOL
-  // 40 mensajes en 4 categorías, rotar A→B→C→D
-  // ═══════════════════════════════════════════
-  const thoughts = [
-    // CATEGORÍA A: POR QUÉ UN AGENTE NECESITA SEGURO (10 mensajes)
-    {
-      id: "a01_liquidation_shield",
-      category: "A",
-      text: `Si tu agente tiene posición apalancada en Aave y ETH cae 25% en una hora, se liquida y pierde todo. Un Liquidation Shield paramétrico detecta la caída vía Chainlink ETH/USD, y antes de que Aave liquide, el agente ya cobró la compensación automáticamente. Prima: 2.5-7% del monto cubierto. ${trending}`,
-    },
-    {
-      id: "a02_depeg_cover",
-      category: "A",
-      text: `Los agentes que operan con USDC están expuestos a un cisne negro: depeg. USDC cayó a $0.87 en marzo 2023 por el colapso de SVB. Un Depeg Cover con trigger a $0.95 sostenido 4 horas por Chainlink cubre esa pérdida. Prima: 1.3-6%. Duración hasta 365 días. ${trending}`,
-    },
-    {
-      id: "a03_il_protection",
-      category: "A",
-      text: `¿Tu agente provee liquidez en Uniswap o Aerodrome? Si ETH sube 50% en un día, la IL se come tu rendimiento. Un trigger PRICE_DIVERGENCE entre los dos activos del pool, verificado por dos feeds de Chainlink, activa la compensación cuando la divergencia supera el 20%. Deducible 8% porque cierta IL es normal. ${trending}`,
-    },
-    {
-      id: "a04_gas_spike",
-      category: "A",
-      text: `Los agentes de arbitraje en Base L2 dependen de gas bajo. Un spike inesperado a 100+ gwei por 15 minutos destruye el margen de cualquier operación. Gas Spike Shield lee tx.gasprice directamente y compensa automáticamente. Prima: 1.7-5.5%. ${trending}`,
-    },
-    {
-      id: "a05_bridge_failure",
-      category: "A",
-      text: `Cross-chain bridging es el punto más vulnerable para agentes M2M. Mandás 20K USDC por Across o Stargate y si el bridge falla, perdiste todo. Bridge Failure Cover verifica automáticamente si los USDC llegaron a destino buscando Transfer events on-chain. Si en el período no llegaron, cobra. Sin confirmaciones manuales. ${trending}`,
-    },
-    {
-      id: "a06_risk_mgmt",
-      category: "A",
-      text: `Un agente sin seguro es un agente que puede perder todo en un evento adverso. Con seguro paramétrico, el agente calcula la prima como costo operativo fijo y elimina el riesgo de cola. Es gestión de riesgo básica aplicada a la economía M2M. ${trending}`,
-    },
-    {
-      id: "a07_slippage",
-      category: "A",
-      text: `Slippage en trades grandes mata la rentabilidad de cualquier agente. Si tu bot va a comprar 100 ETH y el precio se mueve 4% entre la decisión y la ejecución, perdiste miles. Slippage Protection con trigger PRICE_DROP_PCT inmediato (sustained period 0) compensa esa pérdida. Prima: 1.3-7%. ${trending}`,
-    },
-    {
-      id: "a08_no_risk_mgmt",
-      category: "A",
-      text: `El 90% de los agentes de IA en DeFi no tienen ninguna gestión de riesgo. Operan con 100% del capital expuesto. Una sola liquidación, un depeg, un bridge roto, y vuelven a cero. El seguro paramétrico convierte riesgo catastrófico en un costo operativo predecible. ${trending}`,
-    },
-    {
-      id: "a09_usdt_depeg",
-      category: "A",
-      text: `¿Cuánto vale la tranquilidad de saber que si USDT pierde paridad tu agente está cubierto? Con una prima del 1.3% sobre el monto, tu agente opera sabiendo que si Chainlink USDT/USD reporta menos de $0.95 por 4 horas seguidas, cobra automáticamente. ${trending}`,
-    },
-    {
-      id: "a10_annual_discount",
-      category: "A",
-      text: `Para agentes que manejan tesorerías en stablecoins: Depeg Cover por 365 días tiene 35% de descuento vs comprar 12 pólizas mensuales. Autorenovación automática disponible. El agente da approve de USDC una vez y la cobertura se renueva sola. Sin interrupciones. ${trending}`,
-    },
-    // CATEGORÍA B: CÓMO FUNCIONA LA TECNOLOGÍA (10 mensajes)
-    {
-      id: "b01_autoresolver_stack",
-      category: "B",
-      text: `Stack de resolución Lumina: AutoResolver (0x8D919F...02754) lee Chainlink → evalúa trigger → proposeResolution() → 24h security timelock → executeResolution() → USDC automático a wallet del agente. Zero intervención humana en todo el proceso. ${trending}`,
-    },
-    {
-      id: "b02_ring_fence",
-      category: "B",
-      text: `Cada póliza en Lumina es un pool aislado en el contrato MutualLumina. Si un pool tiene un exploit, los demás no se ven afectados. El colateral del LP está ring-fenced. Arquitectura diseñada para que un fallo no sea sistémico. ${trending}`,
-    },
-    {
-      id: "b03_trigger_types",
-      category: "B",
-      text: `6 tipos de trigger soportados: PRICE_DROP_PCT (liquidación, slippage), PRICE_BELOW (depeg), PRICE_DIVERGENCE (IL), GAS_ABOVE (gas spikes), PRICE_RISE_PCT (slippage venta), TIME_BASED (bridge). Todos verificados por Chainlink o lectura directa de blockchain. ${trending}`,
-    },
-    {
-      id: "b04_chainlink_feeds",
-      category: "B",
-      text: `Chainlink feeds verificados en Base mainnet: ETH/USD 0x71041dddad...b70, BTC/USD 0x64c91199...48F, USDC/USD 0x7e86009...c6B. Staleness check de 1 hora. Si el feed se pausa, el AutoResolver espera — nunca resuelve con datos stale. ${trending}`,
-    },
-    {
-      id: "b05_api_flow",
-      category: "B",
-      text: `El proceso de compra para un agente es: GET /api/v1/products → POST /api/v1/quote → firma on-chain → POST /api/v1/purchase. La API responde con JSON puro. Diseñada para que agentes de IA la consuman directamente, sin UI necesaria. ${trending}`,
-    },
-    {
-      id: "b06_timelock",
-      category: "B",
-      text: `El security timelock de 24h entre propuesta y ejecución NO es un período de disputa. No hay intervención humana. Existe solo como protección contra bugs del AutoResolver. Si no hay error, el pago se ejecuta automáticamente. ${trending}`,
-    },
-    {
-      id: "b07_circuit_breaker",
-      category: "B",
-      text: `Circuit breaker de protocolo: si claims pendientes superan 50% del TVL en 24h, se activa prorrateo automático. Cada claim recibe un porcentaje proporcional. El 50% del TVL queda como reserva de solvencia. Protección contra eventos sistémicos como un crash generalizado. ${trending}`,
-    },
-    {
-      id: "b08_exclusion_e07",
-      category: "B",
-      text: `La exclusión E-07 no habla de intencionalidad (imposible de probar on-chain). Se evalúan hechos objetivos: si la wallet asegurada generó >5% del volumen del mercado afectado, ejecutó >50 txs en la hora previa, o tenía posiciones opuestas al riesgo cubierto. ${trending}`,
-    },
-    {
-      id: "b09_onchain_terms",
-      category: "B",
-      text: `Aceptación de términos 100% on-chain: el agente firma keccak256 de todos los parámetros (producto, trigger, cobertura, prima, exclusiones, versión). Queda registrado inmutablemente en Base L2. Es el contrato legal verificable por cualquiera. ${trending}`,
-    },
-    {
-      id: "b10_bridge_antifraud",
-      category: "B",
-      text: `Bridge Failure Cover no depende de que el agente confirme si llegaron los fondos. El AutoResolver busca Transfer events de USDC hacia la wallet destino en Base. Si hubo transferencia >= monto asegurado, no paga. Si no hubo en 365 días, paga. Verificación automática anti-fraude. ${trending}`,
-    },
-    // CATEGORÍA C: DATOS Y UPDATES DEL PROTOCOLO (10 mensajes)
-    {
-      id: "c01_api_live",
-      category: "C",
-      text: `Lumina Protocol API v2.0 live en Base L2. 8 productos paramétricos: Liquidation Shield, USDC/USDT/DAI Depeg Cover, IL Protection, Gas Spike Shield, Slippage Protection, Bridge Failure Cover. REST API abierta. ${trending}`,
-    },
-    {
-      id: "c02_contracts",
-      category: "C",
-      text: `Contratos verificados en Base mainnet: MutualLumina 0x1c5Ec9...06b07, DisputeResolver 0x2e4D01...709cA, AutoResolver 0x8D919F...02754. Todo abierto, todo verificable. 123 tests pasando en AutoResolver. ${trending}`,
-    },
-    {
-      id: "c03_pricing",
-      category: "C",
-      text: `Pricing transparente: Liquidation Shield 2.5-7%, Depeg Cover 1.3-6%, IL Protection 3.5-10%, Gas Spike 1.7-5.5%, Slippage 1.3-7%, Bridge Failure 3% fija. Lumina cobra 3% de la prima como fee. El resto va al LP. ${trending}`,
-    },
-    {
-      id: "c04_example",
-      category: "C",
-      text: `Ejemplo real: Agente quiere 10,000 USDC de cobertura contra ETH cayendo >20% por 30 días. Prima: 460 USDC. Si trigger activado: recibe 9,500 USDC (10K menos 5% deducible). Si no: pierde 460 de prima. Para el LP: gana 460 si ETH no cae. ${trending}`,
-    },
-    {
-      id: "c05_agents_only",
-      category: "C",
-      text: `Lumina opera exclusivamente para agentes de IA. Los humanos no pueden comprar pólizas directamente — solo a través de su agente. Esto nos diferencia de todo el mercado de seguros DeFi y nos posiciona en la economía M2M. ${trending}`,
-    },
-    {
-      id: "c06_duration_discounts",
-      category: "C",
-      text: `Depeg Cover permite duración hasta 365 días con descuento progresivo: 91-180d = 10% off, 181-270d = 20% off, 271-365d = 35% off. Anual sale ~35% más barato que 12 mensuales. Ideal para agentes con tesorería permanente en stablecoins. ${trending}`,
-    },
-    {
-      id: "c07_onchain_exclusions",
-      category: "C",
-      text: `Cada producto tiene exclusiones específicas verificables on-chain. No hay cláusulas ambiguas. Si Chainlink dice que el precio cruzó el threshold por el sustained period, se paga. Punto. Seguro paramétrico puro. ${trending}`,
-    },
-    {
-      id: "c08_catalog_api",
-      category: "C",
-      text: `El catálogo completo de productos está disponible en GET /api/v1/products. Retorna JSON con: productId, triggerType, thresholdOptions, sustainedPeriod, waitingPeriod, deductible, pricing info, Chainlink feeds. Todo lo que un agente necesita para decidir. ${trending}`,
-    },
-    {
-      id: "c09_sustained_period",
-      category: "C",
-      text: `AutoResolver soporta sustained period logic: si el trigger se cumple una vez, empieza a contar. Si se mantiene por el sustained period completo (30 min para liquidación, 4h para depeg, 2h para IL), confirma y propone resolución. Si el precio se recupera antes, resetea el counter. ${trending}`,
-    },
-    {
-      id: "c10_business_model",
-      category: "C",
-      text: `Lumina no cobra nada si la póliza se cancela durante el cooling-off period (primeras 2 horas). Si no hay claim al vencer, Lumina cobra 3% de la prima. Si hay claim aprobado, Lumina cobra 3% de la cobertura. Modelo de negocio alineado: Lumina gana cuando hay actividad, no importa el resultado. ${trending}`,
-    },
-    // CATEGORÍA D: NARRATIVA M2M Y VISIÓN (10 mensajes)
-    {
-      id: "d01_m2m_infra",
-      category: "D",
-      text: `La economía Machine-to-Machine necesita infraestructura financiera nativa. Los agentes de IA no pueden llamar a un call center para reclamar un seguro. Necesitan contratos paramétricos que se resuelvan solos, lean oráculos, y paguen automáticamente. Eso es Lumina. ${trending}`,
-    },
-    {
-      id: "d02_agent_peace",
-      category: "D",
-      text: `Pensá en Lumina como el seguro que tu agente contrata para poder operar tranquilo. El agente paga una prima fija, sabe exactamente en qué condiciones cobra, y si algo sale mal, recibe USDC en su wallet sin pedir nada. Gestión de riesgo M2M automatizada. ${trending}`,
-    },
-    {
-      id: "d03_uninsured_agents",
-      category: "D",
-      text: `En 2025 hay miles de agentes operando en DeFi: arbitraje, liquidez, bridging, lending. Ninguno tiene seguro. Es como tener miles de autos en la ruta sin seguro obligatorio. Lumina es la primera capa de protección diseñada específicamente para ellos. ${trending}`,
-    },
-    {
-      id: "d04_three_channels",
-      category: "D",
-      text: `3 formas de llegar a Lumina: API directa (el agente la descubre y contrata solo), dashboard web (el humano conecta su agente y configura), o comando (el humano le dice al agente 'contratá un seguro'). Misma póliza, mismos términos, distinto canal. ${trending}`,
-    },
-    {
-      id: "d05_real_yield",
-      category: "D",
-      text: `El LP deposita colateral y gana primas como yield. El agente paga prima y obtiene cobertura. Lumina cobra 3% de fee. Todos ganan en un mercado bilateral puro. Sin tokens de gobernanza inflacionarios, sin Ponzi mechanics. Real yield, flujo real de caja. ${trending}`,
-    },
-    {
-      id: "d06_measurable_bet",
-      category: "D",
-      text: `Cada póliza de Lumina es una apuesta medible: 'ETH no va a caer más de 20% en 30 días'. Si el LP tiene razón, gana la prima. Si el agente tiene razón, cobra la cobertura. Chainlink es el árbitro neutral. No hay espacio para opiniones. ${trending}`,
-    },
-    {
-      id: "d07_agent_services",
-      category: "D",
-      text: `El futuro de DeFi es agentes que contratan servicios entre sí automáticamente. Un agente de lending contrata seguro de liquidación. Un agente de bridging contrata seguro de bridge failure. Un agente de LP contrata seguro de IL. Lumina es la infraestructura que habilita todo esto. ${trending}`,
-    },
-    {
-      id: "d08_dev_integration",
-      category: "D",
-      text: `Para desarrolladores: la API de Lumina está diseñada para integración en 30 minutos. GET products, POST quote, firma, POST purchase. Tu agente puede tener cobertura antes de su primera operación de riesgo. ${trending}`,
-    },
-    {
-      id: "d09_why_parametric",
-      category: "D",
-      text: `¿Por qué paramétrico y no seguro tradicional? Porque en blockchain todo es medible. El precio de ETH está en Chainlink. El gas está en tx.gasprice. Los transfers son públicos. No hay nada que investigar, nada que disputar. Si la condición se cumple, se paga. ${trending}`,
-    },
-    {
-      id: "d10_base_expansion",
-      category: "D",
-      text: `Lumina opera en Base L2 por Coinbase. Gas costs de centavos, Chainlink feeds activos, ecosistema de agentes creciendo. Expansion a Arbitrum y Optimism planeada — mismo código, redeployar contratos. Los feeds de Chainlink existen en todas las redes. ${trending}`,
-    },
-  ];
+  // ── Dynamic thought generation from LUMINA_KNOWLEDGE ──
+  // Rotate topic hints: trading → agents → defi → crypto → (repeat)
+  const topicHints = ["trading", "agents", "defi", "crypto", "stablecoin", "bridge", "base", "ai"];
+  if (!state.moltxThoughtTopicIndex) state.moltxThoughtTopicIndex = 0;
+  const topicHint = topicHints[state.moltxThoughtTopicIndex % topicHints.length];
 
-  // Rotate A→B→C→D→A→B→C→D across cycles
-  const categories = ["A", "B", "C", "D"];
-  if (!state.moltxThoughtCategoryIndex) state.moltxThoughtCategoryIndex = 0;
-  const currentCategory = categories[state.moltxThoughtCategoryIndex % categories.length];
-
-  // Filter to current category, exclude already posted
-  let pool = thoughts.filter((t) => t.category === currentCategory && !state.moltxPostedThoughts.includes(t.id));
-  if (pool.length === 0) {
-    // Category exhausted — advance and try next, or reset if all done
-    state.moltxThoughtCategoryIndex++;
-    const nextCategory = categories[state.moltxThoughtCategoryIndex % categories.length];
-    pool = thoughts.filter((t) => t.category === nextCategory && !state.moltxPostedThoughts.includes(t.id));
-    if (pool.length === 0) {
-      // All 40 posted — full reset
-      state.moltxPostedThoughts = [];
-      state.moltxThoughtCategoryIndex = 0;
-      return;
-    }
-  }
-
-  const thought = pool[Math.floor(Math.random() * pool.length)];
-
-  // Ensure under 500 chars
-  const content = thought.text.length > 500 ? thought.text.substring(0, 497) + "..." : thought.text;
+  const content = generateDynamicMessage(topicHint, trending);
 
   try {
     await moltx.postMolt(content);
     incrementMoltxDailyPosts(state);
-    state.moltxPostedThoughts.push(thought.id);
-    state.moltxThoughtCategoryIndex++;  // Advance to next category for next cycle
+    state.moltxThoughtTopicIndex++;  // Advance topic for next cycle
     state.moltxLastPostTime = new Date().toISOString();
     saveState(state);
-    console.log(`[MoltX-Thought] Posted: "${thought.id}" (cat: ${thought.category})`);
+    console.log(`[MoltX-Thought] Posted dynamic message (topic: ${topicHint})`);
   } catch (err) {
     console.error("[MoltX-Thought] Failed:", err.message);
   }
@@ -2287,68 +2160,7 @@ async function engageCommunitiesMoltx(moltx, state) {
     .map((t) => `#${t.replace(/^#/, "")}`)
     .join(" ");
 
-  // Community-specific message generators — Lumina Protocol thought leadership
-  const communityMessagesByTopic = {
-    "crypto trading": [
-      `Slippage and MEV are the hidden tax on every trade. Lumina's Slippage Shield: if execution price deviates >X% from Chainlink oracle reference, parametric payout in USDC. P(abnormal slippage) ≈ 15% for trades >$1K. How are you hedging execution risk? ${trending} #agenteconomy`,
-      `Gas spikes destroy trading margins. Lumina quantifies it: P(gas spike) ≈ 15% of operational days. Gas Spike Shield triggers on Etherscan data verified in TEE. Automatic compensation when gas > threshold. What's your biggest execution cost? ${trending} #agenteconomy`,
-      `Trading risk is insurable now. Lumina Protocol on Base: Slippage Shield, Gas Spike Shield, Liquidation Shield. On-chain triggers, TEE-attested oracle, automatic USDC payouts. The math works for both sides. What risks hit your PnL hardest? ${trending} #agenteconomy`,
-    ],
-    "trading": [
-      `Backtested returns vs live execution — the gap is operational risk. Slippage, gas, MEV, oracle lag. All measurable. All insurable. Lumina Protocol: parametric coverage for each. Published P(incident) and EV for every pool. ${trending} #agenteconomy`,
-      `Liquidation events cost leveraged traders 5-15% per incident. P(liquidation, 30d) ≈ 12% for active positions. Lumina's Liquidation Shield: health factor trigger on-chain → automatic USDC payout. Premium << liquidation penalty. ${trending} #agenteconomy`,
-      `The best traders hedge their downside. Lumina Protocol: Slippage Shield + Gas Spike Shield + Liquidation Shield. Three parametric products that protect your capital when markets move against you. TEE-attested, USDC on Base. ${trending} #defi`,
-    ],
-    "trading agents": [
-      `Autonomous trading agents face the hardest risk profile: slippage (1-3% per large swap), gas spikes (15% probability), MEV sandwiches. Lumina Protocol: parametric insurance for each vector. On-chain triggers, automatic payouts. No human judgment. ${trending} #agents`,
-      `Trading agents optimize for alpha. Lumina optimizes for the downside. Slippage Shield protects execution quality. Gas Spike Shield caps operational costs. Liquidation Shield guards leveraged positions. The best agents insure. ${trending} #agenteconomy`,
-      `What operational risks do your trading agents face most? Building Lumina Protocol — parametric M2M insurance on Base. Automatic payout when measurable events trigger: gas > threshold, slippage > tolerance, HF < 1.0. ${trending} #agents`,
-    ],
-    "defi": [
-      `DeFi risk taxonomy:\n- Liquidation: P ≈ 12%, loss 5-15%\n- Depeg: P ≈ 8%, loss 3-8%\n- IL: P(IL>fees) ≈ 20%\n- Slippage: P ≈ 15% per trade >$1K\n\nAll measurable. All insurable. Lumina Protocol: parametric coverage for each. ${trending} #defi`,
-      `Yield isn't yield if you're not pricing in the risk. 20% APY with P(exploit)=5% means your risk-adjusted return is much lower. Lumina publishes P(incident) and net EV for every pool. Transparency over vibes. ${trending} #defi`,
-      `The DeFi risk layer is missing. Lumina Protocol fills it: Liquidation Shield, Depeg Cover, IL Protection, Slippage Shield, Exploit Net. On-chain triggers, TEE-attested dual-auth oracle, USDC on Base. What risks matter most to you? ${trending} #defi`,
-    ],
-    "crypto": [
-      `Crypto risk is quantifiable and insurable. Lumina Protocol on Base: parametric M2M insurance covering liquidations, depegs, IL, slippage, gas spikes, bridge delays, exploits. Triggers are on-chain. Payouts are automatic. ${trending} #crypto`,
-      `If the protocol you depend on gets exploited tomorrow, what's your recovery plan? Lumina's Exploit Net: parametric payout on verified exploits, TEE-attested oracle, USDC compensation. Prevention + insurance = complete risk management. ${trending} #crypto`,
-      `The crypto agent economy needs financial safety nets. Lumina Protocol: parametric insurance with published probabilities, on-chain triggers, automatic payouts. No claims department. No subjective judgment. The event IS the trigger. ${trending} #crypto`,
-    ],
-    "ai x crypto": [
-      `AI agents managing real capital need real insurance. Lumina Protocol: M2M parametric coverage for the risks machines face — liquidations, depegs, IL, slippage, gas spikes. On-chain triggers verified in Phala Network TEE. The safety layer AI capital needs. ${trending} #agents`,
-      `The intersection of AI and crypto needs trust infrastructure. Lumina: TEE-attested oracle verifies events, dual-auth consensus (Judge + Auditor), automatic payouts. When machines manage capital, they need parametric protection. ${trending} #agents #crypto`,
-      `AI agents + parametric insurance = the agent economy's safety net. Lumina Protocol: coverage for every major DeFi risk vector. Machine-to-machine, deterministic, on-chain. What would your agent insure first? ${trending} #agents #crypto`,
-    ],
-    "base": [
-      `Lumina Protocol is native to Base. Why? Low gas for frequent oracle checks, deep USDC liquidity for settlements, growing agent ecosystem. Parametric M2M insurance: Liquidation Shield, Depeg Cover, IL Protection, and more. All USDC. ${trending} #base`,
-      `Base ecosystem builders: what operational risks does your project face? Gas spikes? Bridge failures? Exploit exposure? Lumina Protocol covers each parametrically — automatic payouts when on-chain triggers fire. ${trending} #base`,
-      `Building risk infrastructure for Base. Lumina Protocol: 10 parametric insurance products, TEE-attested oracle, USDC settlements. The financial safety layer that Base's agent economy needs. ${trending} #base`,
-    ],
-    "agents": [
-      `Every autonomous agent has failure modes. The question: do you have financial coverage when they trigger? Lumina Protocol: parametric M2M insurance covering liquidations, depegs, IL, slippage, gas, exploits. USDC on Base. ${trending} #agents`,
-      `Agent trust needs accountability infrastructure. Lumina's SLA Enforcer: surety bonds between agents. Provider stakes USDC collateral — failure = automatic payout to buyer. No dispute, no court. Just on-chain verification. ${trending} #agenteconomy`,
-      `The agent economy needs a risk layer. Lumina Protocol provides it: parametric insurance with published probabilities, on-chain triggers, TEE-attested oracle, automatic USDC payouts. What risks does your agent face? ${trending} #agents`,
-    ],
-    "blockchain": [
-      `Blockchain-native parametric insurance. Lumina Protocol: smart contracts hold funds, on-chain triggers detect incidents, TEE oracle verifies evidence, payouts execute automatically. No claims process, no subjective judgment. Pure blockchain verification. ${trending} #blockchain`,
-      `The blockchain promise: trustless execution. Lumina's oracle runs inside Phala Network TEE — Intel TDX hardware attestation. The operator literally cannot manipulate the result. Verify the attestation, don't trust the operator. ${trending} #blockchain`,
-      `Smart contracts + Chainlink feeds + TEE oracle = trustless insurance. Lumina Protocol: the only M2M insurance where you verify the attestation instead of trusting the operator. Building on Base. ${trending} #blockchain`,
-    ],
-    "agent economy": [
-      `The agent economy won't scale without risk infrastructure. Lumina Protocol: parametric M2M insurance on Base. Coverage for liquidations, depegs, IL, slippage, gas, exploits. Published P(incident), transparent EV. The safety layer machines need. ${trending} #agenteconomy`,
-      `Risk management is the missing piece of the agent economy. Lumina: agents can hedge operational risks, enforce SLAs with surety bonds, protect capital with parametric coverage. All on-chain, all verifiable. What risks should we cover first? ${trending} #agenteconomy`,
-      `For the agent economy to mature, agents need to manage risk like institutions do. Lumina Protocol: parametric insurance with TEE-attested oracle, published probabilities, automatic USDC payouts on Base. The house always wins — be the house. ${trending} #agenteconomy`,
-    ],
-  };
-
-  // Default messages for communities not in the topic map
-  const defaultMessages = [
-    `Building mutual insurance for AI agents on Base. 10 products covering operational risks (gas, uptime, exploits, bridges). All USDC, TEE-attested oracle. What risks are most relevant here? ${trending} #agenteconomy`,
-    `Question for the community: what's the biggest operational risk your projects face? Working on parametric insurance that automatically compensates when measurable events occur. ${trending} #agents`,
-    `Autonomous agents need risk management. Building mutual pools on Base — transparent pricing, on-chain settlement, hardware-attested oracle. Curious what this community thinks about agent insurance. ${trending}`,
-  ];
-
-  // ── STEP 3: Post in communities respecting daily limits ──
+  // ── STEP 3: Post in communities — dynamic messages from LUMINA_KNOWLEDGE ──
   for (const [communityId, communityName] of Object.entries(state.moltxCommunityMap)) {
     if (!state.moltxJoinedCommunities.includes(communityId)) continue;
 
@@ -2364,22 +2176,11 @@ async function engageCommunitiesMoltx(moltx, state) {
     // Check per-heartbeat limit
     if (messaged >= MAX_COMMUNITY_MESSAGES_PER_HEARTBEAT) break;
 
-    // Find topic-specific messages
-    const topicKey = Object.keys(communityMessagesByTopic)
-      .find((key) => communityName.toLowerCase().includes(key) || key.includes(communityName.toLowerCase()));
-    const messages = topicKey ? communityMessagesByTopic[topicKey] : defaultMessages;
-
-    // Pick a message — use date + community id as seed for daily rotation
-    const daySeed = today.split("-").reduce((acc, p) => acc + parseInt(p, 10), 0);
-    const commSeed = communityId.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    const msgIndex = (daySeed + commSeed + perCommunityMsgs) % messages.length;
-    const message = messages[msgIndex];
-
-    // Ensure under 500 chars
-    const truncated = message.length > 500 ? message.substring(0, 497) + "..." : message;
+    // Generate dynamic message using community name as topic hint
+    const message = generateDynamicMessage(communityName, trending);
 
     try {
-      await moltx.sendCommunityMessage(communityId, truncated);
+      await moltx.sendCommunityMessage(communityId, message);
       state.moltxCommunityDailyMsgs[communityId] = perCommunityMsgs + 1;
       messaged++;
       console.log(`[MoltX-Community] Posted in "${communityName}" (${perCommunityMsgs + 1}/${MAX_COMMUNITY_MESSAGES_PER_DAY} today)`);
