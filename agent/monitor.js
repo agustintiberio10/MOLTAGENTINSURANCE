@@ -17,7 +17,7 @@
  * - Oracle wallet (0xf3D2...) generated inside TEE enclave
  * - Operator cannot manipulate results — verify, don't trust
  */
-const { execSync } = require("child_process");
+// execSync removed — fetchEvidence uses async exec inline
 
 /**
  * Legacy check function — kept for backward compatibility.
@@ -64,9 +64,12 @@ async function checkPool(pool) {
  * Fetch evidence — used as legacy fallback only.
  */
 async function fetchEvidence(url) {
+  const { promisify } = require("util");
+  const { exec } = require("child_process");
+  const execAsync = promisify(exec);
   const cmd = `curl -sL --max-time 15 --max-redirs 3 -H "User-Agent: MutualBot/1.0" "${url}"`;
-  const out = execSync(cmd, { encoding: "utf8", timeout: 20_000 });
-  return out.substring(0, 10_000);
+  const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 20_000 });
+  return stdout.substring(0, 10_000);
 }
 
 /**

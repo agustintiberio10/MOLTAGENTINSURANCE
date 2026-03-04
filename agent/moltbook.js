@@ -3,8 +3,12 @@
  *
  * Uses curl as HTTP transport because the sandbox DNS resolver blocks
  * Node.js native requests while curl works fine.
+ * All HTTP methods are ASYNC (child_process.exec) to avoid blocking the
+ * Node.js event loop — this keeps the Express health check responsive.
  */
-const { execSync } = require("child_process");
+const { exec } = require("child_process");
+const { promisify } = require("util");
+const execAsync = promisify(exec);
 
 const BASE_URL = "https://www.moltbook.com/api/v1";
 
@@ -13,7 +17,7 @@ class MoltbookClient {
     this.apiKey = apiKey;
   }
 
-  // --- HTTP helpers using curl ---
+  // --- HTTP helpers using async curl ---
 
   _checkResponse(data) {
     if (data && data.statusCode && data.statusCode >= 400) {
@@ -24,7 +28,18 @@ class MoltbookClient {
     return data;
   }
 
-  _curlGet(path, params = {}) {
+  _safeParse(out, context) {
+    if (!out || !out.trim()) {
+      throw new Error(`Empty response from curl (${context})`);
+    }
+    try {
+      return JSON.parse(out);
+    } catch (e) {
+      throw new Error(`Invalid JSON from ${context}: ${out.slice(0, 200)}`);
+    }
+  }
+
+  async _curlGet(path, params = {}) {
     let url = `${BASE_URL}${path}`;
     const qs = Object.entries(params)
       .filter(([, v]) => v !== undefined && v !== null)
@@ -33,11 +48,11 @@ class MoltbookClient {
     if (qs) url += `?${qs}`;
 
     const cmd = `curl -s --max-time 30 -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, `GET ${path}`));
   }
 
-  _curlPost(path, body = {}, extraHeaders = {}) {
+  async _curlPost(path, body = {}, extraHeaders = {}) {
     const url = `${BASE_URL}${path}`;
     const bodyJson = JSON.stringify(body);
     const headers = {
@@ -49,20 +64,20 @@ class MoltbookClient {
       .map(([k, v]) => `-H "${k}: ${v}"`)
       .join(" ");
 
-    // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
-    const cmd = `curl -s --max-time 30 -X POST ${headerFlags} --data-binary @- "${url}"`;
-    const out = execSync(cmd, { input: bodyJson, encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    // Pass JSON via stdin (echo | curl) to avoid shell escaping issues with quotes
+    const cmd = `echo ${JSON.stringify(bodyJson)} | curl -s --max-time 30 -X POST ${headerFlags} --data-binary @- "${url}"`;
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, `POST ${path}`));
   }
 
   // --- Registration (static, no auth needed) ---
 
   static async register(name, description) {
     const body = JSON.stringify({ name, description });
-    // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
-    const cmd = `curl -s --max-time 30 -X POST -H "Content-Type: application/json" --data-binary @- "${BASE_URL}/agents/register"`;
-    const out = execSync(cmd, { input: body, encoding: "utf8", timeout: 35_000 });
-    return JSON.parse(out); // { api_key, claim_url, verification_code }
+    // Pass JSON via stdin (echo | curl) to avoid shell escaping issues with quotes
+    const cmd = `echo ${JSON.stringify(body)} | curl -s --max-time 30 -X POST -H "Content-Type: application/json" --data-binary @- "${BASE_URL}/agents/register"`;
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return JSON.parse(stdout); // { api_key, claim_url, verification_code }
   }
 
   // --- Verification ---
@@ -184,7 +199,7 @@ class MoltbookClient {
   // --- Submolts ---
 
   async createSubmolt(name, displayName, description, allowCrypto = true) {
-    const data = this._curlPost("/submolts", {
+    const data = await this._curlPost("/submolts", {
       name,
       display_name: displayName,
       description,
@@ -202,7 +217,7 @@ class MoltbookClient {
   // --- Posts ---
 
   async createPost(submolt, title, content) {
-    const data = this._curlPost("/posts", { submolt_name: submolt, title, content });
+    const data = await this._curlPost("/posts", { submolt_name: submolt, title, content });
     return this._handleVerification(data, () =>
       this.createPost(submolt, title, content)
     );
@@ -221,7 +236,7 @@ class MoltbookClient {
   async createComment(postId, content, parentId = null) {
     const body = { content };
     if (parentId) body.parent_id = parentId;
-    const data = this._curlPost(`/posts/${postId}/comments`, body);
+    const data = await this._curlPost(`/posts/${postId}/comments`, body);
     return this._handleVerification(data, () =>
       this.createComment(postId, content, parentId)
     );
@@ -316,9 +331,9 @@ class MoltbookClient {
   async updateProfile(fields) {
     const url = `${BASE_URL}/agents/me`;
     const bodyJson = JSON.stringify(fields);
-    const cmd = `curl -s --max-time 30 -X PATCH -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" --data-binary @- "${url}"`;
-    const out = execSync(cmd, { input: bodyJson, encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    const cmd = `echo ${JSON.stringify(bodyJson)} | curl -s --max-time 30 -X PATCH -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" --data-binary @- "${url}"`;
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, "PATCH /agents/me"));
   }
 
   // --- Submolt feeds and management ---
@@ -356,8 +371,8 @@ class MoltbookClient {
   async unfollowAgent(agentName) {
     const url = `${BASE_URL}/agents/${agentName}/follow`;
     const cmd = `curl -s --max-time 30 -X DELETE -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, `DELETE /agents/${agentName}/follow`));
   }
 
   // --- Internal Helpers ---

@@ -13,8 +13,12 @@
  *   - DMs: /v1/dm/{name}/messages
  *
  * Uses curl as HTTP transport (same sandbox DNS workaround as moltbook.js).
+ * All HTTP methods are ASYNC (child_process.exec) to avoid blocking the
+ * Node.js event loop — this keeps the Express health check responsive.
  */
-const { execSync } = require("child_process");
+const { exec } = require("child_process");
+const { promisify } = require("util");
+const execAsync = promisify(exec);
 
 const BASE_URL = "https://moltx.io/v1";
 
@@ -24,7 +28,7 @@ class MoltXClient {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // HTTP transport (curl) — identical pattern to moltbook.js
+  // HTTP transport (async curl) — non-blocking event loop
   // ═══════════════════════════════════════════════════════════════
 
   _checkResponse(data) {
@@ -36,7 +40,18 @@ class MoltXClient {
     return data;
   }
 
-  _curlGet(path, params = {}) {
+  _safeParse(out, context) {
+    if (!out || !out.trim()) {
+      throw new Error(`Empty response from curl (${context})`);
+    }
+    try {
+      return JSON.parse(out);
+    } catch (e) {
+      throw new Error(`Invalid JSON from ${context}: ${out.slice(0, 200)}`);
+    }
+  }
+
+  async _curlGet(path, params = {}) {
     let url = `${BASE_URL}${path}`;
     const qs = Object.entries(params)
       .filter(([, v]) => v !== undefined && v !== null)
@@ -45,11 +60,11 @@ class MoltXClient {
     if (qs) url += `?${qs}`;
 
     const cmd = `curl -s --max-time 30 -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, `GET ${path}`));
   }
 
-  _curlPost(path, body = {}, extraHeaders = {}) {
+  async _curlPost(path, body = {}, extraHeaders = {}) {
     const url = `${BASE_URL}${path}`;
     const bodyJson = JSON.stringify(body);
     const headers = {
@@ -62,12 +77,12 @@ class MoltXClient {
       .join(" ");
 
     // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
-    const cmd = `curl -s --max-time 30 -X POST ${headerFlags} --data-binary @- "${url}"`;
-    const out = execSync(cmd, { input: bodyJson, encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    const cmd = `echo ${JSON.stringify(bodyJson)} | curl -s --max-time 30 -X POST ${headerFlags} --data-binary @- "${url}"`;
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, `POST ${path}`));
   }
 
-  _curlPatch(path, body = {}) {
+  async _curlPatch(path, body = {}) {
     const url = `${BASE_URL}${path}`;
     const bodyJson = JSON.stringify(body);
     const headers = {
@@ -79,16 +94,16 @@ class MoltXClient {
       .join(" ");
 
     // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
-    const cmd = `curl -s --max-time 30 -X PATCH ${headerFlags} --data-binary @- "${url}"`;
-    const out = execSync(cmd, { input: bodyJson, encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    const cmd = `echo ${JSON.stringify(bodyJson)} | curl -s --max-time 30 -X PATCH ${headerFlags} --data-binary @- "${url}"`;
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, `PATCH ${path}`));
   }
 
-  _curlDelete(path) {
+  async _curlDelete(path) {
     const url = `${BASE_URL}${path}`;
     const cmd = `curl -s --max-time 30 -X DELETE -H "Authorization: Bearer ${this.apiKey}" -H "Content-Type: application/json" "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, `DELETE ${path}`));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -99,7 +114,7 @@ class MoltXClient {
    * Register a new agent on MoltX.
    * Response: { api_key: "moltx_sk_...", claim: { code: "..." } }
    */
-  static register(name, displayName, description, avatarEmoji = "🛡️") {
+  static async register(name, displayName, description, avatarEmoji = "🛡️") {
     const body = JSON.stringify({
       name,
       display_name: displayName,
@@ -107,10 +122,10 @@ class MoltXClient {
       avatar_emoji: avatarEmoji,
     });
 
-    // Pass JSON via stdin (@-) to avoid shell escaping issues with quotes
-    const cmd = `curl -s --max-time 30 -X POST -H "Content-Type: application/json" --data-binary @- "${BASE_URL}/agents/register"`;
-    const out = execSync(cmd, { input: body, encoding: "utf8", timeout: 35_000 });
-    return JSON.parse(out);
+    // Pass JSON via stdin (echo | curl) to avoid shell escaping issues with quotes
+    const cmd = `echo ${JSON.stringify(body)} | curl -s --max-time 30 -X POST -H "Content-Type: application/json" --data-binary @- "${BASE_URL}/agents/register"`;
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return JSON.parse(stdout);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -438,8 +453,8 @@ class MoltXClient {
   async uploadAvatar(imagePath) {
     const url = `${BASE_URL}/agents/me/avatar`;
     const cmd = `curl -s --max-time 30 -X POST -H "Authorization: Bearer ${this.apiKey}" -F "file=@${imagePath}" "${url}"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 35_000 });
-    return this._checkResponse(JSON.parse(out));
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 35_000 });
+    return this._checkResponse(this._safeParse(stdout, "uploadAvatar"));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -458,10 +473,10 @@ class MoltXClient {
   // Health Check (no auth)
   // ═══════════════════════════════════════════════════════════════
 
-  static healthCheck() {
+  static async healthCheck() {
     const cmd = `curl -s --max-time 10 "${BASE_URL}/health"`;
-    const out = execSync(cmd, { encoding: "utf8", timeout: 15_000 });
-    return JSON.parse(out);
+    const { stdout } = await execAsync(cmd, { encoding: "utf8", timeout: 15_000 });
+    return JSON.parse(stdout);
   }
 }
 

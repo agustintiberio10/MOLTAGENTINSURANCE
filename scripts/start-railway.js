@@ -216,6 +216,20 @@ function shutdown(signal) {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
+// ── Crash Safety — prevent silent deaths ────────────────────
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Railway] UNHANDLED REJECTION:", reason);
+  lastError = `unhandledRejection: ${reason} (${new Date().toISOString()})`;
+  // Don't crash — log and continue
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[Railway] UNCAUGHT EXCEPTION:", err.message);
+  console.error(err.stack);
+  lastError = `uncaughtException: ${err.message} (${new Date().toISOString()})`;
+  // Don't crash — log and continue (unless it's truly fatal)
+});
+
 // ── Start ───────────────────────────────────────────────────
 async function start() {
   console.log("╔══════════════════════════════════════════════════════════╗");
