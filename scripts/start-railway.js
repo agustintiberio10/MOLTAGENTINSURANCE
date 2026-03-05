@@ -250,6 +250,19 @@ async function start() {
     console.log(`[Railway] Express health check listening on port ${PORT}`);
   });
 
+  // ── Self-ping to prevent Railway from sleeping the service ──
+  const SELF_PING_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+  const selfPingUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/health`
+    : `http://0.0.0.0:${PORT}/health`;
+
+  setInterval(() => {
+    fetch(selfPingUrl)
+      .then(() => console.log(`[Railway] Self-ping OK — ${new Date().toISOString()}`))
+      .catch(() => {});
+  }, SELF_PING_INTERVAL_MS);
+  console.log(`[Railway] Self-ping every 4 min → ${selfPingUrl}`);
+
   // ── Step 2: Load bot modules based on mode ──
   if (shouldRunMoltbook) {
     try {
