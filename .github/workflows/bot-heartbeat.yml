@@ -36,6 +36,7 @@ jobs:
         run: npm install --production
 
       - name: Run Oracle Bot heartbeat (single cycle)
+        continue-on-error: true
         env:
           SINGLE_RUN: "1"
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
@@ -123,6 +124,7 @@ jobs:
           "
 
       - name: Commit updated state
+        if: always()
         run: |
           git config user.name "MutualBot CI"
           git config user.email "bot@mutualbot.ci"
