@@ -93,7 +93,7 @@ const USE_LUMINA = process.env.USE_LUMINA === "true";
 // All engagement (upvotes, comments, reply chains, follows, search)
 // continues normally — only selling/pool-creation actions are paused.
 // The underlying code is fully preserved; flip to false to re-enable.
-const SELLING_PAUSED = true;
+const SELLING_PAUSED = false;
 
 // ═══════════════════════════════════════════════════════════════
 // FULL SKILL PROTOCOL CONFIG — ALL MOLTBOOK CAPABILITIES
