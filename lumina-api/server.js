@@ -92,11 +92,37 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-// ── Iniciar ──
-function start() {
-  // Inicializar DB
+// ── Mount API routes onto an external Express app ──
+function mountAPI(externalApp) {
   initDatabase();
+  externalApp.use(express.json());
+  externalApp.use("/api/v1/products", productsRouter);
+  externalApp.use("/api/v1/register", registerRouter);
+  externalApp.use("/api/v1/quote", apiLimiter, authMiddleware, quoteRouter);
+  externalApp.use("/api/v1/purchase", apiLimiter, authMiddleware, purchaseRouter);
+  externalApp.use("/api/v1/policy", apiLimiter, authMiddleware, policyRouter);
+  externalApp.use("/api/v1/policies", apiLimiter, authMiddleware, (req, res) => {
+    const { getPoliciesByAgentId } = require("./db/database");
+    const filters = {};
+    if (req.query.status) filters.status = req.query.status;
+    if (req.query.productId) filters.productId = req.query.productId;
+    const policies = getPoliciesByAgentId(req.agent.id, filters);
+    res.json({ count: policies.length, policies });
+  });
+  externalApp.post("/api/v1/cancel/:policyId", apiLimiter, authMiddleware, (req, res) => {
+    const handler = require("./routes/policy");
+    req.url = `/cancel/${req.params.policyId}`;
+    handler(req, res);
+  });
+  externalApp.use("/api/v1/agent", apiLimiter, authMiddleware, agentRouter);
+  console.log("[Lumina-API] Routes mounted on shared Express server.");
+}
 
+module.exports = { mountAPI };
+
+// ── Standalone mode (when run directly) ──
+if (require.main === module) {
+  initDatabase();
   app.listen(PORT, "0.0.0.0", () => {
     console.log("╔══════════════════════════════════════════════════╗");
     console.log("║       LUMINA PROTOCOL — API v2.0.0              ║");
@@ -107,5 +133,3 @@ function start() {
     console.log("╚══════════════════════════════════════════════════╝");
   });
 }
-
-start();

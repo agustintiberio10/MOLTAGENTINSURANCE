@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install --production"
+buildCommand = "npm install --production && cd lumina-api && npm install --production && cd .."
 
 [deploy]
 startCommand = "npm run railway"

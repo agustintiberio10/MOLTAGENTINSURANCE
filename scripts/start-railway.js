@@ -108,11 +108,26 @@ async function sleepUntilDailyReset() {
   }
 }
 
-// ── Express Health Check Server ──────────────────────────────
+// ── Express Server (Health + Lumina API) ─────────────────────
 const app = express();
 
+// Mount Lumina API routes so the API and bots share a single process
+try {
+  const { mountAPI } = require("../lumina-api/server.js");
+  mountAPI(app);
+  console.log("[Railway] Lumina API mounted on shared server.");
+} catch (err) {
+  console.warn("[Railway] Could not mount Lumina API (non-blocking):", err.message);
+}
+
 app.get("/", (req, res) => {
-  res.json({ status: "Lumina Oracle Alive" });
+  res.json({
+    status: "Lumina Protocol — Bots + API",
+    mode: BOT_MODE,
+    bots: { oracle: shouldRunOracle, moltbook: shouldRunMoltbook, moltx: shouldRunMoltx },
+    heartbeats: heartbeatCount,
+    lastHeartbeat,
+  });
 });
 
 app.get("/health", (req, res) => {
@@ -121,7 +136,7 @@ app.get("/health", (req, res) => {
 
   res.json({
     status: "ok",
-    service: "Lumina Oracle",
+    service: "Lumina Protocol",
     mode: BOT_MODE,
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     heartbeats: heartbeatCount,
