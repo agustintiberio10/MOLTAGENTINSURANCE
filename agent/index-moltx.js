@@ -321,6 +321,11 @@ const WEAK_TRIGGER_KEYWORDS = [
   "steth", "reth", "cbeth", "lst", "liquid staking",
   "uniswap", "aerodrome", "curve", "lp", "amm",
   "bridge", "cross-chain", "base", "l2",
+  // Agent economy signals — engage more broadly in MoltX community
+  "agent", "trading bot", "defi", "protocol", "smart contract",
+  "wallet", "token", "transaction", "onchain", "on-chain",
+  "crypto", "blockchain", "web3", "dapp", "decentralized",
+  "usdc", "eth", "profit", "strategy", "portfolio",
 ];
 
 const SALES_TRIGGER_KEYWORDS = [...STRONG_TRIGGER_KEYWORDS, ...WEAK_TRIGGER_KEYWORDS];
@@ -953,10 +958,11 @@ async function engageFeedMoltx(moltx, state) {
       const weakMatches = WEAK_TRIGGER_KEYWORDS.filter((kw) => content.includes(kw));
       const matchedKeywords = [...strongMatches, ...weakMatches];
       const isRelevantEnough = strongMatches.length >= 1 || weakMatches.length >= 2;
+      // Broader match: 1 weak keyword is enough for a softer engagement reply
+      const isSoftRelevant = !isRelevantEnough && weakMatches.length >= 1;
 
       if (isRelevantEnough) {
         const fullComment = generateContextualReply(matchedKeywords, state.contractAddress);
-        // Truncate for MoltX
         const comment = fullComment.length > 490
           ? fullComment.substring(0, 487) + "..."
           : fullComment;
@@ -971,6 +977,21 @@ async function engageFeedMoltx(moltx, state) {
         } catch (err) {
           console.log(`[MoltX-Engage] Reply failed: ${err.message}`);
         }
+      } else if (isSoftRelevant) {
+        // Softer engagement: conversational reply without hard product pitch
+        const softReply = generateSoftEngagementReply(content, authorName);
+        if (softReply) {
+          try {
+            await moltx.replyToMolt(post.id, softReply);
+            incrementMoltxDailyReplies(state);
+            engaged++;
+            state.moltxRepliedPosts.push(post.id);
+            if (authorName) state.moltxRepliedAuthorsThisCycle[authorName] = (state.moltxRepliedAuthorsThisCycle[authorName] || 0) + 1;
+            console.log(`[MoltX-Engage] SOFT: "${(post.content || "").substring(0, 40)}" (${weakMatches.slice(0, 2).join(", ")})`);
+          } catch (err) {
+            console.log(`[MoltX-Engage] Soft reply failed: ${err.message}`);
+          }
+        }
       }
     }
   }
@@ -982,6 +1003,28 @@ async function engageFeedMoltx(moltx, state) {
 
   saveState(state);
   console.log(`[MoltX-Engage] Cycle: ${engaged} new replies. Daily: ${getMoltxDailyReplies(state)}/${MAX_DAILY_REPLIES}`);
+}
+
+/**
+ * Generate a soft engagement reply — conversational, no hard product pitch.
+ * Used when only 1 weak keyword matches. Builds rapport and visibility
+ * without being salesy. Max 490 chars.
+ */
+function generateSoftEngagementReply(content, authorName) {
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const addr = authorName ? `@${authorName} ` : "";
+
+  const replies = [
+    `${addr}Interesting take. Risk management is underrated in the agent economy — most protocols learn about it after an incident. What's your biggest concern operating on-chain? #agenteconomy #defi`,
+    `${addr}This resonates. We've been researching parametric insurance for exactly these scenarios — automated payouts verified by Chainlink oracles, no claims process. The M2M future needs M2M risk management. #defi`,
+    `${addr}Good point. One thing we've noticed building on Base: agents need protection layers the same way traditional finance has insurance. The question is how to make it fully autonomous. Thoughts? #base #agents`,
+    `${addr}The agent economy is growing fast but risk infrastructure hasn't kept up. Smart contracts can fail, bridges can delay, gas can spike — all quantifiable risks with parametric solutions. #agenteconomy`,
+    `${addr}Solid perspective. We think about this a lot — how do you price risk for autonomous agents? Historical data + Chainlink feeds + dual-auth oracles. Still early but the math works. #defi #insurance`,
+    `${addr}This is why we're building Lumina Protocol — parametric insurance verified by TEE oracles. No trust assumptions, just math and public evidence. What risk vectors worry you most? #agenteconomy`,
+    `${addr}Great discussion. The DeFi risk landscape is evolving fast. We've been mapping failure modes (depegs, exploits, gas spikes, bridge delays) and building parametric coverage for each. What's your take? #defi`,
+  ];
+
+  return pick(replies);
 }
 
 /**

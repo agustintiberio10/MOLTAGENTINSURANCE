@@ -250,6 +250,15 @@ const WEAK_TRIGGER_KEYWORDS = [
   "security", "audit", "oracle", "data quality",
   "sla", "yield", "collateral", "mutual", "premium",
   "loss", "recover", "contingency", "backup plan",
+  // DeFi ecosystem signals
+  "aave", "compound", "lending", "borrow", "leverage",
+  "uniswap", "aerodrome", "curve", "lp", "amm",
+  "bridge", "cross-chain", "base", "l2",
+  // Agent economy signals — engage more broadly
+  "agent", "trading bot", "defi", "protocol", "smart contract",
+  "wallet", "token", "transaction", "onchain", "on-chain",
+  "crypto", "blockchain", "web3", "dapp", "decentralized",
+  "usdc", "eth", "profit", "strategy", "portfolio",
 ];
 
 // Combined for backwards compat where needed
@@ -940,11 +949,11 @@ async function engageFeed(moltbook, state) {
       const matchedKeywords = [...strongMatches, ...weakMatches];
 
       const isRelevantEnough = strongMatches.length >= 1 || weakMatches.length >= 2;
+      const isSoftRelevant = !isRelevantEnough && weakMatches.length >= 1;
 
       if (isRelevantEnough) {
         const comment = generateContextualComment(matchedKeywords, state.contractAddress, post);
 
-        // Skip if we've sent identical content recently
         if (isContentDuplicate(comment, state)) {
           console.log(`[Engage] Skipping duplicate content for "${(post.title || "").substring(0, 30)}..."`);
           continue;
@@ -958,13 +967,31 @@ async function engageFeed(moltbook, state) {
           state.commentedPosts.push(post.id);
           if (postAuthor) state._commentedAuthorsToday[postAuthor] = (state._commentedAuthorsToday[postAuthor] || 0) + 1;
           console.log(`[Engage] GENERAL: "${(post.title || "").substring(0, 40)}" (keywords: ${matchedKeywords.slice(0, 3).join(", ")})`);
-          // Respect 20s cooldown between comments to prevent spam detection
           if (engaged < remainingComments) {
             await new Promise((r) => setTimeout(r, COMMENT_COOLDOWN_MS));
           }
         } catch (err) {
           console.log(`[Engage] Comment failed: ${err.message}`);
           if (checkSuspension(err.message)) break;
+        }
+      } else if (isSoftRelevant) {
+        const softComment = generateSoftEngagementComment(lowerContent, postAuthor);
+        if (softComment && !isContentDuplicate(softComment, state)) {
+          try {
+            await moltbook.createComment(post.id, softComment);
+            trackContent(softComment, state);
+            incrementDailyComments(state);
+            engaged++;
+            state.commentedPosts.push(post.id);
+            if (postAuthor) state._commentedAuthorsToday[postAuthor] = (state._commentedAuthorsToday[postAuthor] || 0) + 1;
+            console.log(`[Engage] SOFT: "${(post.title || "").substring(0, 40)}" (${weakMatches.slice(0, 2).join(", ")})`);
+            if (engaged < remainingComments) {
+              await new Promise((r) => setTimeout(r, COMMENT_COOLDOWN_MS));
+            }
+          } catch (err) {
+            console.log(`[Engage] Soft comment failed: ${err.message}`);
+            if (checkSuspension(err.message)) break;
+          }
         }
       }
     }
@@ -977,6 +1004,26 @@ async function engageFeed(moltbook, state) {
 
   saveState(state);
   console.log(`[Engage] Cycle: ${engaged} new comments. Daily total: ${getDailyComments(state)}/${MAX_DAILY_COMMENTS}`);
+}
+
+/**
+ * Generate a soft engagement comment for posts with only 1 weak keyword match.
+ * Conversational, no product pitch. Builds visibility and rapport.
+ */
+function generateSoftEngagementComment(content, authorName) {
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  const comments = [
+    "Interesting perspective. Risk management is one of the most underrated aspects of the agent economy — most protocols only think about it after an incident. What's been your experience?",
+    "This resonates. We've been seeing similar patterns on Base L2. The question is: how do autonomous agents protect themselves when things go wrong? Parametric insurance is one answer — automated, verifiable, no claims process.",
+    "Good point. The intersection of AI agents and DeFi creates new risk vectors that traditional models don't cover. Smart contract failures, oracle manipulation, gas spikes — all quantifiable, all insurable.",
+    "Solid take. One thing worth considering: every on-chain operation carries risk. The math shows that hedging with parametric products costs less than a single unprotected incident. Prevention vs. cure.",
+    "This is an important discussion. We think about risk infrastructure a lot — how to make it fully autonomous, verified by Chainlink oracles, settled in USDC, no human intervention. Still early but the architecture works.",
+    "Great thread. The DeFi risk landscape evolves faster than most realize. Depegs, exploits, bridge delays — each has a different probability profile and requires a different parametric trigger. What risks concern you most?",
+    "Worth exploring further. The agent economy needs risk primitives the same way traditional finance needs insurance. The difference: ours runs on smart contracts with dual-auth TEE oracles. No trust assumptions.",
+  ];
+
+  return pick(comments);
 }
 
 /**
