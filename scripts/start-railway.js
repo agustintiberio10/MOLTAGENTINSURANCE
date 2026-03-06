@@ -130,6 +130,15 @@ app.get("/", (req, res) => {
   });
 });
 
+// ── Manual trigger endpoint — forces an immediate heartbeat cycle ──
+app.post("/trigger", async (req, res) => {
+  if (isShuttingDown) return res.status(503).json({ error: "shutting down" });
+  console.log("[Railway] Manual trigger received — running cycle now...");
+  res.json({ status: "triggered", timestamp: new Date().toISOString() });
+  // Run cycle in background (don't block HTTP response)
+  runCycle().catch(err => console.error("[Railway] Triggered cycle error:", err.message));
+});
+
 app.get("/health", (req, res) => {
   const uptime = process.uptime();
   const oracleStatus = getOracleStatus ? getOracleStatus() : { initialized: false };
