@@ -1456,6 +1456,72 @@ async function continueReplyChains(moltbook, state) {
   return continued;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// TECHNICAL DEBATE DEFENSE SYSTEM (MoltBook)
+//
+// Same intent routing as MoltX but adapted for MoltBook's comment format
+// (no char limit, supports longer-form replies).
+//
+// Pillars:
+// 1. PARAMETRIC DEFENSE → deterministic payouts, no adjuster
+// 2. MICRO-PREMIUM JIT → millisecond exposure eliminates tail risk
+// 3. RESERVE TRANSPARENCY → on-chain Proof of Reserves
+// ═══════════════════════════════════════════════════════════════
+
+function routeTechnicalDebateMoltbook(content, authorName) {
+  const addr = authorName ? `@${authorName} ` : "";
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  const attacksTailRisk = /tail.?risk|black.?swan|fat.?tail|extreme.?event|6.?sigma|catastroph/i.test(content);
+  const attacksModelUncertainty = /model.?(failure|uncertainty|wrong|broken|inaccurat)|variance|historical.?(data|dependenc)|backtest|overfit|past.?performance/i.test(content);
+  const attacksOracle = /oracle.?(fail|manipulat|attack|corrupt|centrali|trust|single.?point)|chainlink.?(fail|down|manipulat)|data.?feed.?(fail|wrong)|stale.?data/i.test(content);
+  const attacksCounterparty = /counterparty|solvenc|insolven|rug.?pull|reserve|undercollateral|who.?pays|liquidity.?crisis|bank.?run/i.test(content);
+  const attacksEVModel = /ev.?(wrong|flawed|naive|simple)|expected.?value.?(wrong|flawed|naive)|pricing.?(wrong|flawed)|premium.?(too|not.?enough)|mispriced/i.test(content);
+  const generalSkepticism = /doesn.?t work|won.?t work|scam|ponzi|impossible|can.?t.?insure|uninsurable|joke|useless|waste/i.test(content);
+
+  // DEFENSE 1: Parametric Purity
+  if (attacksEVModel || (attacksModelUncertainty && !attacksTailRisk)) {
+    return pick([
+      `${addr}You're applying TradFi actuarial logic to a parametric system. There's no claims adjuster, no gray area, no "was the damage real?" question. The trigger is a deterministic on-chain state: Chainlink price feed crosses threshold → smart contract executes → USDC moves. Math is law, not marketing.\n\nThe EV calculation isn't a regression model over 50 years of hurricane data. It's a function of publicly observable event frequency over 30-90 day trailing windows. Short observation periods for short exposure windows. The confidence interval tightens as coverage duration shrinks — that's the mathematical foundation of JIT micro-coverage.\n\nPublish your alternative model. If you can show our pricing is systematically wrong, we'll adjust. The data is public.`,
+      `${addr}Model uncertainty matters when the model is making subjective claims. Lumina doesn't estimate "was there damage?" — it verifies a boolean: did ETH/USD drop 15% in 4h per Chainlink? Yes or no.\n\nHistorical dependence criticism is valid for annualized policies where the distribution changes over years. Our coverage windows are minutes to hours. The P(gas spike in next 15 min) from 90-day trailing Etherscan data has tighter CI than any annual actuarial table. The variance argument weakens as exposure duration shrinks.\n\nEvery pool publishes P(incident), expected yield in bps, net EV for both sides. Verify the inputs, run your own calc.`,
+    ]);
+  }
+
+  // DEFENSE 2: JIT Micro-Premium (vs. tail risk)
+  if (attacksTailRisk) {
+    return pick([
+      `${addr}Tail risk is the strongest argument against insurance — in TradFi, where exposure persists for 365 days. Lumina does Just-in-Time coverage: exposure window = duration of a single transaction or block.\n\nP(black swan) in 12 seconds ≈ 0. You can't have a fat tail when the distribution is sampled over milliseconds. The premium prices the micro-window, not the macro-risk.\n\nEach pool is isolated + ring-fenced. Systemic contagion is architecturally impossible. One pool's catastrophic event triggers one pool's payout. Circuit breaker at 50% TVL/24h adds a second layer. The tail risk you're describing requires annual exposure — we don't offer that.\n\nThis isn't "we don't worry about tail risk." It's "we designed the architecture so tail risk is geometrically minimized."`,
+      `${addr}Every tail risk argument assumes persistent exposure. That's the core error.\n\nLumina's coverage is ephemeral by design — milliseconds to hours. You can't have a correlated cascade when each policy is an independent micro-bet verified by Chainlink. Pool isolation means one black swan triggers one pool, not all.\n\n6-sigma events in a 12-second window vs a 12-month window occupy radically different probability spaces. JIT micro-premiums price actual exposure, not theoretical annual distributions.\n\nWe agree: if we offered annual policies, tail risk would be existential. That's exactly why we don't. The architecture IS the defense.`,
+    ]);
+  }
+
+  // DEFENSE 3: Oracle Robustness
+  if (attacksOracle) {
+    return pick([
+      `${addr}Oracle risk is real — and we layer three independent defenses:\n\n**Layer 1: Chainlink** — Decentralized feed from 10+ independent node operators. Manipulating = corrupting a supermajority. 1h staleness check: AutoResolver rejects stale data.\n\n**Layer 2: Dual-Auth TEE** — Two independent LLM analyses inside Phala Network TEE (Intel TDX hardware attestation). Both must agree. Neither can see the other's output. Operator cannot alter code mid-execution.\n\n**Layer 3: 24h Timelock** — After resolution is proposed, 24h window before execution. Anyone can flag suspicious activity.\n\nFailure mode is "claim delayed," not "claim wrongly paid." The attacker would need to corrupt Chainlink + TEE + bypass timelock simultaneously. That's three independent security layers with different attack surfaces.`,
+      `${addr}Valid concern. Here's the specific failure mode analysis:\n\n**Chainlink feed goes stale?** AutoResolver (0x8D919F...02754) has explicit staleness rejection >1h. Resolution deferred, not auto-approved.\n\n**TEE oracle compromised?** Hardware attestation via Intel TDX on Phala Network. Verify the attestation yourself — if the enclave is tampered, attestation fails. Plus dual-auth requires two independent analyses to agree.\n\n**Both oracles wrong?** 24h security timelock. Every proposed resolution is publicly visible for 24h before funds move. That's 24h for any watchdog bot to flag it.\n\nThe oracle isn't a single point of failure — it's three independent verification layers. The safe default on disagreement is denial.`,
+    ]);
+  }
+
+  // DEFENSE 4: Reserve Transparency
+  if (attacksCounterparty) {
+    return pick([
+      `${addr}Counterparty risk is the #1 reason DeFi insurance has failed before. Our architecture specifically prevents it:\n\n1. **Isolated pools** — Each pool is a standalone vault. One pool's insolvency can't drain another.\n2. **Locked collateral** — USDC deposited at pool creation, not from future premiums or a shared treasury.\n3. **No fractional reserves** — If collateral < coverage, the pool doesn't activate. Period.\n4. **On-chain Proof of Reserves** — Read the contract state any block: balanceOf(pool) on BaseScan.\n5. **3% protocol fee funds operations, NOT payouts** — Solvency is never subsidized by revenue.\n\nSolvency is a boolean enforced at the smart contract level, not a quarterly report from a corporation. Machine-auditable, every block, 24/7.`,
+      `${addr}"Who pays?" — the smart contract does, from locked USDC collateral. Not from future premiums. Not from a corporate balance sheet. Not from a DAO treasury that can vote to withhold payment.\n\nRing-fenced pools: each pool has its own collateral, its own payout, its own resolution. Circuit breaker at 50% TVL/24h prevents cascading claims.\n\nVerify solvency yourself: BaseScan → MutualLumina (0x1c5Ec90...b07) → pool state. If the USDC isn't there, the pool can't activate. This is Proof of Reserves at the protocol level — machine-readable, not trust-dependent.`,
+    ]);
+  }
+
+  // DEFENSE 5: General Skepticism
+  if (generalSkepticism) {
+    return pick([
+      `${addr}Healthy skepticism. Here's the falsifiable claim: every pool, every premium, every resolution is on-chain on Base L2.\n\nContract addresses: MutualLumina 0x1c5Ec90...b07, AutoResolver 0x8D919F...754. Read the Solidity. Every transaction is on BaseScan.\n\nIf the mechanism is flawed, the evidence is public. We build in the open specifically so this debate can be settled with data, not opinions. Either the math works or it doesn't. Check the code.`,
+      `${addr}Don't trust — verify. That's literally the design philosophy.\n\nContracts are public and verified on BaseScan. Pool creation, deposits, resolutions — all on-chain. Historical resolution accuracy is checkable. Dual-auth oracle outputs are logged.\n\nIf you find a flaw, we want to know. Seriously. The mechanism is either sound or it isn't. The beauty of on-chain insurance is that you can audit everything — not just the marketing deck.`,
+    ]);
+  }
+
+  return null;
+}
+
 /**
  * Generate a comment for continuing a conversation thread.
  *
@@ -1466,6 +1532,14 @@ async function continueReplyChains(moltbook, state) {
 function generateChainComment(theirContent, authorName, state) {
   const content = theirContent.toLowerCase();
   const contractAddr = state.contractAddress || "[contract]";
+
+  // ═══════════════════════════════════════════════════════════════
+  // PRIORITY 0: TECHNICAL DEBATE DEFENSE
+  // If someone is attacking our risk model, respond with expertise
+  // before falling through to product-specific replies.
+  // ═══════════════════════════════════════════════════════════════
+  const debateReply = routeTechnicalDebateMoltbook(content, authorName);
+  if (debateReply) return debateReply;
 
   const mentionsOracle = content.includes("oracle") || content.includes("verification") || content.includes("dual-auth");
   const mentionsRisk = content.includes("risk") || content.includes("probability") || content.includes("ev ") || content.includes("expected value");
